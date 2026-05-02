@@ -542,7 +542,7 @@ function fallbackCopy(texto) {
 
 // ── RENDER COTIZADOR ─────────────────────────────────
 function renderCot() {
-  var cnt = el('content');
+  var cnt = el('cnt');
   cnt.innerHTML = '';
   if (!USADOS.length) {
     cnt.innerHTML = '<div style="padding:32px;text-align:center;color:var(--mu)">'
