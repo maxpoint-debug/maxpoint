@@ -20,6 +20,8 @@ function cotReset() {
   if (el('cotPanel'))    el('cotPanel').style.display = 'none';
   if (el('cotResultado')) el('cotResultado').style.display = 'none';
   _cotSel = null;
+  _cotExtras = [];
+  cotRenderExtras();
 }
 
 function cotBuscar(q) {
@@ -70,6 +72,93 @@ function cotElegir(i) {
   cotCalcular();
 }
 
+// Array de descuentos extras [ { lbl, usd } ]
+var _cotExtras = [];
+
+function cotAgregarExtra() {
+  var id = 'extra_' + Date.now();
+  _cotExtras.push({ id: id, lbl: '', usd: 0 });
+  cotRenderExtras();
+}
+
+function cotQuitarExtra(id) {
+  _cotExtras = _cotExtras.filter(function(e) { return e.id !== id; });
+  cotRenderExtras();
+  cotCalcular();
+}
+
+function cotRenderExtras() {
+  var wrap = el('cotExtrasWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  _cotExtras.forEach(function(extra) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;position:relative';
+    row.innerHTML =
+      '<div style="flex:1;position:relative">'
+      + '<input type="text" placeholder="Buscar repuesto o descripcion..." autocomplete="off"'
+      + ' style="width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;color:var(--tx);font-size:12px;outline:none"'
+      + ' data-id="' + extra.id + '"'
+      + ' value="' + (extra.lbl || '') + '"'
+      + ' oninput="cotExtraBuscar(this)"'
+      + '/>'
+      + '<div class="cat-drop" id="ed_' + extra.id + '"></div>'
+      + '</div>'
+      + '<input type="number" placeholder="USD" min="0"'
+      + ' style="width:70px;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:7px 8px;color:var(--rd);font-size:12px;font-weight:700;text-align:center;outline:none"'
+      + ' data-id="' + extra.id + '"'
+      + ' value="' + (extra.usd || '') + '"'
+      + ' oninput="cotExtraSetUsd(this)"'
+      + '/>'
+      + '<button data-eid="' + extra.id + '" onclick="cotQuitarExtra(this.dataset.eid)" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;padding:0 4px">&#10006;</button>';
+      + ' style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:16px;padding:0 4px">x</button>';
+    wrap.appendChild(row);
+  });
+}
+
+function cotExtraBuscar(input) {
+  var id  = input.dataset.id;
+  var q   = input.value.trim();
+  var drop = el('ed_' + id);
+  if (!drop) return;
+  if (q.length < 2 || !window.CATALOGO || !window.CATALOGO.length) { drop.classList.remove('open'); return; }
+  var words = q.toLowerCase().split(/\s+/);
+  var res = (window.CATALOGO || []).filter(function(p) {
+    return words.every(function(w) { return p.label.toLowerCase().includes(w); });
+  }).slice(0, 8);
+  if (!res.length) { drop.classList.remove('open'); return; }
+  drop.innerHTML = res.map(function(p) {
+    return '<div class="cat-item" data-lbl="' + p.label.replace(/"/g,'&quot;') + '" data-usd="' + p.costo_usd + '" data-eid="' + id + '" onmousedown="cotExtraElegirEl(this)">' + '<span style="flex:1;font-size:12px">' + p.label + '</span>' + '<span style="font-size:11px;color:var(--bl);font-weight:700;margin-left:8px">USD ' + p.costo_usd + '</span>' + '</div>';
+      + '<span style="flex:1;font-size:12px">' + p.label + '</span>'
+      + '<span style="font-size:11px;color:var(--bl);font-weight:700;margin-left:8px">USD ' + p.costo_usd + '</span>'
+      + '</div>';
+  }).join('');
+  drop.classList.add('open');
+  // Actualizar label en array
+  var extra = _cotExtras.find(function(e) { return e.id === id; });
+  if (extra) extra.lbl = input.value;
+}
+
+function cotExtraElegirEl(el) {
+  cotExtraElegir(el.dataset.eid, el.dataset.lbl, parseFloat(el.dataset.usd));
+}
+
+function cotExtraElegir(id, lbl, usd) {
+  var extra = _cotExtras.find(function(e) { return e.id === id; });
+  if (!extra) return;
+  extra.lbl = lbl;
+  extra.usd = Math.round(usd);
+  cotRenderExtras();
+  cotCalcular();
+  var drop = el('ed_' + id); if (drop) drop.classList.remove('open');
+}
+
+function cotExtraSetUsd(input) {
+  var id  = input.dataset.id;
+  var extra = _cotExtras.find(function(e) { return e.id === id; });
+  if (extra) { extra.usd = parseFloat(input.value) || 0; cotCalcular(); }
+}
+
 function cotCalcular() {
   if (!_cotSel) return;
   var base     = _cotSel.precio_usd;
@@ -118,7 +207,8 @@ function cotCalcular() {
     descPanLbl = modCat ? 'Modulo (' + modCat.label + ')' : 'Pantalla (estimado)';
   }
 
-  var total = Math.max(0, base - resguard - descBat - descEst - descPan);
+  var descExtras = _cotExtras.reduce(function(s,e) { return s + (e.usd||0); }, 0);
+  var total = Math.max(0, base - resguard - descBat - descEst - descPan - descExtras);
 
   var row = function(lbl, val, color) {
     return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd);font-size:13px">'
@@ -131,6 +221,9 @@ function cotCalcular() {
   if (descBat) html += row(descBatLbl, '- USD ' + descBat, 'var(--rd)');
   if (descEst) html += row(descEstLbl, '- USD ' + descEst, 'var(--rd)');
   if (descPan) html += row(descPanLbl, '- USD ' + descPan, 'var(--rd)');
+  _cotExtras.forEach(function(e) {
+    if (e.usd) html += row(e.lbl || 'Descuento', '- USD ' + e.usd, 'var(--rd)');
+  });
 
   html += '<div style="background:rgba(45,206,137,.08);border:1px solid rgba(45,206,137,.25);'
     + 'border-radius:8px;padding:14px;text-align:center;margin-top:10px">'
