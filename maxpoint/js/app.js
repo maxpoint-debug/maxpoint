@@ -1,3 +1,5 @@
+// v7
+
 // ===================== APP — init y navegacion =====================
 
 function showView(v, navEl) {
