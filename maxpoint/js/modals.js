@@ -516,7 +516,7 @@ function prtEtiq() {
 function openNewRepuesto() {
   el('mRpuT').textContent = 'Nuevo repuesto';
   ['rpNom','rpMod','rpCli','rpOrd','rpNot'].forEach(function(id) { setVal(id, ''); });
-  setVal('rpCos', '');
+  setVal('rpCos', ''); setVal('rpPrecio', '');
   el('rpEst').value = 'Esperando';
   setVal('rpPro', '');
   _afterRpu = null;
@@ -529,15 +529,16 @@ function saveRepuesto() {
   var btn = el('btnSaveRpu');
   btn.disabled = true; btn.textContent = 'Guardando...';
   var d = {
-    nombre:    nom,
-    modelo:    val('rpMod'),
-    costo:     val('rpCos') || '0',
-    proveedor: val('rpPro'),
-    estado:    el('rpEst').value,
-    orden:     val('rpOrd'),
-    cliente:   val('rpCli'),
-    notas:     val('rpNot'),
-    fecha:     hoy(),
+    nombre:         nom,
+    modelo:         val('rpMod'),
+    costo:          val('rpCos') || '0',
+    precio_cliente: val('rpPrecio') || '0',
+    proveedor:      val('rpPro'),
+    estado:         el('rpEst').value,
+    orden:          val('rpOrd'),
+    cliente:        val('rpCli'),
+    notas:          val('rpNot'),
+    fecha:          hoy(),
   };
   FB.addR(d, function(err) {
     btn.disabled = false; btn.textContent = 'Guardar';
@@ -568,7 +569,7 @@ function confSugg() {
   setVal('rpMod', _sugg.equipo);
   setVal('rpCli', val('fNom'));
   setVal('rpOrd', '');
-  setVal('rpCos', '');
+  setVal('rpCos', ''); setVal('rpPrecio', '');
   setVal('rpPro', '');
   setVal('rpNot', '');
   el('rpEst').value = 'Esperando';
@@ -723,7 +724,7 @@ function chkPin() {
     VIEW = 'bal';
     document.querySelectorAll('.ni').forEach(function(n) { n.classList.remove('active'); });
     el('topT').textContent = 'Balance';
-    el('topA').innerHTML = '';
+    setTopActions('bal');
     renderBal();
   } else {
     el('pinErr').textContent = 'PIN incorrecto';
