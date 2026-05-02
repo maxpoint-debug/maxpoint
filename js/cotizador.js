@@ -1,15 +1,10 @@
 // ===================== COTIZADOR DE USADOS =====================
-// Parser de lista WhatsApp + cotizador con descuentos automáticos
+var USADOS = [];
 
-// ── Estado ───────────────────────────────────────────────────
-var USADOS = [];   // { modelo, cap, precio_usd } — cargado desde Firebase
+function cotLoadUsados(docs) { USADOS = docs || []; }
 
-// Cargar desde Firebase (llamado por firebase.js)
-function cotLoadUsados(docs) {
-  USADOS = docs || [];
-}
+var _cotRes = [], _cotIdx = -1, _cotSel = null;
 
-// ── COTIZADOR ────────────────────────────────────────────────
 function openCotizador() {
   cotReset();
   openM('mCot');
@@ -18,23 +13,18 @@ function openCotizador() {
 function cotReset() {
   setVal('cotQ', '');
   setVal('cotBat', '100');
-  el('cotDrop').classList.remove('open');
-  el('cotEstetica').value = 'ok';
-  el('cotPantalla').value = 'ok';
-  el('cotPanel').style.display = 'none';
-  el('cotResultado').style.display = 'none';
-  var inp = el('cotQ');
-  if (inp) inp.classList.remove('sel');
+  var d = el('cotDrop'); if (d) d.classList.remove('open');
+  var q = el('cotQ'); if (q) q.classList.remove('sel');
+  if (el('cotEstetica')) el('cotEstetica').value = 'ok';
+  if (el('cotPantalla')) el('cotPantalla').value = 'ok';
+  if (el('cotPanel'))    el('cotPanel').style.display = 'none';
+  if (el('cotResultado')) el('cotResultado').style.display = 'none';
+  _cotSel = null;
 }
-
-// Buscador de modelo
-var _cotRes = [];
-var _cotIdx = -1;
-var _cotSel = null;
 
 function cotBuscar(q) {
   var drop = el('cotDrop');
-  q = q.trim();
+  q = (q || '').trim();
   if (q.length < 2 || !USADOS.length) { drop.classList.remove('open'); return; }
   var words = q.toLowerCase().split(/\s+/);
   _cotRes = USADOS.filter(function(u) {
@@ -47,8 +37,8 @@ function cotBuscar(q) {
   drop.innerHTML = _cotRes.map(function(u, i) {
     var lbl = u.modelo;
     words.forEach(function(w) {
-      var re = new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-      lbl = lbl.replace(re, '<mark style="background:rgba(240,180,41,.22);color:var(--acc);border-radius:2px;font-style:normal">$1</mark>');
+      var re = new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')','gi');
+      lbl = lbl.replace(re,'<mark style="background:rgba(240,180,41,.22);color:var(--acc);border-radius:2px;font-style:normal">$1</mark>');
     });
     return '<div class="cat-item" onmousedown="cotElegir(' + i + ')">'
       + '<span style="flex:1;font-size:13px">' + lbl + '</span>'
@@ -63,16 +53,15 @@ function cotKeyDown(e) {
   var drop = el('cotDrop');
   var items = drop.querySelectorAll('.cat-item');
   if (!drop.classList.contains('open')) return;
-  if (e.key === 'ArrowDown') { e.preventDefault(); _cotIdx = Math.min(_cotIdx + 1, items.length - 1); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); _cotIdx = Math.max(_cotIdx - 1, 0); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); _cotIdx = Math.min(_cotIdx+1, items.length-1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _cotIdx = Math.max(_cotIdx-1, 0); }
   else if (e.key === 'Enter' && _cotIdx >= 0) { e.preventDefault(); cotElegir(_cotIdx); return; }
   else if (e.key === 'Escape') { drop.classList.remove('open'); return; }
-  items.forEach(function(el, i) { el.classList.toggle('act', i === _cotIdx); });
+  items.forEach(function(el,i) { el.classList.toggle('act', i===_cotIdx); });
 }
 
 function cotElegir(i) {
-  var u = _cotRes[i];
-  if (!u) return;
+  var u = _cotRes[i]; if (!u) return;
   _cotSel = u;
   el('cotQ').value = u.modelo;
   el('cotQ').classList.add('sel');
@@ -83,79 +72,70 @@ function cotElegir(i) {
 
 function cotCalcular() {
   if (!_cotSel) return;
-
   var base     = _cotSel.precio_usd;
   var resguard = 30;
   var bat      = parseInt(el('cotBat').value) || 100;
   var estetica = el('cotEstetica').value;
   var pantalla = el('cotPantalla').value;
 
-  // Descuento bateria — si < 90% restamos costo de bateria del catalogo
-  var descBat = 0;
-  var descBatLabel = '';
+  // Descuento bateria
+  var descBat = 0, descBatLbl = '';
   if (bat < 90) {
-    // Buscar bateria del modelo en CATALOGO
-    var modeloCorto = _cotSel.modelo.toLowerCase();
-    var batCat = (window.CATALOGO || []).find(function(p) {
-      return p.label.toLowerCase().includes('bater') &&
-             modeloCorto.split(' ').some(function(w) { return w.length > 2 && p.label.toLowerCase().includes(w); });
-    });
-    if (batCat) {
-      var usd = (window.CFG_CAT && CFG_CAT.usd) ? CFG_CAT.usd : 1425;
-      descBat = Math.round(batCat.costo_usd);
-      descBatLabel = 'Bateria (' + batCat.label + ')';
-    } else {
-      descBat = 25; // fallback si no encuentra en catalogo
-      descBatLabel = 'Bateria (estimado)';
+    var mCorto = _cotSel.modelo.toLowerCase();
+    // Extraer solo el numero del modelo (ej: "14", "13 pro", "15 pro max")
+    var mNum = mCorto.match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
+    var mNumStr = mNum ? mNum[0].trim() : null;
+    var batCat = null;
+    if (mNumStr) {
+      batCat = (window.CATALOGO || []).find(function(p) {
+        var lbl = p.label.toLowerCase();
+        return lbl.includes('bater') && lbl.includes('iphone') && lbl.includes(mNumStr);
+      });
     }
+    descBat    = batCat ? Math.round(batCat.costo_usd) : 20;
+    descBatLbl = batCat ? 'Bateria (' + batCat.label + ')' : 'Bateria (estimado)';
   }
 
   // Descuento estetica
-  var descEst = 0;
-  var descEstLabel = '';
-  if (estetica === 'leve')   { descEst = 15; descEstLabel = 'Detalles leves'; }
-  if (estetica === 'marcado') { descEst = 35; descEstLabel = 'Muy marcado'; }
+  var descEst = 0, descEstLbl = '';
+  if (estetica === 'leve')    { descEst = 15; descEstLbl = 'Detalles leves'; }
+  if (estetica === 'marcado') { descEst = 35; descEstLbl = 'Muy marcado'; }
 
-  // Descuento pantalla — si rota, costo del modulo del catalogo
-  var descPan = 0;
-  var descPanLabel = '';
+  // Descuento pantalla
+  var descPan = 0, descPanLbl = '';
   if (pantalla === 'rota') {
-    var modeloCorto2 = _cotSel.modelo.toLowerCase();
-    var modCat = (window.CATALOGO || []).find(function(p) {
-      return (p.label.toLowerCase().includes('modulo') || p.label.toLowerCase().includes('pantalla')) &&
-             modeloCorto2.split(' ').some(function(w) { return w.length > 2 && p.label.toLowerCase().includes(w); });
-    });
-    if (modCat) {
-      var usd2 = (window.CFG_CAT && CFG_CAT.usd) ? CFG_CAT.usd : 1425;
-      descPan = Math.round(modCat.costo_usd);
-      descPanLabel = 'Modulo (' + modCat.label + ')';
-    } else {
-      descPan = 60;
-      descPanLabel = 'Pantalla (estimado)';
+    var mCorto2 = _cotSel.modelo.toLowerCase();
+    var mNum2 = mCorto2.match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
+    var mNumStr2 = mNum2 ? mNum2[0].trim() : null;
+    var modCat = null;
+    if (mNumStr2) {
+      modCat = (window.CATALOGO || []).find(function(p) {
+        var lbl = p.label.toLowerCase();
+        return lbl.includes('modulo') && lbl.includes('iphone') && lbl.includes(mNumStr2);
+      });
     }
+    descPan    = modCat ? Math.round(modCat.costo_usd) : 50;
+    descPanLbl = modCat ? 'Modulo (' + modCat.label + ')' : 'Pantalla (estimado)';
   }
 
-  var total = base - resguard - descBat - descEst - descPan;
-  if (total < 0) total = 0;
+  var total = Math.max(0, base - resguard - descBat - descEst - descPan);
 
-  // Mostrar resultado
-  var html = '<div style="margin-bottom:10px;font-size:13px;color:var(--mu)">'
-    + '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--bd)">'
-    + '<span>Precio base</span><span style="color:var(--tx);font-weight:600">USD ' + base + '</span></div>'
-    + '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--bd)">'
-    + '<span>Resguardo</span><span style="color:var(--rd)">- USD ' + resguard + '</span></div>';
+  var row = function(lbl, val, color) {
+    return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd);font-size:13px">'
+      + '<span style="color:var(--mu)">' + lbl + '</span>'
+      + '<span style="font-weight:700;color:' + color + '">' + val + '</span></div>';
+  };
 
-  if (descBat) html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--bd)">'
-    + '<span>' + descBatLabel + '</span><span style="color:var(--rd)">- USD ' + descBat + '</span></div>';
-  if (descEst) html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--bd)">'
-    + '<span>' + descEstLabel + '</span><span style="color:var(--rd)">- USD ' + descEst + '</span></div>';
-  if (descPan) html += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--bd)">'
-    + '<span>' + descPanLabel + '</span><span style="color:var(--rd)">- USD ' + descPan + '</span></div>';
+  var html = row('Precio base', 'USD ' + base, 'var(--tx)')
+    + row('Resguardo', '- USD ' + resguard, 'var(--rd)');
+  if (descBat) html += row(descBatLbl, '- USD ' + descBat, 'var(--rd)');
+  if (descEst) html += row(descEstLbl, '- USD ' + descEst, 'var(--rd)');
+  if (descPan) html += row(descPanLbl, '- USD ' + descPan, 'var(--rd)');
 
-  html += '</div>'
-    + '<div style="background:rgba(45,206,137,.08);border:1px solid rgba(45,206,137,.25);border-radius:8px;padding:14px;text-align:center">'
-    + '<div style="font-size:11px;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Precio de compra sugerido</div>'
-    + '<div style="font-size:32px;font-weight:900;color:var(--gr)">USD ' + total + '</div>'
+  html += '<div style="background:rgba(45,206,137,.08);border:1px solid rgba(45,206,137,.25);'
+    + 'border-radius:8px;padding:14px;text-align:center;margin-top:10px">'
+    + '<div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Precio de compra sugerido</div>'
+    + '<div style="font-size:34px;font-weight:900;color:var(--gr)">USD ' + total + '</div>'
     + '</div>';
 
   el('cotResultadoInner').innerHTML = html;
@@ -178,62 +158,41 @@ var _listaItems = [];
 function parsearLista() {
   var txt = val('listaInput');
   if (!txt.trim()) return;
-
   _listaItems = [];
   var lineas = txt.split('\n');
   var modeloActual = null;
-  var precioActual = null;
-
-  // Regex para detectar linea de modelo
-  // Ej: "📲 14 pro 128GB" o "14 PRO MAX 256GB"
-  var reModelo = /(?:📲\s*)?(\d+\s*(?:pro\s*max|pro|plus|air|mini)?\s*\d+\s*(?:gb|tb))/i;
-  // Regex para precio x1 — primer precio USD en la linea
-  var rePrecio = /(\d{3,4})(?:x1)?💵/i;
-  var rePrecio2 = /^(\d{3,4})💵/;
 
   lineas.forEach(function(linea) {
     linea = linea.trim();
     if (!linea) return;
 
-    // Detectar linea de modelo (tiene numero de modelo y capacidad)
-    var mModelo = linea.match(/(?:📲\s*)?((?:iphone\s*)?\d+\s*(?:pro\s*max|pro\s*max|pro|plus|air|mini)?\s*\d+\s*(?:gb|tb))/i);
-    if (mModelo) {
-      // Limpiar el modelo
-      var mod = mModelo[1].trim()
-        .replace(/\s+/g, ' ')
-        .replace(/gb/i, 'GB')
-        .replace(/tb/i, 'TB');
-      // Si no empieza con iPhone, agregarlo
+    // Detectar modelo: tiene numero de iphone + capacidad
+    var mMod = linea.match(/(?:i?phone\s*)?(\d{1,2}\s*(?:pro\s*max|pro|plus|air|mini)?\s*\d{3}\s*(?:gb|tb))/i);
+    if (mMod) {
+      var mod = mMod[1].trim().replace(/\s+/g,' ')
+        .replace(/(\d+)\s*(gb|tb)/i, '$1$2')
+        .replace(/gb/i,'GB').replace(/tb/i,'TB')
+        .replace(/pro\s*max/i,'Pro Max').replace(/\bpro\b/i,'Pro')
+        .replace(/\bplus\b/i,'Plus').replace(/\bair\b/i,'Air').replace(/\bmini\b/i,'Mini');
       if (!/^iphone/i.test(mod)) mod = 'iPhone ' + mod;
-      // Capitalizar pro, max, etc
-      mod = mod.replace(/\bpro\b/gi, 'Pro').replace(/\bmax\b/gi, 'Max')
-               .replace(/\bplus\b/gi, 'Plus').replace(/\bair\b/gi, 'Air')
-               .replace(/\bmini\b/gi, 'Mini');
-      modeloActual = mod;
-      precioActual = null;
+      modeloActual = mod.trim();
     }
 
-    // Detectar precio x1 en esta linea
-    var mPrecio = linea.match(/(\d{3,4})x1\s*💵/) ||
-                  linea.match(/^(\d{3,4})\s*💵/) ||
-                  linea.match(/(\d{3,4})💵\s*(?:100%|$)/);
+    // Detectar precio x1
+    var mPrecio = linea.match(/(\d{3,4})x1\s*[\uD83D\uDCAB\uD83D\uDCB5💵]/)
+      || linea.match(/^(\d{3,4})\s*[\uD83D\uDCAB\uD83D\uDCB5💵]/)
+      || linea.match(/(\d{3,4})💵/);
 
     if (mPrecio && modeloActual) {
       var precio = parseInt(mPrecio[1]);
       if (precio >= 100 && precio <= 5000) {
-        precioActual = precio;
-        // Agregar o actualizar
         var existe = _listaItems.find(function(x) { return x.modelo === modeloActual; });
-        if (existe) {
-          if (precio < existe.precio_usd) existe.precio_usd = precio;
-        } else {
-          _listaItems.push({ modelo: modeloActual, precio_usd: precio });
-        }
+        if (existe) { if (precio < existe.precio_usd) existe.precio_usd = precio; }
+        else _listaItems.push({ modelo: modeloActual, precio_usd: precio });
       }
     }
   });
 
-  // Mostrar preview
   if (!_listaItems.length) {
     el('listaPreviewContent').innerHTML = '<div style="color:var(--rd);font-size:12px">No se detectaron modelos. Revisá el formato.</div>';
     el('listaPreview').style.display = '';
@@ -243,10 +202,11 @@ function parsearLista() {
 
   el('listaPreviewContent').innerHTML = _listaItems.map(function(u) {
     var existe = USADOS.find(function(x) { return x.modelo === u.modelo; });
-    var tag = '';
-    if (!existe) tag = '<span style="color:var(--gr);font-size:10px;font-weight:700"> NUEVO</span>';
-    else if (u.precio_usd < existe.precio_usd) tag = '<span style="color:var(--acc);font-size:10px;font-weight:700"> BAJA</span>';
-    else if (u.precio_usd > existe.precio_usd) tag = '<span style="color:var(--mu);font-size:10px;font-weight:700"> SUBE (no actualiza)</span>';
+    var tag = !existe
+      ? '<span style="color:var(--gr);font-size:10px;font-weight:700"> NUEVO</span>'
+      : u.precio_usd < existe.precio_usd
+        ? '<span style="color:var(--acc);font-size:10px;font-weight:700"> BAJA</span>'
+        : '<span style="color:var(--mu);font-size:10px;font-weight:700"> sin cambio</span>';
     return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd);font-size:12px">'
       + '<span>' + u.modelo + tag + '</span>'
       + '<span style="color:var(--bl);font-weight:700">USD ' + u.precio_usd + '</span>'
@@ -259,24 +219,15 @@ function parsearLista() {
 
 function subirLista() {
   if (!_listaItems.length) return;
-
-  // Mergear: solo actualizar si precio es menor, agregar si no existe
   var base = USADOS.slice();
-  var nuevos = 0; var actualizados = 0;
+  var nuevos = 0, actualizados = 0;
   _listaItems.forEach(function(item) {
     var idx = base.findIndex(function(x) { return x.modelo === item.modelo; });
-    if (idx === -1) {
-      base.push(item);
-      nuevos++;
-    } else if (item.precio_usd < base[idx].precio_usd) {
-      base[idx].precio_usd = item.precio_usd;
-      actualizados++;
-    }
+    if (idx === -1) { base.push(item); nuevos++; }
+    else if (item.precio_usd < base[idx].precio_usd) { base[idx].precio_usd = item.precio_usd; actualizados++; }
   });
-
   var btn = el('btnSubirLista');
   btn.disabled = true; btn.textContent = 'Guardando...';
-
   FB.setUsados(base, function(err) {
     btn.disabled = false; btn.textContent = 'Actualizar base';
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
