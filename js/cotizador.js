@@ -22,6 +22,8 @@ function cotReset() {
   _cotSel = null;
   _cotExtras = [];
   cotRenderExtras();
+  if (el('btnCotWA'))    el('btnCotWA').style.display = 'none';
+  if (el('btnCotPrint')) el('btnCotPrint').style.display = 'none';
 }
 
 function cotBuscar(q) {
@@ -233,6 +235,8 @@ function cotCalcular() {
 
   el('cotResultadoInner').innerHTML = html;
   el('cotResultado').style.display = '';
+  if (el('btnCotWA'))    el('btnCotWA').style.display = '';
+  if (el('btnCotPrint')) el('btnCotPrint').style.display = '';
 }
 
 // ── PARSER LISTA WHATSAPP ────────────────────────────────────
@@ -328,4 +332,85 @@ function subirLista() {
     closeM('mLista');
     toast('Base actualizada — ' + nuevos + ' nuevos, ' + actualizados + ' actualizados');
   });
+}
+
+// ── WHATSAPP + IMPRIMIR ──────────────────────────────
+
+function cotAbrirWA() {
+  if (!_cotSel) return;
+  setVal('waNombre', '');
+  setVal('waTel', '');
+  openM('mCotWA');
+}
+
+function cotEnviarWA() {
+  var nombre = val('waNombre').trim();
+  var tel    = val('waTel').trim().replace(/[^0-9]/g, '');
+  if (!tel) { toast('Ingresa el telefono', 'var(--rd)'); return; }
+
+  var base     = _cotSel.precio_usd;
+  var resguard = 30;
+  var bat      = parseInt(el('cotBat').value) || 100;
+  var estetica = el('cotEstetica').value;
+  var pantalla = el('cotPantalla').value;
+  var descExtras = _cotExtras.reduce(function(s,e) { return s + (e.usd||0); }, 0);
+
+  var totalEl = el('cotResultadoInner');
+  var totalMatch = totalEl ? totalEl.innerHTML.match(/USD (\d+)<\/div><\/div>/) : null;
+  var total = totalMatch ? parseInt(totalMatch[1]) : (base - resguard - descExtras);
+
+  var partes = [];
+  if (nombre) partes.push('Hola ' + nombre + '!');
+  else partes.push('Hola!');
+  partes.push('');
+  partes.push('Te paso la cotizacion de tu equipo:');
+  partes.push('');
+  partes.push('Modelo: ' + _cotSel.modelo);
+  if (bat < 90) partes.push('Bateria: ' + bat + '%');
+  if (estetica === 'leve')    partes.push('Estetica: Detalles leves');
+  if (estetica === 'marcado') partes.push('Estetica: Muy marcado');
+  if (pantalla === 'rota')    partes.push('Pantalla: Rota');
+  _cotExtras.forEach(function(e) {
+    if (e.usd) partes.push((e.lbl || 'Descuento') + ': - USD ' + e.usd);
+  });
+  partes.push('');
+  partes.push('Valor de toma en parte de pago: USD ' + total);
+  partes.push('');
+  partes.push('Cualquier consulta estamos disponibles!');
+  partes.push('MaxPoint - Sistema de Taller');
+
+  var msg = partes.join('\n');
+  var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
+  closeM('mCotWA');
+}
+function cotImprimir() {
+  if (!_cotSel) return;
+  var inner = el('cotResultadoInner');
+  if (!inner) return;
+  var totalMatch = inner.innerHTML.match(/USD (\d+)<\/div><\/div>/);
+  var total = totalMatch ? totalMatch[1] : '?';
+
+  var w = window.open('', '_blank');
+  w.document.write(
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+    + '<title>Cotizacion MaxPoint</title>'
+    + '<style>body{font-family:system-ui,sans-serif;max-width:400px;margin:20px auto;color:#111}'
+    + 'h2{font-size:18px;margin-bottom:4px}h3{font-size:14px;color:#555;margin:0 0 16px}'
+    + '.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;font-size:14px}'
+    + '.total{background:#f0fff4;border:1px solid #86efac;border-radius:8px;padding:14px;text-align:center;margin-top:16px}'
+    + '.total div:first-child{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:1px}'
+    + '.total div:last-child{font-size:28px;font-weight:900;color:#16a34a}'
+    + '.footer{margin-top:20px;font-size:11px;color:#999;text-align:center}'
+    + '@media print{button{display:none}}'
+    + '</style></head><body>'
+    + '<h2>Cotizacion MaxPoint</h2>'
+    + '<h3>' + _cotSel.modelo + '</h3>'
+    + inner.innerHTML.replace(/var\(--[a-z]+\)/g,'#666').replace(/var\(--rd\)/g,'#dc2626').replace(/var\(--tx\)/g,'#111').replace(/var\(--bd\)/g,'#e5e7eb')
+    + '<div class="total"><div>Valor de toma en parte de pago</div><div>USD ' + total + '</div></div>'
+    + '<div class="footer">MaxPoint — Sistema de Taller</div>'
+    + '<br><button onclick="window.print()" style="width:100%;padding:10px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Imprimir</button>'
+    + '</body></html>'
+  );
+  w.document.close();
 }
