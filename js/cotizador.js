@@ -164,7 +164,6 @@ function cotExtraSetUsd(input) {
 function cotCalcular() {
   if (!_cotSel) return;
   var base     = _cotSel.precio_usd;
-  var resguard = 30;
   var bat      = parseInt(el('cotBat').value) || 100;
   var estetica = el('cotEstetica').value;
   var pantalla = el('cotPantalla').value;
@@ -210,7 +209,7 @@ function cotCalcular() {
   }
 
   var descExtras = _cotExtras.reduce(function(s,e) { return s + (e.usd||0); }, 0);
-  var total = Math.max(0, base - resguard - descBat - descEst - descPan - descExtras);
+  var total = Math.max(0, base - descBat - descEst - descPan - descExtras);
 
   var row = function(lbl, val, color) {
     return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd);font-size:13px">'
@@ -219,7 +218,6 @@ function cotCalcular() {
   };
 
   var html = row('Precio base', 'USD ' + base, 'var(--tx)')
-    + row('Resguardo', '- USD ' + resguard, 'var(--rd)');
   if (descBat) html += row(descBatLbl, '- USD ' + descBat, 'var(--rd)');
   if (descEst) html += row(descEstLbl, '- USD ' + descEst, 'var(--rd)');
   if (descPan) html += row(descPanLbl, '- USD ' + descPan, 'var(--rd)');
@@ -349,7 +347,6 @@ function cotEnviarWA() {
   if (!tel) { toast('Ingresa el telefono', 'var(--rd)'); return; }
 
   var base     = _cotSel.precio_usd;
-  var resguard = 30;
   var bat      = parseInt(el('cotBat').value) || 100;
   var estetica = el('cotEstetica').value;
   var pantalla = el('cotPantalla').value;
@@ -357,7 +354,7 @@ function cotEnviarWA() {
 
   var totalEl = el('cotResultadoInner');
   var totalMatch = totalEl ? totalEl.innerHTML.match(/USD (\d+)<\/div><\/div>/) : null;
-  var total = totalMatch ? parseInt(totalMatch[1]) : (base - resguard - descExtras);
+  var total = totalMatch ? parseInt(totalMatch[1]) : (base - descExtras);
 
   var partes = [];
   if (nombre) partes.push('Hola ' + nombre + '!');
