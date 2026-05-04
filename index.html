@@ -297,7 +297,29 @@
   </div>
   <div class="mf">
     <button class="btn btn-g" onclick="cotReset()">Limpiar</button>
+    <button class="btn btn-g" id="btnCotWA" onclick="cotAbrirWA()" style="display:none;background:rgba(37,211,102,.15);color:#25D366;border-color:rgba(37,211,102,.3)">&#128242; WhatsApp</button>
+    <button class="btn btn-g" id="btnCotPrint" onclick="cotImprimir()" style="display:none">&#128424; Imprimir</button>
     <button class="btn btn-p" onclick="closeM('mCot')">Cerrar</button>
+  </div>
+</div></div>
+
+<!-- Modal WhatsApp Cotizacion -->
+<div class="ov" id="mCotWA"><div class="modal">
+  <div class="mh">
+    <div class="mt">Enviar por WhatsApp</div>
+    <button class="mc" onclick="closeM('mCotWA')">&#10005;</button>
+  </div>
+  <div class="mb">
+    <div class="f full"><label>Nombre del cliente</label>
+      <input id="waNombre" type="text" placeholder="Juan Garcia"/>
+    </div>
+    <div class="f full"><label>Telefono (sin +, con codigo de pais)</label>
+      <input id="waTel" type="tel" placeholder="5491112345678"/>
+    </div>
+  </div>
+  <div class="mf">
+    <button class="btn btn-g" onclick="closeM('mCotWA')">Cancelar</button>
+    <button class="btn btn-p" onclick="cotEnviarWA()">&#128242; Enviar</button>
   </div>
 </div></div>
 
