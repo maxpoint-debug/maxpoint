@@ -128,6 +128,78 @@
     </div>
     <div class="f"><label>Garantia de orden</label><input id="fGar" placeholder="Ej: #0045"/></div>
     <div class="f full"><label>Notas</label><textarea id="fNot"></textarea></div>
+
+    <!-- Checklist de recepcion -->
+    <div class="f full" style="margin-top:4px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--bd)">
+        Checklist de recepcion
+      </div>
+      <div class="fgrid" style="gap:8px">
+        <div class="f"><label>Bateria %</label><input id="fBat" type="number" min="1" max="100" placeholder="85"/></div>
+        <div class="f"><label>Pantalla</label>
+          <select id="fPan">
+            <option value="">Sin revisar</option>
+            <option>OK</option>
+            <option>Rallada</option>
+            <option>Rota</option>
+          </select>
+        </div>
+        <div class="f"><label>Carcasa</label>
+          <select id="fCar">
+            <option value="">Sin revisar</option>
+            <option>OK</option>
+            <option>Golpes leves</option>
+            <option>Muy danada</option>
+          </select>
+        </div>
+        <div class="f"><label>Camara</label>
+          <select id="fCam">
+            <option value="">Sin revisar</option>
+            <option>OK</option>
+            <option>No funciona</option>
+          </select>
+        </div>
+        <div class="f"><label>Botones</label>
+          <select id="fBot">
+            <option value="">Sin revisar</option>
+            <option>OK</option>
+            <option>Falla alguno</option>
+          </select>
+        </div>
+        <div class="f"><label>Touch / Face ID</label>
+          <select id="fFid">
+            <option value="">Sin revisar</option>
+            <option>OK</option>
+            <option>No funciona</option>
+          </select>
+        </div>
+        <div class="f"><label>Mojado</label>
+          <select id="fMoj">
+            <option value="">Sin revisar</option>
+            <option>No</option>
+            <option>Si</option>
+          </select>
+        </div>
+        <div class="f"><label>Abierto previamente</label>
+          <select id="fAbi">
+            <option value="">Sin revisar</option>
+            <option>No</option>
+            <option>Si</option>
+          </select>
+        </div>
+        <div class="f"><label>iCloud</label>
+          <select id="fIcl">
+            <option value="">Sin revisar</option>
+            <option>Activa</option>
+            <option>Desactivada</option>
+            <option>Sin verificar</option>
+          </select>
+        </div>
+        <div class="f full"><label>Observaciones de recepcion</label>
+          <textarea id="fObs" placeholder="Ej: equipo con golpes previos en marco, tornillo faltante..."></textarea>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="fa">
     <button class="btn btn-g" onclick="closeM('mForm')">Cancelar</button>
