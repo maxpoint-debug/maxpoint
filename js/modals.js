@@ -7,8 +7,9 @@
 function openNewRep() {
   _eid = null;
   el('mFormT').textContent = 'Nuevo ingreso';
-  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot'].forEach(function(id) { setVal(id, ''); });
-  setVal('fFal', ''); setVal('fPres', ''); setVal('fSen', '');
+  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot','fObs'].forEach(function(id) { setVal(id, ''); });
+  setVal('fFal', ''); setVal('fPres', ''); setVal('fSen', ''); setVal('fBat', '');
+  ['fPan','fCar','fCam','fBot','fFid','fMoj','fAbi','fIcl'].forEach(function(id) { var e = el(id); if(e) e.value = ''; });
   el('fEst').value  = 'Ingresado';
   el('fPag').value  = 'Pendiente';
   el('fTec').value  = '';
@@ -34,6 +35,13 @@ function openEditRep(id) {
   el('fTec').value = r.tecnico   || '';
   setVal('fGar',  r.garantia_ref || '');
   setVal('fNot',  r.notas        || '');
+  setVal('fBat',  r.bat          || '');
+  setVal('fObs',  r.obs_recep    || '');
+  ['fPan','fCar','fCam','fBot','fFid','fMoj','fAbi','fIcl'].forEach(function(id) {
+    var campo = { fPan:'pantalla', fCar:'carcasa', fCam:'camara', fBot:'botones',
+                  fFid:'faceid', fMoj:'mojado', fAbi:'abierto', fIcl:'icloud' }[id];
+    var e = el(id); if (e) e.value = r[campo] || '';
+  });
   el('suggBanner').style.display = 'none';
   openM('mForm');
 }
@@ -61,6 +69,16 @@ function saveRep() {
     tecnico:      el('fTec').value,
     garantia_ref: val('fGar'),
     notas:        val('fNot'),
+    bat:          val('fBat'),
+    pantalla:     el('fPan') ? el('fPan').value : '',
+    carcasa:      el('fCar') ? el('fCar').value : '',
+    camara:       el('fCam') ? el('fCam').value : '',
+    botones:      el('fBot') ? el('fBot').value : '',
+    faceid:       el('fFid') ? el('fFid').value : '',
+    mojado:       el('fMoj') ? el('fMoj').value : '',
+    abierto:      el('fAbi') ? el('fAbi').value : '',
+    icloud:       el('fIcl') ? el('fIcl').value : '',
+    obs_recep:    val('fObs'),
   };
 
   function done(err) {
@@ -235,6 +253,7 @@ if (!r) return;
     fa.appendChild(mkBtn('btn-w', '💬 WhatsApp', (function(id) { return function() { abrirWA2(id); }; })(r.id)));
   }
   fa.appendChild(mkBtn('btn-g', '🖨️ Recibo', (function(id) { return function() { abrirRec(id); }; })(r.id)));
+  fa.appendChild(mkBtn('btn-g', '📋 Orden Taller', (function(id) { return function() { prtOrdenTaller(id); }; })(r.id)));
   if (r.pago !== 'Pagado') {
     fa.appendChild(mkBtn('btn-g', '💳 Registrar pago', (function(id) {
       return function() { closeM('mDet'); openPago(id); };
@@ -730,4 +749,82 @@ function chkPin() {
     el('pinErr').textContent = 'PIN incorrecto';
     setVal('pinIn', '');
   }
+}
+
+// ── IMPRIMIR ORDEN DE TALLER ─────────────────────────────
+function prtOrdenTaller(id) {
+  var r = REPS.find(function(x) { return x.id === id; });
+  if (!r) return;
+
+  var chk = function(v) { return v && v !== '' ? v : '—'; };
+  var chkBool = function(v, si, no) { return v === 'Si' ? si : v === 'No' ? no : '—'; };
+
+  var checklist = [
+    ['Bateria', r.bat ? r.bat + '%' : '—'],
+    ['Pantalla', chk(r.pantalla)],
+    ['Carcasa',  chk(r.carcasa)],
+    ['Camara',   chk(r.camara)],
+    ['Botones',  chk(r.botones)],
+    ['Touch / Face ID', chk(r.faceid)],
+    ['Mojado',   chk(r.mojado)],
+    ['Abierto previamente', chk(r.abierto)],
+    ['iCloud',   chk(r.icloud)],
+  ];
+
+  var filas = checklist.map(function(f) {
+    var color = (f[1] === 'Rota' || f[1] === 'Si' || f[1] === 'No funciona' || f[1] === 'Muy danada' || f[1] === 'Falla alguno')
+      ? '#dc2626' : f[1] === '—' ? '#999' : '#16a34a';
+    return '<tr><td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;color:#555">' + f[0] + '</td>'
+      + '<td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;font-weight:700;color:' + color + '">' + f[1] + '</td></tr>';
+  }).join('');
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+    + '<title>Orden Taller ' + (r.orden||'') + '</title>'
+    + '<style>'
+    + 'body{font-family:system-ui,sans-serif;max-width:420px;margin:16px auto;color:#111;font-size:13px}'
+    + 'h1{font-size:16px;margin:0}h2{font-size:13px;color:#666;margin:2px 0 12px}'
+    + '.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px}'
+    + '.on{font-size:22px;font-weight:900;color:#111}'
+    + 'table{width:100%;border-collapse:collapse}'
+    + '.sec{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin:14px 0 4px}'
+    + '.dato{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #eee}'
+    + '.dato span:first-child{color:#666}.dato span:last-child{font-weight:600}'
+    + '.falla{background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px;margin:8px 0;font-size:13px}'
+    + '.notas{background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:10px;margin:8px 0;font-size:12px;line-height:1.5}'
+    + '.obs{background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px;margin:8px 0;font-size:12px}'
+    + '.espacio{border:1px dashed #ccc;border-radius:6px;padding:40px 10px;margin:12px 0;text-align:center;color:#ccc;font-size:11px}'
+    + '@media print{button{display:none}}'
+    + '</style></head><body>'
+    + '<div class="hdr">'
+    + '<div><h1>MaxPoint — Orden de Taller</h1><h2>' + (r.fecha||'') + ' &nbsp; Tecnico: ' + (r.tecnico||'Sin asignar') + '</h2></div>'
+    + '<div class="on">' + (r.orden||'') + '</div>'
+    + '</div>'
+
+    + '<div class="sec">Datos del equipo</div>'
+    + '<div class="dato"><span>Cliente</span><span>' + (r.nombre||'') + '</span></div>'
+    + '<div class="dato"><span>Telefono</span><span>' + (r.telefono||'—') + '</span></div>'
+    + '<div class="dato"><span>Equipo</span><span>' + (r.equipo||'') + ' ' + (r.modelo||'') + '</span></div>'
+    + '<div class="dato"><span>IMEI / Serie</span><span>' + (r.modelo||'—') + '</span></div>'
+    + '<div class="dato"><span>Clave / PIN</span><span style="font-weight:900;color:#dc2626">' + (r.clave||'—') + '</span></div>'
+    + '<div class="dato"><span>Presupuesto</span><span>' + (r.presupuesto ? '$' + Number(r.presupuesto).toLocaleString('es-AR') : '—') + '</span></div>'
+    + '<div class="dato"><span>Sena</span><span>' + (r.sena ? '$' + Number(r.sena).toLocaleString('es-AR') : '—') + '</span></div>'
+
+    + '<div class="sec">Falla declarada</div>'
+    + '<div class="falla">' + (r.falla||'—') + '</div>'
+
+    + (r.notas ? '<div class="sec">Notas del tecnico</div><div class="notas">' + r.notas + '</div>' : '')
+    + (r.obs_recep ? '<div class="sec">Observaciones de recepcion</div><div class="obs">' + r.obs_recep + '</div>' : '')
+
+    + '<div class="sec">Checklist de recepcion</div>'
+    + '<table>' + filas + '</table>'
+
+    + '<div class="sec">Novedades durante la reparacion</div>'
+    + '<div class="espacio">Espacio para anotaciones del tecnico</div>'
+
+    + '<br><button onclick="window.print()" style="width:100%;padding:10px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Imprimir orden</button>'
+    + '</body></html>';
+
+  var w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
 }
