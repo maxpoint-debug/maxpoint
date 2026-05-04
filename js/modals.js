@@ -170,6 +170,11 @@ if (!r) return;
     imeiDiv.innerHTML = '<span class="dl">IMEI</span><span class="mono" style="font-size:11px">' + esc(r.modelo) + '</span>';
     ds2.appendChild(imeiDiv);
   }
+  if (r.clave) {
+    var claveDiv = document.createElement('div'); claveDiv.className = 'dr'; claveDiv.style.marginTop = '4px';
+    claveDiv.innerHTML = '<span class="dl">Clave / PIN</span><span style="font-weight:900;font-size:15px;color:var(--acc);letter-spacing:2px">' + esc(r.clave) + '</span>';
+    ds2.appendChild(claveDiv);
+  }
   col1.appendChild(ds2);
 
   // Repuestos relacionados
@@ -923,10 +928,17 @@ function prtOrdenTaller(id) {
     + '<div style="font-size:8px;color:#F0B429;font-weight:700">MaxPoint</div>'
     + '</div>'
 
+    + '<div style="border-top:1px dashed #ddd;padding:10px 18px 12px">'
+    + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:20px">Firma del cliente conforme</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px">'
+    + '<div style="flex:1;border-bottom:1px solid #333;height:32px"></div>'
+    + '<div style="font-size:8px;color:#999;white-space:nowrap">Firma y aclaracion</div>'
+    + '</div>'
+    + '</div>'
     + '<br><button onclick="window.print()" style="width:100%;padding:10px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Imprimir A5</button>'
     + '</body></html>';
 
-  var w = window.open('', '_blank');
+  var w = window.open('', '_blank', 'width=600,height=850,scrollbars=yes');
   w.document.write(html);
   w.document.close();
 }
