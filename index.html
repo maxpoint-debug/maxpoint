@@ -44,6 +44,7 @@
         <span class="nb r" id="nb-r" style="display:none"></span>
       </div>
       <div class="ns">Gestion</div>
+      <div class="ni" onclick="showView('ven',this)"><span class="ico">&#128201;</span>Ventas</div>
       <div class="ni" onclick="showView('cot',this)"><span class="ico">&#128242;</span>Cotizador</div>
       <div class="ni" onclick="showView('cli',this)"><span class="ico">👤</span>Clientes</div>
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
@@ -419,6 +420,69 @@
     <button class="btn btn-p" id="btnSubirLista" onclick="subirLista()" disabled>Actualizar base</button>
   </div>
 </div></div>
+
+<!-- Modal Nueva/Editar Venta -->
+<div class="ov" id="mVen"><div class="modal">
+  <div class="mh">
+    <div class="mt" id="mVenT">Nueva venta</div>
+    <button class="mc" onclick="closeM('mVen')">&#10005;</button>
+  </div>
+  <div class="mb">
+
+    <div class="f full"><label>Nombre *</label>
+      <div style="position:relative" id="vNomWrap">
+        <input id="vNom" autocomplete="off" oninput="vNomSugg(this.value)" placeholder="Nombre del comprador"/>
+        <div id="vNomDrop" class="cat-drop"></div>
+      </div>
+    </div>
+    <div class="f"><label>Telefono *</label><input id="vTel" type="tel" placeholder="2324..."/></div>
+    <div class="f"><label>DNI</label><input id="vDni" placeholder="Opcional"/></div>
+    <div class="f full"><label>Direccion</label><input id="vDir" placeholder="Opcional"/></div>
+    <div class="f full"><label>Email</label><input id="vEmail" type="email" placeholder="Opcional — para seguimientos"/></div>
+
+    <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);margin-bottom:10px">Equipo vendido</div>
+      <div class="f full"><label>Modelo *</label><input id="vMod" placeholder="iPhone 14 Pro"/></div>
+      <div class="f"><label>Capacidad</label><input id="vCap" placeholder="128GB"/></div>
+      <div class="f"><label>Color</label><input id="vCol" placeholder="Negro"/></div>
+      <div class="f full"><label>IMEI *</label><input id="vImei" type="number" placeholder="354001..."/></div>
+    </div>
+
+    <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);margin-bottom:10px">Precio y pago</div>
+      <div class="f"><label>Precio de venta *</label><input id="vPrecio" type="number" placeholder="0"/></div>
+      <div class="f"><label>Forma de pago</label>
+        <select id="vPago">
+          <option>Efectivo</option>
+          <option>Transferencia</option>
+          <option>Efectivo + Transferencia</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="vPartePago" onchange="togglePartePago()"/>
+        Incluye parte de pago
+      </label>
+      <div id="vPartePagoWrap" style="display:none;margin-top:10px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--bl);margin-bottom:8px">Equipo entregado</div>
+        <div class="f full"><label>Modelo del equipo entregado</label><input id="vPpMod" placeholder="iPhone 12 128GB Negro"/></div>
+        <div class="f"><label>IMEI</label><input id="vPpImei" placeholder="Opcional"/></div>
+        <div class="f"><label>Valor cotizado ($)</label><input id="vPpValor" type="number" placeholder="0"/></div>
+      </div>
+    </div>
+
+    <div class="f full"><label>Notas internas</label>
+      <textarea id="vNot" placeholder="Ej: equipo comprado a proveedor X, tenia rayita en marco..."></textarea>
+    </div>
+
+  </div>
+  <div class="mf">
+    <button class="btn btn-g" onclick="closeM('mVen')">Cancelar</button>
+    <button class="btn btn-p" id="btnSaveVenta" onclick="saveVenta()">Guardar venta</button>
+  </div>
+</div></div>
 <!-- Diagnostico temporal v6 -->
 <div id="diag" style="position:fixed;bottom:60px;left:0;right:0;background:#1a1a2e;border-top:2px solid #F0B429;
   padding:10px 14px;font-size:12px;font-family:monospace;color:#aaa;z-index:9999;display:none">
@@ -476,6 +540,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/render.js?v=6"></script>
 <script src="js/modals.js?v=6"></script>
 <script src="js/catalogo.js?v=6"></script>
+<script src="js/ventas.js?v=6"></script>
 <script src="js/cotizador.js?v=6"></script>
 <script src="js/app.js?v=6"></script>
 <script type="module" src="js/firebase.js?v=6"></script>
