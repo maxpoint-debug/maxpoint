@@ -33,6 +33,7 @@ const cR   = collection(db, 'reparaciones');
 const cRp  = collection(db, 'repuestos');
 const cCat = collection(db, 'catalogo');
 const cUsa = collection(db, 'usados');
+const cVen = collection(db, 'ventas');
 const dCfg = doc(db, 'config', 'catalogo');
 
 // --- Sobreescribir FB con funciones reales ---
@@ -46,6 +47,10 @@ window.FB.delR    = (id, cb)     => deleteDoc(doc(db, 'repuestos', id)).then(() 
 
 // --- Catalogo y config ---
 window.FB.setConfig = (d, cb) => setDoc(dCfg, d).then(() => cb(null)).catch(e => cb(e.message));
+
+window.FB.addV   = (d,  cb) => addDoc(cVen, d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.updV   = (id, d, cb) => updateDoc(doc(cVen,id), d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.delV   = (id, cb)    => deleteDoc(doc(cVen,id)).then(() => cb(null)).catch(e => cb(e.message));
 
 window.FB.setUsados = async (items, cb) => {
   try {
@@ -105,6 +110,12 @@ onSnapshot(
 // --- Listener catalogo ---
 onSnapshot(cCat, (snap) => {
   window.CATALOGO = snap.docs.map(d => d.data());
+}, () => {});
+
+// --- Listener ventas ---
+onSnapshot(query(cVen, orderBy('fecha','desc')), (snap) => {
+  window.VENTAS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (window.VIEW === 'ven') render();
 }, () => {});
 
 // --- Listener usados ---
