@@ -9,7 +9,7 @@ function showView(v, navEl) {
   if (navEl) navEl.classList.add('active');
 
   // Titulo
-  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Balance' };
+  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', ven: 'Ventas', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Balance' };
   el('topT').textContent = titulos[v] || v;
 
   // Botones topbar
@@ -27,6 +27,8 @@ function setTopActions(v) {
     ta.appendChild(mkBtn('btn-p', '＋ Nuevo ingreso', openNewRep));
   } else if (v === 'rpus') {
     ta.appendChild(mkBtn('btn-p', '＋ Nuevo repuesto', openNewRepuesto));
+  } else if (v === 'ven') {
+    ta.appendChild(mkBtn('btn-p', '＋ Nueva venta', openNewVenta));
   } else if (v === 'cot') {
     ta.appendChild(mkBtn('btn-g btn-sm', '📋 Actualizar lista', openListaParser));
     ta.appendChild(mkBtn('btn-p', '＋ Cotizar', openCotizador));
@@ -42,6 +44,7 @@ document.addEventListener('click', function(e) {
   if (!e.target.closest('#catWrap'))   { var d = el('catDrop');    if (d) d.classList.remove('open'); }
   if (!e.target.closest('#rpCliWrap')) { var d2 = el('rpCliDrop'); if (d2) d2.classList.remove('open'); }
   if (!e.target.closest('#cotWrap'))    { var d3 = el('cotDrop');   if (d3) d3.classList.remove('open'); }
+  if (!e.target.closest('#vNomWrap'))   { var d4 = el('vNomDrop');  if (d4) d4.classList.remove('open'); }
 });
 
 // Init

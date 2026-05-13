@@ -6,6 +6,7 @@
 function render() {
   if      (VIEW === 'reps') renderReps();
   else if (VIEW === 'rpus') renderRpus();
+  else if (VIEW === 'ven')  renderVen();
   else if (VIEW === 'cot')  renderCot();
   else if (VIEW === 'cli')  renderCli();
   else if (VIEW === 'pag')  renderPag();
@@ -579,6 +580,64 @@ function renderCot() {
       };
     })(u.modelo));
     lista.appendChild(row);
+  });
+  cnt.appendChild(lista);
+}
+
+// ── RENDER VENTAS ────────────────────────────────────
+function renderVen() {
+  var cnt = el('cnt'); cnt.innerHTML = '';
+
+  // Stats
+  var total = VENTAS.length;
+  var hoy   = new Date().toLocaleDateString('es-AR').split('/').reverse().join('-');
+  var hoyV  = VENTAS.filter(function(v) { return v.fecha === hoy.slice(0,10); }).length;
+  var totalPesos = VENTAS.reduce(function(s,v) { return s + Number(v.precio||0); }, 0);
+
+  var sc = document.createElement('div'); sc.className = 'sc-row';
+  sc.innerHTML = '<div class="sc"><div class="scl">Total ventas</div><div class="scv cb">' + total + '</div></div>'
+    + '<div class="sc"><div class="scl">Hoy</div><div class="scv cg">' + hoyV + '</div></div>'
+    + '<div class="sc"><div class="scl">Facturado</div><div class="scv co">' + pesos(totalPesos) + '</div></div>';
+  cnt.appendChild(sc);
+
+  if (!VENTAS.length) {
+    cnt.innerHTML += '<div style="padding:32px;text-align:center;color:var(--mu)">'
+      + '<div style="font-size:32px;margin-bottom:12px">&#128201;</div>'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin ventas registradas</div>'
+      + '<div style="font-size:13px">Usa "+ Nueva venta" para registrar</div>'
+      + '</div>';
+    return;
+  }
+
+  var lista = document.createElement('div');
+  lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
+
+  VENTAS.slice().sort(function(a,b) { return (b.fecha||'').localeCompare(a.fecha||''); })
+  .forEach(function(v) {
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px';
+
+    var modelo = (v.modelo||'') + (v.capacidad?' '+v.capacidad:'') + (v.color?' '+v.color:'');
+    var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
+
+    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      + '<div style="flex:1">'
+      + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
+      + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
+      + '<div style="font-size:10px;color:var(--mu);margin-top:2px;font-family:monospace">IMEI: ' + esc(v.imei||'') + '</div>'
+      + '</div>'
+      + '<div style="text-align:right;flex-shrink:0">'
+      + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
+      + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
+      + '<div style="font-size:10px;color:var(--mu)">' + esc(v.pago||'') + '</div>'
+      + '</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
+      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">&#128424; Comprobante</button>'
+      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
+      + '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>'
+      + '</div>';
+    lista.appendChild(card);
   });
   cnt.appendChild(lista);
 }
