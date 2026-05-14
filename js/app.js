@@ -9,7 +9,7 @@ function showView(v, navEl) {
   if (navEl) navEl.classList.add('active');
 
   // Titulo
-  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', ven: 'Ventas', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Balance' };
+  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', ven: 'Ventas', stock: 'Stock', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Balance' };
   el('topT').textContent = titulos[v] || v;
 
   // Botones topbar
@@ -29,6 +29,9 @@ function setTopActions(v) {
     ta.appendChild(mkBtn('btn-p', '＋ Nuevo repuesto', openNewRepuesto));
   } else if (v === 'ven') {
     ta.appendChild(mkBtn('btn-p', '＋ Nueva venta', openNewVenta));
+  } else if (v === 'stock') {
+    ta.appendChild(mkBtn('btn-g btn-sm', '&#128205; Copiar lista WA', copiarListaStock));
+    ta.appendChild(mkBtn('btn-p', '＋ Agregar equipo', openNewStock));
   } else if (v === 'cot') {
     ta.appendChild(mkBtn('btn-g btn-sm', '📋 Actualizar lista', openListaParser));
     ta.appendChild(mkBtn('btn-p', '＋ Cotizar', openCotizador));
