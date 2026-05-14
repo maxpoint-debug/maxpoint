@@ -7,6 +7,7 @@ function render() {
   if      (VIEW === 'reps') renderReps();
   else if (VIEW === 'rpus') renderRpus();
   else if (VIEW === 'ven')  renderVen();
+  else if (VIEW === 'stock') renderStock();
   else if (VIEW === 'cot')  renderCot();
   else if (VIEW === 'cli')  renderCli();
   else if (VIEW === 'pag')  renderPag();
@@ -640,4 +641,82 @@ function renderVen() {
     lista.appendChild(card);
   });
   cnt.appendChild(lista);
+}
+
+// ── RENDER STOCK ─────────────────────────────────────
+function renderStock() {
+  var cnt = el('cnt'); cnt.innerHTML = '';
+
+  var estados = ['A revisar','En reparacion','Disponible','Reservado','Prestado','Vendido'];
+  var colorMap = {
+    'A revisar':'var(--pu)', 'En reparacion':'var(--acc)', 'Disponible':'var(--gr)',
+    'Reservado':'var(--bl)', 'Prestado':'var(--or)', 'Vendido':'var(--mu)'
+  };
+
+  // Stats
+  var disp = STOCK.filter(function(s){return s.estado==='Disponible';}).length;
+  var rev  = STOCK.filter(function(s){return s.estado==='A revisar';}).length;
+  var rep  = STOCK.filter(function(s){return s.estado==='En reparacion';}).length;
+  var sc = document.createElement('div'); sc.className = 'sc-row';
+  sc.innerHTML = '<div class="sc"><div class="scl">Total</div><div class="scv cb">' + STOCK.length + '</div></div>'
+    + '<div class="sc"><div class="scl">Disponibles</div><div class="scv cg">' + disp + '</div></div>'
+    + '<div class="sc"><div class="scl">A revisar</div><div class="scv cp">' + rev + '</div></div>'
+    + '<div class="sc"><div class="scl">En reparacion</div><div class="scv co">' + rep + '</div></div>';
+  cnt.appendChild(sc);
+
+  if (!STOCK.length) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'padding:32px;text-align:center;color:var(--mu)';
+    empty.innerHTML = '<div style="font-size:32px;margin-bottom:12px">&#128241;</div>'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Stock vacio</div>'
+      + '<div style="font-size:13px">Usa "+ Agregar equipo" para cargar</div>';
+    cnt.appendChild(empty);
+    return;
+  }
+
+  // Agrupar por estado
+  estados.forEach(function(est) {
+    var items = STOCK.filter(function(s) { return s.estado === est; });
+    if (!items.length) return;
+
+    var sec = document.createElement('div');
+    sec.style.cssText = 'margin-top:16px';
+    sec.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:' + (colorMap[est]||'var(--mu)') + ';margin-bottom:8px">' + est + ' (' + items.length + ')</div>';
+
+    items.forEach(function(s) {
+      var card = document.createElement('div');
+      card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
+
+      var label = [s.modelo, s.capacidad, s.color].filter(Boolean).join(' ');
+      var margen = (s.precio_venta && s.precio_costo)
+        ? Math.round(Number(s.precio_venta) - Number(s.precio_costo))
+        : null;
+
+      card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+        + '<div style="flex:1">'
+        + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(label) + '</div>'
+        + (s.detalles ? '<div style="font-size:11px;color:var(--mu);margin-top:2px">' + esc(s.detalles) + '</div>' : '')
+        + (s.imei ? '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI: ' + esc(s.imei) + '</div>' : '')
+        + (s.notas ? '<div style="font-size:10px;color:var(--mu);margin-top:2px;font-style:italic">' + esc(s.notas) + '</div>' : '')
+        + '</div>'
+        + '<div style="text-align:right;flex-shrink:0">'
+        + (s.precio_venta ? '<div style="font-size:15px;font-weight:900;color:var(--gr)">$' + Number(s.precio_venta).toLocaleString('es-AR') + '</div>' : '')
+        + (s.precio_costo ? '<div style="font-size:10px;color:var(--mu)">Costo: $' + Number(s.precio_costo).toLocaleString('es-AR') + '</div>' : '')
+        + (margen !== null ? '<div style="font-size:10px;color:' + (margen>=0?'var(--gr)':'var(--rd)') + ';font-weight:700">Margen: $' + margen.toLocaleString('es-AR') + '</div>' : '')
+        + '</div>'
+        + '</div>'
+
+        // Dropdown estado + botones
+        + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
+        + '<select class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
+        + estados.map(function(e) { return '<option' + (e===s.estado?' selected':'') + '>' + e + '</option>'; }).join('')
+        + '</select>'
+        + '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>'
+        + '<button class="btn btn-d btn-sm" data-sid="' + s.id + '" onclick="eliminarStock(this.dataset.sid)">&#128465;</button>'
+        + '</div>';
+
+      sec.appendChild(card);
+    });
+    cnt.appendChild(sec);
+  });
 }
