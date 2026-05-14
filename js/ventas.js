@@ -66,6 +66,21 @@ function saveVenta() {
       btn.disabled = false; btn.textContent = 'Guardar venta';
       if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
       closeM('mVen'); toast('Venta registrada');
+      // Si tiene parte de pago, agregar al stock automaticamente
+      if (d.parte_pago === 'Si' && d.pp_modelo) {
+        FB.addSt({
+          modelo:       d.pp_modelo,
+          imei:         d.pp_imei   || '',
+          precio_costo: d.pp_valor  || '',
+          precio_venta: '',
+          capacidad:    '',
+          color:        '',
+          detalles:     '',
+          notas:        'Ingreso por parte de pago — ' + d.nombre,
+          estado:       'A revisar',
+          fecha:        hoy(),
+        }, function() { toast('Equipo agregado al stock'); });
+      }
     });
   }
 }
