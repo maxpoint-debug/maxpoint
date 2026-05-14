@@ -253,6 +253,42 @@
   </div>
 </div></div>
 
+
+<!-- Modal Stock -->
+<div class="ov" id="mStock"><div class="modal">
+  <div class="mh">
+    <div class="mt" id="mStockT">Agregar equipo</div>
+    <button class="mc" onclick="closeM('mStock')">&#10005;</button>
+  </div>
+  <div class="mb">
+    <div class="f full"><label>Modelo *</label><input id="sMod" placeholder="iPhone 14 Pro"/></div>
+    <div class="f"><label>Capacidad</label><input id="sCap" placeholder="128GB"/></div>
+    <div class="f"><label>Color</label><input id="sCol" placeholder="Negro"/></div>
+    <div class="f full"><label>IMEI</label><input id="sImei" placeholder="Opcional"/></div>
+    <div class="f full"><label>Detalles / Estado estetico</label>
+      <input id="sDet" placeholder="Ej: rayita en marco, 94% bateria..."/>
+    </div>
+    <div class="f"><label>Precio de venta ($)</label><input id="sPrecioVenta" type="number" placeholder="0"/></div>
+    <div class="f"><label>Costo de compra ($)</label><input id="sPrecioCosto" type="number" placeholder="0"/></div>
+    <div class="f full"><label>Estado</label>
+      <select id="sEst">
+        <option>A revisar</option>
+        <option>En reparacion</option>
+        <option>Disponible</option>
+        <option>Reservado</option>
+        <option>Prestado</option>
+        <option>Vendido</option>
+      </select>
+    </div>
+    <div class="f full"><label>Notas internas</label>
+      <textarea id="sNot" placeholder="Ej: comprado a proveedor X, falta tornillo..."></textarea>
+    </div>
+  </div>
+  <div class="mf">
+    <button class="btn btn-g" onclick="closeM('mStock')">Cancelar</button>
+    <button class="btn btn-p" id="btnSaveStock" onclick="saveStock()">Guardar</button>
+  </div>
+</div></div>
 <!-- Diagnostico temporal v6 -->
 <div id="diag" style="position:fixed;bottom:60px;left:0;right:0;background:#1a1a2e;border-top:2px solid #F0B429;
   padding:10px 14px;font-size:12px;font-family:monospace;color:#aaa;z-index:9999;display:none">
