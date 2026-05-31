@@ -724,7 +724,7 @@ function chkPin() {
     VIEW = 'bal';
     document.querySelectorAll('.ni').forEach(function(n) { n.classList.remove('active'); });
     el('topT').textContent = 'Balance';
-    setTopActions('bal');
+    el('topA').innerHTML = '';
     renderBal();
   } else {
     el('pinErr').textContent = 'PIN incorrecto';
