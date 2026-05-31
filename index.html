@@ -44,7 +44,6 @@
         <span class="nb r" id="nb-r" style="display:none"></span>
       </div>
       <div class="ns">Gestion</div>
-      <div class="ni" onclick="showView('cot',this)"><span class="ico">📱</span>Cotizador</div>
       <div class="ni" onclick="showView('cli',this)"><span class="ico">👤</span>Clientes</div>
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
       <div class="ns">Admin</div>
@@ -257,11 +256,10 @@
 <div class="ov" id="mCot"><div class="modal">
   <div class="mh">
     <div class="mt">Cotizar equipo usado</div>
-    <button class="mc" onclick="closeM('mCot')">✕</button>
+    <button class="mc" onclick="closeM('mCot')">&#10005;</button>
   </div>
   <div class="mb">
-    <div class="f full">
-      <label>Modelo</label>
+    <div class="f full"><label>Modelo</label>
       <div style="position:relative" id="cotWrap">
         <input class="ac-input" id="cotQ" type="text" autocomplete="off"
           placeholder="Ej: iPhone 14 Pro 128GB..."
@@ -269,23 +267,19 @@
         <div class="cat-drop" id="cotDrop"></div>
       </div>
     </div>
-
     <div id="cotPanel" style="display:none">
-      <div class="f">
-        <label>Bateria %</label>
-        <input type="number" id="cotBat" value="100" min="1" max="100"
-          oninput="cotCalcular()" style="border-color:rgba(78,154,241,.4);color:var(--bl)"/>
+      <div class="f"><label>Bateria %</label>
+        <input type="number" id="cotBat" value="100" min="1" max="100" oninput="cotCalcular()"
+          style="border-color:rgba(78,154,241,.4);color:var(--bl)"/>
       </div>
-      <div class="f">
-        <label>Estetica</label>
+      <div class="f"><label>Estetica</label>
         <select id="cotEstetica" onchange="cotCalcular()">
           <option value="ok">Impecable</option>
           <option value="leve">Detalles leves (-15 USD)</option>
           <option value="marcado">Muy marcado (-35 USD)</option>
         </select>
       </div>
-      <div class="f full">
-        <label>Pantalla</label>
+      <div class="f full"><label>Pantalla</label>
         <select id="cotPantalla" onchange="cotCalcular()">
           <option value="ok">Ok</option>
           <option value="rota">Rota (descuenta modulo)</option>
@@ -302,39 +296,30 @@
   </div>
 </div></div>
 
-<!-- Modal Parser Lista Usados -->
+<!-- Modal Actualizar Lista Usados -->
 <div class="ov" id="mLista"><div class="modal">
   <div class="mh">
     <div class="mt">Actualizar lista de usados</div>
-    <button class="mc" onclick="closeM('mLista')">✕</button>
+    <button class="mc" onclick="closeM('mLista')">&#10005;</button>
   </div>
   <div class="mb">
-    <div class="f full">
-      <label>Pegar lista de WhatsApp</label>
+    <div class="f full"><label>Pegar lista de WhatsApp</label>
       <textarea id="listaInput" style="height:140px;font-size:12px;font-family:monospace"
         placeholder="Pega aca el texto de la lista del proveedor..."></textarea>
     </div>
-    <div class="f full" style="margin-top:-8px">
-      <button class="btn btn-g btn-sm" onclick="parsearLista()" style="width:100%">
-        Interpretar lista
-      </button>
+    <div class="f full">
+      <button class="btn btn-g btn-sm" onclick="parsearLista()" style="width:100%">Interpretar lista</button>
     </div>
     <div id="listaPreview" style="display:none">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
-        color:var(--mu);margin-bottom:6px">Preview — lo que se actualizaria</div>
-      <div id="listaPreviewContent"
-        style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;
-        padding:10px;max-height:180px;overflow-y:auto;font-size:12px"></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:6px">Preview</div>
+      <div id="listaPreviewContent" style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px;max-height:180px;overflow-y:auto"></div>
     </div>
   </div>
   <div class="mf">
     <button class="btn btn-g" onclick="closeM('mLista')">Cancelar</button>
-    <button class="btn btn-p" id="btnSubirLista" onclick="subirLista()" disabled>
-      Actualizar base
-    </button>
+    <button class="btn btn-p" id="btnSubirLista" onclick="subirLista()" disabled>Actualizar base</button>
   </div>
 </div></div>
-
 <!-- Diagnostico temporal v6 -->
 <div id="diag" style="position:fixed;bottom:60px;left:0;right:0;background:#1a1a2e;border-top:2px solid #F0B429;
   padding:10px 14px;font-size:12px;font-family:monospace;color:#aaa;z-index:9999;display:none">
