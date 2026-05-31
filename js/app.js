@@ -28,15 +28,15 @@ function setTopActions(v) {
   } else if (v === 'rpus') {
     ta.appendChild(mkBtn('btn-p', '＋ Nuevo repuesto', openNewRepuesto));
   } else if (v === 'ven') {
-    ta.appendChild(mkBtn('btn-p', '＋ Nueva venta', openNewVenta));
+    ta.appendChild(mkBtn('btn-p', '+  Nueva venta', openNewVenta));
   } else if (v === 'stock') {
-    ta.appendChild(mkBtn('btn-g btn-sm', '&#128205; Copiar lista WA', copiarListaStock));
-    ta.appendChild(mkBtn('btn-p', '＋ Agregar equipo', openNewStock));
+    ta.appendChild(mkBtn('btn-g btn-sm', 'Copiar lista WA', copiarListaStock));
+    ta.appendChild(mkBtn('btn-p', '+  Agregar equipo', function() { openNewStock(null); }));
   } else if (v === 'cot') {
-    ta.appendChild(mkBtn('btn-g btn-sm', '📋 Actualizar lista', openListaParser));
-    ta.appendChild(mkBtn('btn-p', '＋ Cotizar', openCotizador));
+    ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar lista', openListaParser));
+    ta.appendChild(mkBtn('btn-p', '+  Cotizar', openCotizador));
   } else if (v === 'bal') {
-    ta.appendChild(mkBtn('btn-g btn-sm', '📋 Actualizar catalogo', openCatAdmin));
+    ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar catalogo', openCatAdmin));
   }
 }
 
@@ -46,8 +46,6 @@ document.addEventListener('click', function(e) {
   if (!e.target.closest('#wEq'))     el('acEqL').style.display  = 'none';
   if (!e.target.closest('#catWrap'))   { var d = el('catDrop');    if (d) d.classList.remove('open'); }
   if (!e.target.closest('#rpCliWrap')) { var d2 = el('rpCliDrop'); if (d2) d2.classList.remove('open'); }
-  if (!e.target.closest('#cotWrap'))    { var d3 = el('cotDrop');   if (d3) d3.classList.remove('open'); }
-  if (!e.target.closest('#vNomWrap'))   { var d4 = el('vNomDrop');  if (d4) d4.classList.remove('open'); }
 });
 
 // Init

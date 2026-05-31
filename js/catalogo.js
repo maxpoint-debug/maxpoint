@@ -129,7 +129,8 @@ function catCargarExcel(input) {
   var reader = new FileReader();
   reader.onload = function(e) {
     try {
-      var wb      = XLSX.read(e.target.result);
+      var data    = new Uint8Array(e.target.result);
+      var wb      = XLSX.read(data, { type: 'uint8array' });
       var ws      = wb.Sheets['PEDIDO'];
       if (!ws) throw new Error('No se encontro la hoja PEDIDO');
 
