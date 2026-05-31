@@ -81,7 +81,8 @@ function catSeleccionar(i) {
   el('catQ').value = p.label;
   el('catDrop').classList.remove('open');
   setVal('rpNom', p.label);
-  setVal('rpCos', pr.ars);   // costo interno ARS
+  setVal('rpCos', pr.ars);          // costo interno ARS
+  setVal('rpPrecio', pr.final);     // precio sugerido al cliente
 
   // Mostrar panel de costos
   el('catUSD').textContent   = 'USD ' + p.costo_usd;
@@ -230,4 +231,35 @@ function catSubir() {
       el('catBackupInfo').style.display = 'none';
     });
   });
+}
+
+// ── Autocomplete cliente en formulario repuesto ──────
+function rpCliSugg(q) {
+  var drop = el('rpCliDrop');
+  if (!drop) return;
+  q = q.trim();
+  if (q.length < 2) { drop.classList.remove('open'); return; }
+  var ql = q.toLowerCase();
+  // Nombres unicos del historial
+  var vistos = {};
+  var sugs = [];
+  (window.REPS || []).forEach(function(r) {
+    var n = (r.nombre || '').trim();
+    if (!n) return;
+    var key = n.toLowerCase();
+    if (!vistos[key] && key.includes(ql)) { vistos[key] = true; sugs.push(n); }
+  });
+  sugs = sugs.slice(0, 8);
+  if (!sugs.length) { drop.classList.remove('open'); return; }
+  drop.innerHTML = sugs.map(function(n) {
+    return '<div class="cat-item" onmousedown="rpCliElegir(this.dataset.n)" data-n="' + n.replace(/"/g, '&quot;') + '">' + n + '</div>';
+      + n + '</div>';
+  }).join('');
+  drop.classList.add('open');
+}
+
+function rpCliElegir(n) {
+  setVal('rpCli', n);
+  var drop = el('rpCliDrop');
+  if (drop) drop.classList.remove('open');
 }
