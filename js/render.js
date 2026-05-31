@@ -6,8 +6,6 @@
 function render() {
   if      (VIEW === 'reps') renderReps();
   else if (VIEW === 'rpus') renderRpus();
-  else if (VIEW === 'ven')   renderVen();
-  else if (VIEW === 'stock') renderStock();
   else if (VIEW === 'cot')  renderCot();
   else if (VIEW === 'cli')  renderCli();
   else if (VIEW === 'pag')  renderPag();
@@ -542,117 +540,16 @@ function fallbackCopy(texto) {
   document.body.removeChild(ta);
 }
 
-// ── RENDER VENTAS ────────────────────────────────────
-function renderVen() {
-  var cnt = el('cnt'); cnt.innerHTML = '';
-  var total        = VENTAS.length;
-  var totalPesos   = VENTAS.reduce(function(s,v) { return s + Number(v.precio||0); }, 0);
-  var totalCosto   = VENTAS.reduce(function(s,v) { return s + Number(v.costo||0); }, 0);
-  var totalGanancia = totalPesos - totalCosto;
-
-  var sc = document.createElement('div'); sc.className = 'sc-row';
-  sc.innerHTML = '<div class="sc"><div class="scl">Ventas</div><div class="scv cb">' + total + '</div></div>'
-    + '<div class="sc"><div class="scl">Facturado</div><div class="scv co">' + pesos(totalPesos) + '</div></div>'
-    + '<div class="sc"><div class="scl">Costo</div><div class="scv cy">' + pesos(totalCosto) + '</div></div>'
-    + '<div class="sc"><div class="scl">Ganancia</div><div class="scv cg">' + pesos(totalGanancia) + '</div></div>';
-  cnt.appendChild(sc);
-
-  if (!VENTAS.length) {
-    var empty = document.createElement('div');
-    empty.style.cssText = 'padding:32px;text-align:center;color:var(--mu)';
-    empty.innerHTML = '<div style="font-size:32px;margin-bottom:12px">&#128201;</div>'
-      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin ventas registradas</div>'
-      + '<div style="font-size:13px">Usa "+ Nueva venta" para registrar</div>';
-    cnt.appendChild(empty);
-    return;
-  }
-
-  var lista = document.createElement('div');
-  lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
-  VENTAS.slice().sort(function(a,b) { return (b.fecha||'').localeCompare(a.fecha||''); })
-  .forEach(function(v) {
-    var card = document.createElement('div');
-    card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px';
-    var modelo = [v.modelo, v.capacidad, v.color].filter(Boolean).join(' ');
-    var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
-    var gan = (v.precio && v.costo && Number(v.costo)) ? Number(v.precio) - Number(v.costo) : null;
-    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-      + '<div style="flex:1">'
-      + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
-      + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
-      + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI: ' + esc(v.imei||'') + '</div>'
-      + '</div>'
-      + '<div style="text-align:right;flex-shrink:0">'
-      + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
-      + (v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(v.costo) + '</div>' : '')
-      + (gan !== null ? '<div style="font-size:11px;font-weight:700;color:' + (gan>=0?'var(--gr)':'var(--rd)') + '">Gan: ' + pesos(gan) + '</div>' : '')
-      + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
-      + '</div></div>'
-      + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
-      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
-      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
-      + '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>'
-      + '</div>';
-    lista.appendChild(card);
-  });
-  cnt.appendChild(lista);
-}
-
-// ── RENDER STOCK ─────────────────────────────────────
-function renderStock() {
-  var cnt = el('cnt'); cnt.innerHTML = '';
-  var estados = ['A revisar','En reparacion','Disponible','Reservado','Prestado','Vendido'];
-  var colorMap = { 'A revisar':'var(--pu)', 'En reparacion':'var(--acc)', 'Disponible':'var(--gr)',
-    'Reservado':'var(--bl)', 'Prestado':'var(--or)', 'Vendido':'var(--mu)' };
-  var disp = STOCK.filter(function(s){return s.estado==='Disponible';}).length;
-  var rev  = STOCK.filter(function(s){return s.estado==='A revisar';}).length;
-  var sc = document.createElement('div'); sc.className = 'sc-row';
-  sc.innerHTML = '<div class="sc"><div class="scl">Total</div><div class="scv cb">' + STOCK.length + '</div></div>'
-    + '<div class="sc"><div class="scl">Disponibles</div><div class="scv cg">' + disp + '</div></div>'
-    + '<div class="sc"><div class="scl">A revisar</div><div class="scv cp">' + rev + '</div></div>';
-  cnt.appendChild(sc);
-  if (!STOCK.length) {
-    cnt.innerHTML += '<div style="padding:32px;text-align:center;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">&#128241;</div><div style="font-size:15px;font-weight:700">Stock vacio</div></div>';
-    return;
-  }
-  estados.forEach(function(est) {
-    var items = STOCK.filter(function(s) { return s.estado === est; });
-    if (!items.length) return;
-    var sec = document.createElement('div'); sec.style.cssText = 'margin-top:16px';
-    sec.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:' + (colorMap[est]||'var(--mu)') + ';margin-bottom:8px">' + est + ' (' + items.length + ')</div>';
-    items.forEach(function(s) {
-      var card = document.createElement('div');
-      card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
-      var label = [s.modelo, s.capacidad, s.color].filter(Boolean).join(' ');
-      var margen = (s.precio_venta && s.precio_costo) ? Number(s.precio_venta)-Number(s.precio_costo) : null;
-      card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-        + '<div style="flex:1"><div style="font-size:13px;font-weight:800">' + esc(label) + '</div>'
-        + (s.detalles ? '<div style="font-size:11px;color:var(--mu);margin-top:2px">' + esc(s.detalles) + '</div>' : '')
-        + (s.imei ? '<div style="font-size:10px;color:var(--mu);font-family:monospace">IMEI: ' + esc(s.imei) + '</div>' : '')
-        + '</div>'
-        + '<div style="text-align:right;flex-shrink:0">'
-        + (s.precio_venta ? '<div style="font-size:15px;font-weight:900;color:var(--gr)">' + pesos(s.precio_venta) + '</div>' : '')
-        + (s.precio_costo ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(s.precio_costo) + '</div>' : '')
-        + (margen !== null ? '<div style="font-size:10px;font-weight:700;color:' + (margen>=0?'var(--gr)':'var(--rd)') + '">Margen: ' + pesos(margen) + '</div>' : '')
-        + '</div></div>'
-        + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
-        + '<select class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
-        + estados.map(function(e) { return '<option' + (e===s.estado?' selected':'') + '>' + e + '</option>'; }).join('')
-        + '</select>'
-        + '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>'
-        + '<button class="btn btn-d btn-sm" data-sid="' + s.id + '" onclick="eliminarStock(this.dataset.sid)">&#128465;</button>'
-        + '</div>';
-      sec.appendChild(card);
-    });
-    cnt.appendChild(sec);
-  });
-}
-
 // ── RENDER COTIZADOR ─────────────────────────────────
 function renderCot() {
-  var cnt = el('cnt'); cnt.innerHTML = '';
+  var cnt = el('content');
+  cnt.innerHTML = '';
   if (!USADOS.length) {
-    cnt.innerHTML = '<div style="padding:32px;text-align:center;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">&#128242;</div><div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin modelos cargados</div><div style="font-size:13px">Usa "Actualizar lista" para cargar precios del proveedor</div></div>';
+    cnt.innerHTML = '<div style="padding:32px;text-align:center;color:var(--mu)">'
+      + '<div style="font-size:32px;margin-bottom:12px">&#128242;</div>'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin modelos cargados</div>'
+      + '<div style="font-size:13px">Usa "Actualizar lista" para cargar precios del proveedor</div>'
+      + '</div>';
     return;
   }
   var precios = USADOS.map(function(u){return u.precio_usd;});
@@ -661,11 +558,12 @@ function renderCot() {
     + '<div class="sc"><div class="scl">Desde</div><div class="scv cg">USD ' + Math.min.apply(null,precios) + '</div></div>'
     + '<div class="sc"><div class="scl">Hasta</div><div class="scv cb">USD ' + Math.max.apply(null,precios) + '</div></div>';
   cnt.appendChild(sc);
-  var lista = document.createElement('div'); lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
+  var lista = document.createElement('div');
+  lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
   USADOS.slice().sort(function(a,b){return b.precio_usd-a.precio_usd;}).forEach(function(u) {
     var row = document.createElement('div');
     row.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;display:flex;align-items:center;cursor:pointer';
-    row.innerHTML = '<span style="flex:1;font-size:13px;font-weight:600">' + esc(u.modelo) + '</span>'
+    row.innerHTML = '<span style="flex:1;font-size:13px;font-weight:600">' + u.modelo + '</span>'
       + '<span style="font-size:14px;font-weight:800;color:var(--bl)">USD ' + u.precio_usd + '</span>';
     row.addEventListener('click', (function(modelo){
       return function() {
