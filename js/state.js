@@ -23,7 +23,8 @@ var PIN = '1234'; // ← CAMBIAR antes de usar
 
 // ===================== CATALOGO =====================
 var CATALOGO   = [];   // productos del proveedor (desde Firebase)
-var USADOS     = [];   // equipos usados para cotizar (desde Firebase)
+var USADOS     = [];   // equipos usados para cotizar
+var VENTAS     = [];   // registro de ventas   // equipos usados para cotizar (desde Firebase)
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 
 // ===================== FIREBASE OBJECT =====================
