@@ -49,30 +49,6 @@ window.FB.delR    = (id, cb)     => deleteDoc(doc(db, 'repuestos', id)).then(() 
 // --- Catalogo y config ---
 window.FB.setConfig = (d, cb) => setDoc(dCfg, d).then(() => cb(null)).catch(e => cb(e.message));
 
-window.FB.addSt  = (d,  cb) => addDoc(cSt, d).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.updSt  = (id, d, cb) => updateDoc(doc(cSt,id), d).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.delSt  = (id, cb)    => deleteDoc(doc(cSt,id)).then(() => cb(null)).catch(e => cb(e.message));
-
-window.FB.addV   = (d,  cb) => addDoc(cVen, d).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.updV   = (id, d, cb) => updateDoc(doc(cVen,id), d).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.delV   = (id, cb)    => deleteDoc(doc(cVen,id)).then(() => cb(null)).catch(e => cb(e.message));
-
-window.FB.setUsados = async (items, cb) => {
-  try {
-    const old = await getDocs(cUsa);
-    const b1 = writeBatch(db);
-    old.docs.forEach(d => b1.delete(d.ref));
-    await b1.commit();
-    const b2 = writeBatch(db);
-    items.forEach(u => {
-      const ref = doc(cUsa, u.modelo.replace(/[^a-zA-Z0-9]/g,'_'));
-      b2.set(ref, u);
-    });
-    await b2.commit();
-    cb(null);
-  } catch(e) { cb(e.message); }
-};
-
 window.FB.setCat = async (items, cb) => {
   try {
     // 1. Backup: guardar config con timestamp de ultima actualizacion
@@ -112,43 +88,26 @@ onSnapshot(
   (err) => syncErr('Firestore error: ' + err.message)
 );
 
-// --- Listener catalogo ---
-onSnapshot(cCat, (snap) => {
-  window.CATALOGO = snap.docs.map(d => d.data());
-}, () => {});
+// ── CRUD ventas ──
+window.FB.addV  = (d, cb)      => addDoc(cVen, d).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.updV  = (id, d, cb)  => updateDoc(doc(cVen,id), d).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.delV  = (id, cb)     => deleteDoc(doc(cVen,id)).then(()=>cb(null)).catch(e=>cb(e.message));
 
-// --- Listener stock ---
-onSnapshot(query(cSt, orderBy('fecha','desc')), (snap) => {
-  window.STOCK = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  if (window.VIEW === 'stock') render();
-}, () => {});
+// ── CRUD stock ──
+window.FB.addSt = (d, cb)      => addDoc(cSt, d).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.updSt = (id, d, cb)  => updateDoc(doc(cSt,id), d).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.delSt = (id, cb)     => deleteDoc(doc(cSt,id)).then(()=>cb(null)).catch(e=>cb(e.message));
 
-// --- Listener ventas ---
-onSnapshot(query(cVen, orderBy('fecha','desc')), (snap) => {
-  window.VENTAS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  if (window.VIEW === 'ven') render();
-}, () => {});
+// ── setUsados ──
+window.FB.setUsados = async (items, cb) => {
+  try {
+    const old = await getDocs(cUsa);
+    const b1 = writeBatch(db); old.docs.forEach(d => b1.delete(d.ref)); await b1.commit();
+    const b2 = writeBatch(db);
+    items.forEach(u => { const r = doc(cUsa, u.modelo.replace(/[^a-zA-Z0-9]/g,'_')); b2.set(r, u); });
+    await b2.commit(); cb(null);
+  } catch(e) { cb(e.message); }
+};
 
-// --- Listener usados ---
-onSnapshot(cUsa, (snap) => {
-  window.USADOS = snap.docs.map(d => d.data());
-  if (typeof cotLoadUsados === 'function') cotLoadUsados(window.USADOS);
-}, () => {});
+// ── setCat ──
 
-// --- Listener config catalogo ---
-import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js').then(({ onSnapshot: os }) => {
-  os(dCfg, (snap) => {
-    if (snap.exists() && typeof catLoadConfig === 'function') catLoadConfig(snap.data());
-  }, () => {});
-});
-
-// --- Listener repuestos ---
-onSnapshot(
-  query(cRp, orderBy('_ts', 'asc')),
-  (snap) => {
-    window.RPUS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (window.VIEW === 'rpus') renderRpus();
-    updSidebar();
-  },
-  () => {} // repuestos no criticos, silencia errores
-);
