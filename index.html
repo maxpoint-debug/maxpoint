@@ -2,10 +2,12 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <title>MaxPoint — Sistema de Taller</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 
@@ -44,6 +46,9 @@
         <span class="nb r" id="nb-r" style="display:none"></span>
       </div>
       <div class="ns">Gestion</div>
+      <div class="ni" onclick="showView('ven',this)"><span class="ico">&#128201;</span>Ventas</div>
+      <div class="ni" onclick="showView('stock',this)"><span class="ico">&#128241;</span>Stock</div>
+      <div class="ni" onclick="showView('cot',this)"><span class="ico">&#128242;</span>Cotizador</div>
       <div class="ni" onclick="showView('cli',this)"><span class="ico">👤</span>Clientes</div>
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
       <div class="ns">Admin</div>
@@ -252,6 +257,97 @@
 </div></div>
 
 
+<!-- Modal Stock -->
+<div class="ov" id="mStock"><div class="modal">
+  <div class="mh">
+    <div class="mt" id="mStockT">Agregar equipo</div>
+    <button class="mc" onclick="closeM('mStock')">&#10005;</button>
+  </div>
+  <div class="mb">
+    <div class="f full"><label>Modelo *</label><input id="sMod" placeholder="iPhone 14 Pro"/></div>
+    <div class="f"><label>Capacidad</label><input id="sCap" placeholder="128GB"/></div>
+    <div class="f"><label>Color</label><input id="sCol" placeholder="Negro"/></div>
+    <div class="f full"><label>IMEI</label><input id="sImei" placeholder="Opcional"/></div>
+    <div class="f full"><label>Detalles / Estado estetico</label>
+      <input id="sDet" placeholder="Ej: rayita en marco, 94% bateria..."/>
+    </div>
+    <div class="f"><label>Precio de venta ($)</label><input id="sPrecioVenta" type="number" placeholder="0"/></div>
+    <div class="f"><label>Costo de compra ($)</label><input id="sPrecioCosto" type="number" placeholder="0"/></div>
+    <div class="f full"><label>Estado</label>
+      <select id="sEst">
+        <option>A revisar</option>
+        <option>En reparacion</option>
+        <option>Disponible</option>
+        <option>Reservado</option>
+        <option>Prestado</option>
+        <option>Vendido</option>
+      </select>
+    </div>
+    <div class="f full"><label>Notas internas</label>
+      <textarea id="sNot" placeholder="Ej: comprado a proveedor X, falta tornillo..."></textarea>
+    </div>
+  </div>
+  <div class="mf">
+    <button class="btn btn-g" onclick="closeM('mStock')">Cancelar</button>
+    <button class="btn btn-p" id="btnSaveStock" onclick="saveStock()">Guardar</button>
+  </div>
+</div></div>
+
+<!-- Modal Nueva/Editar Venta -->
+<div class="ov" id="mVen"><div class="modal">
+  <div class="mh">
+    <div class="mt" id="mVenT">Nueva venta</div>
+    <button class="mc" onclick="closeM('mVen')">&#10005;</button>
+  </div>
+  <div class="mb">
+    <div class="f full"><label>Nombre *</label>
+      <div style="position:relative" id="vNomWrap">
+        <input id="vNom" autocomplete="off" oninput="vNomSugg(this.value)" placeholder="Nombre del comprador"/>
+        <div id="vNomDrop" class="cat-drop"></div>
+      </div>
+    </div>
+    <div class="f"><label>Telefono</label><input id="vTel" type="tel" placeholder="2324..."/></div>
+    <div class="f"><label>DNI</label><input id="vDni" placeholder="Opcional"/></div>
+    <div class="f full"><label>Direccion</label><input id="vDir" placeholder="Opcional"/></div>
+    <div class="f full"><label>Email</label><input id="vEmail" type="email" placeholder="Opcional"/></div>
+    <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);margin-bottom:10px">Equipo vendido</div>
+      <div class="f full"><label>Modelo *</label><input id="vMod" placeholder="iPhone 14 Pro"/></div>
+      <div class="f"><label>Capacidad</label><input id="vCap" placeholder="128GB"/></div>
+      <div class="f"><label>Color</label><input id="vCol" placeholder="Negro"/></div>
+      <div class="f full"><label>IMEI *</label><input id="vImei" type="number" placeholder="354001..."/></div>
+    </div>
+    <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
+      <div class="f"><label>Precio de venta *</label><input id="vPrecio" type="number" placeholder="0"/></div>
+      <div class="f"><label>Forma de pago</label>
+        <select id="vPago">
+          <option>Efectivo</option>
+          <option>Transferencia</option>
+          <option>Efectivo + Transferencia</option>
+        </select>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="vPartePago" onchange="togglePartePago()"/>
+        Incluye parte de pago
+      </label>
+      <div id="vPartePagoWrap" style="display:none;margin-top:10px">
+        <div class="f full"><label>Modelo equipo entregado</label><input id="vPpMod" placeholder="iPhone 12 128GB Negro"/></div>
+        <div class="f"><label>IMEI</label><input id="vPpImei" placeholder="Opcional"/></div>
+        <div class="f"><label>Valor cotizado ($)</label><input id="vPpValor" type="number" placeholder="0"/></div>
+      </div>
+    </div>
+    <div class="f full"><label>Notas internas</label>
+      <textarea id="vNot" placeholder="Ej: equipo comprado a proveedor X..."></textarea>
+    </div>
+  </div>
+  <div class="mf">
+    <button class="btn btn-g" onclick="closeM('mVen')">Cancelar</button>
+    <button class="btn btn-p" id="btnSaveVenta" onclick="saveVenta()">Guardar venta</button>
+  </div>
+</div></div>
+
 <!-- Modal Cotizador -->
 <div class="ov" id="mCot"><div class="modal">
   <div class="mh">
@@ -259,7 +355,7 @@
     <button class="mc" onclick="closeM('mCot')">&#10005;</button>
   </div>
   <div class="mb">
-    <div class="f full"><label>Modelo</label>
+    <div class="f full"><label>Buscar modelo</label>
       <div style="position:relative" id="cotWrap">
         <input class="ac-input" id="cotQ" type="text" autocomplete="off"
           placeholder="Ej: iPhone 14 Pro 128GB..."
@@ -285,6 +381,8 @@
           <option value="rota">Rota (descuenta modulo)</option>
         </select>
       </div>
+      <div id="cotExtrasWrap" style="margin-top:4px"></div>
+      <button class="btn btn-g btn-sm" onclick="cotAgregarExtra()" style="width:100%;margin-top:4px;font-size:12px">+ Agregar descuento</button>
       <div id="cotResultado" style="display:none">
         <div id="cotResultadoInner"></div>
       </div>
@@ -292,7 +390,25 @@
   </div>
   <div class="mf">
     <button class="btn btn-g" onclick="cotReset()">Limpiar</button>
+    <button class="btn btn-g" id="btnCotWA" onclick="cotAbrirWA()" style="display:none;background:rgba(37,211,102,.15);color:#25D366;border-color:rgba(37,211,102,.3)">&#128242; WhatsApp</button>
+    <button class="btn btn-g" id="btnCotPrint" onclick="cotImprimir()" style="display:none">&#128424; Imprimir</button>
     <button class="btn btn-p" onclick="closeM('mCot')">Cerrar</button>
+  </div>
+</div></div>
+
+<!-- Modal WhatsApp Cotizacion -->
+<div class="ov" id="mCotWA"><div class="modal">
+  <div class="mh">
+    <div class="mt">Enviar por WhatsApp</div>
+    <button class="mc" onclick="closeM('mCotWA')">&#10005;</button>
+  </div>
+  <div class="mb">
+    <div class="f full"><label>Nombre del cliente</label><input id="waNombre" type="text" placeholder="Juan Garcia"/></div>
+    <div class="f full"><label>Telefono (con codigo de pais)</label><input id="waTel" type="tel" placeholder="5491112345678"/></div>
+  </div>
+  <div class="mf">
+    <button class="btn btn-g" onclick="closeM('mCotWA')">Cancelar</button>
+    <button class="btn btn-p" onclick="cotEnviarWA()">&#128242; Enviar</button>
   </div>
 </div></div>
 
@@ -320,6 +436,7 @@
     <button class="btn btn-p" id="btnSubirLista" onclick="subirLista()" disabled>Actualizar base</button>
   </div>
 </div></div>
+
 <!-- Diagnostico temporal v6 -->
 <div id="diag" style="position:fixed;bottom:60px;left:0;right:0;background:#1a1a2e;border-top:2px solid #F0B429;
   padding:10px 14px;font-size:12px;font-family:monospace;color:#aaa;z-index:9999;display:none">
@@ -378,6 +495,8 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/modals.js?v=6"></script>
 <script src="js/catalogo.js?v=6"></script>
 <script src="js/cotizador.js?v=6"></script>
+<script src="js/ventas.js?v=6"></script>
+<script src="js/stock.js?v=6"></script>
 <script src="js/app.js?v=6"></script>
 <script type="module" src="js/firebase.js?v=6"></script>
 
