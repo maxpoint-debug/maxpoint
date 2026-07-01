@@ -636,10 +636,7 @@ function renderVen() {
   var totalGanancia = totalPesos - totalCosto;
 
   var sc = document.createElement('div'); sc.className = 'sc-row';
-  sc.innerHTML = '<div class="sc"><div class="scl">Ventas</div><div class="scv cb">' + total + '</div></div>'
-    + '<div class="sc"><div class="scl">Facturado</div><div class="scv co">' + pesos(totalPesos) + '</div></div>'
-    + '<div class="sc"><div class="scl">Costo</div><div class="scv cy">' + pesos(totalCosto) + '</div></div>'
-    + '<div class="sc"><div class="scl">Ganancia</div><div class="scv cg">' + pesos(totalGanancia) + '</div></div>';
+  sc.innerHTML = '<div class="sc"><div class="scl">Total ventas</div><div class="scv cb">' + total + '</div></div>';
   cnt.appendChild(sc);
 
   if (!VENTAS.length) {
@@ -652,35 +649,57 @@ function renderVen() {
     return;
   }
 
-  var lista = document.createElement('div');
-  lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
-  VENTAS.slice().sort(function(a,b) { return (b.fecha||'').localeCompare(a.fecha||''); })
+  var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  // Agrupar por mes
+  var porMes = {};
+  VENTAS.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); })
   .forEach(function(v) {
-    var card = document.createElement('div');
-    card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px';
-    var modelo = [v.modelo, v.capacidad, v.color].filter(Boolean).join(' ');
-    var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
-    var gan = (v.precio && v.costo && Number(v.costo)) ? Number(v.precio) - Number(v.costo) : null;
-    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-      + '<div style="flex:1">'
-      + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
-      + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
-      + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI: ' + esc(v.imei||'') + '</div>'
-      + '</div>'
-      + '<div style="text-align:right;flex-shrink:0">'
-      + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
-      + (v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(v.costo) + '</div>' : '')
-      + (gan !== null ? '<div style="font-size:11px;font-weight:700;color:' + (gan>=0?'var(--gr)':'var(--rd)') + '">Gan: ' + pesos(gan) + '</div>' : '')
-      + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
-      + '</div></div>'
-      + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
-      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
-      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
-      + '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>'
-      + '</div>';
-    lista.appendChild(card);
+    var k = typeof fechaAMesKey === 'function' ? fechaAMesKey(v.fecha) : (v.fecha||'').slice(0,7);
+    if (!porMes[k]) porMes[k] = [];
+    porMes[k].push(v);
   });
-  cnt.appendChild(lista);
+
+  Object.keys(porMes).sort().reverse().forEach(function(mesKey) {
+    var vensMes = porMes[mesKey];
+    var pt = mesKey.split('-');
+    var titulo = (MN[parseInt(pt[1])]||pt[1]) + ' ' + pt[0];
+    var totalMes = vensMes.reduce(function(s,v){return s+Number(v.precio||0);},0);
+    var ganMes   = vensMes.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
+
+    var sec = document.createElement('div'); sec.style.cssText = 'margin-top:16px';
+    sec.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bd)">'
+      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">' + titulo + ' (' + vensMes.length + ')</div>'
+      + '<div style="font-size:11px;color:var(--gr);font-weight:700">' + pesos(totalMes) + (ganMes ? ' | Gan: ' + pesos(ganMes) : '') + '</div>'
+      + '</div>';
+
+    vensMes.forEach(function(v) {
+      var card = document.createElement('div');
+      card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
+      var modelo = [v.modelo, v.capacidad, v.color].filter(Boolean).join(' ');
+      var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
+      var gan = (v.precio && v.costo && Number(v.costo)) ? Number(v.precio) - Number(v.costo) : null;
+      card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+        + '<div style="flex:1">'
+        + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
+        + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
+        + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI: ' + esc(v.imei||'') + '</div>'
+        + (v.vendedor ? '<div style="font-size:10px;color:var(--mu)">' + esc(v.vendedor) + (v.canal?' via '+esc(v.canal):'') + '</div>' : '')
+        + '</div>'
+        + '<div style="text-align:right;flex-shrink:0">'
+        + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
+        + (v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(v.costo) + '</div>' : '')
+        + (gan !== null ? '<div style="font-size:11px;font-weight:700;color:' + (gan>=0?'var(--gr)':'var(--rd)') + '">Gan: ' + pesos(gan) + '</div>' : '')
+        + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
+        + '</div></div>'
+        + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
+        + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
+        + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
+        + '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>'
+        + '</div>';
+      sec.appendChild(card);
+    });
+    cnt.appendChild(sec);
+  });
 }
 
 // ── RENDER STOCK ─────────────────────────────────────
