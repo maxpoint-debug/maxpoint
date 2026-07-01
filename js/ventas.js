@@ -2,18 +2,22 @@
 // Registro de ventas de equipos (nuevos y usados)
 
 // ── Formulario nueva venta ────────────────────────
-function openNewVenta() {
+function openNewVenta(prefillCosto) {
   el('mVenT').textContent = 'Nueva venta';
-  ['vNom','vTel','vDni','vDir','vEmail','vMod','vCap','vCol','vImei','vPrecio','vNot'].forEach(function(id) {
+  ['vNom','vTel','vDni','vDir','vEmail','vMod','vCap','vCol','vImei','vPrecio','vCosto','vNot'].forEach(function(id) {
     setVal(id, '');
   });
   el('vPago').value = 'Efectivo';
   el('vPartePago').checked = false;
   el('vPartePagoWrap').style.display = 'none';
   ['vPpMod','vPpImei','vPpValor'].forEach(function(id) { setVal(id, ''); });
+  if (prefillCosto) setVal('vCosto', prefillCosto);
   el('btnSaveVenta').disabled = false;
   el('btnSaveVenta').textContent = 'Guardar venta';
   _ventaId = null;
+  // Actualizar opciones de vendedor
+  var selV = el('vVendedor');
+  if (selV && typeof comOpcionesTecnicos === 'function') selV.innerHTML = comOpcionesTecnicos('');
   openM('mVen');
 }
 
@@ -44,6 +48,9 @@ function saveVenta() {
     color:       val('vCol'),
     imei:        imei,
     precio:      precio,
+    costo:       val('vCosto') || '0',
+    vendedor:    el('vVendedor') ? el('vVendedor').value : '',
+    canal:       el('vCanal') ? el('vCanal').value : '',
     pago:        el('vPago').value,
     notas:       val('vNot'),
     parte_pago:  partePago ? 'Si' : 'No',
@@ -100,6 +107,9 @@ function openEditVenta(id) {
   setVal('vCol',    v.color     || '');
   setVal('vImei',   v.imei      || '');
   setVal('vPrecio', v.precio    || '');
+  setVal('vCosto',  v.costo     || '');
+  if (el('vVendedor')) el('vVendedor').value = v.vendedor || '';
+  if (el('vCanal'))    el('vCanal').value    = v.canal    || '';
   el('vPago').value = v.pago || 'Efectivo';
   setVal('vNot',    v.notas     || '');
   var pp = v.parte_pago === 'Si';

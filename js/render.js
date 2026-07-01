@@ -6,7 +6,8 @@
 function render() {
   if      (VIEW === 'reps') renderReps();
   else if (VIEW === 'rpus') renderRpus();
-  else if (VIEW === 'ven')  renderVen();
+  else if (VIEW === 'seg')   renderSeg();
+  else if (VIEW === 'ven')   renderVen();
   else if (VIEW === 'stock') renderStock();
   else if (VIEW === 'cot')  renderCot();
   else if (VIEW === 'cli')  renderCli();
@@ -452,49 +453,132 @@ function renderPag() {
 // ============================================================
 function renderBal() {
   var cnt = el('cnt'); cnt.innerHTML = '';
+  var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
-  var tCobrado = REPS.filter(function(r) { return r.pago === 'Pagado'; })
-                     .reduce(function(s, r) { return s + Number(r.presupuesto || 0); }, 0);
-  var cRepuestos = RPUS.filter(function(r) { return r.estado === 'Usado'; })
-                       .reduce(function(s, r) { return s + Number(r.costo || 0); }, 0);
+  // ── Resumen global ────────────────────────────────
+  var tCobrado   = REPS.filter(function(r){return r.pago==='Pagado';}).reduce(function(s,r){return s+Number(r.presupuesto||0);},0);
+  var cRepuestos = RPUS.filter(function(r){return r.estado==='Usado';}).reduce(function(s,r){return s+Number(r.costo||0);},0);
+  var tVentas    = (window.VENTAS||[]).reduce(function(s,v){return s+Number(v.precio||0);},0);
+  var cVentas    = (window.VENTAS||[]).reduce(function(s,v){return s+Number(v.costo||0);},0);
 
-  var sg = document.createElement('div'); sg.className = 'sg'; sg.style.gridTemplateColumns = 'repeat(3,1fr)';
-  sg.innerHTML = ''
-    + '<div class="sc"><div class="scl">Total cobrado</div><div class="scv cg">' + pesos(tCobrado) + '</div></div>'
+  var sg = document.createElement('div'); sg.className = 'sc-row';
+  sg.innerHTML = '<div class="sc"><div class="scl">Reparaciones cobradas</div><div class="scv cg">' + pesos(tCobrado) + '</div></div>'
     + '<div class="sc"><div class="scl">Costo repuestos</div><div class="scv cr">' + pesos(cRepuestos) + '</div></div>'
-    + '<div class="sc"><div class="scl">Margen estimado</div><div class="scv cy">' + pesos(tCobrado - cRepuestos) + '</div></div>';
+    + '<div class="sc"><div class="scl">Ventas</div><div class="scv co">' + pesos(tVentas) + '</div></div>'
+    + '<div class="sc"><div class="scl">Ganancia ventas</div><div class="scv cg">' + pesos(tVentas-cVentas) + '</div></div>';
   cnt.appendChild(sg);
 
-  // Desglose mensual
+  // ── Selector de mes para comisiones ──────────────
+  var meses = calcMesesDisponibles ? calcMesesDisponibles() : [];
+  var hoy = new Date(); var mesActual = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
+  if (!meses.length || !meses.includes(mesActual)) meses.unshift(mesActual);
+
+  var secCom = document.createElement('div'); secCom.style.marginTop = '20px';
+  secCom.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+    + '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">Comisiones por tecnico</div>'
+    + '<div style="display:flex;gap:6px;align-items:center">'
+    + '<select id="balMesSel" onchange="renderBalComisiones()" style="background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:4px 8px;color:var(--tx);font-size:12px;outline:none">'
+    + meses.map(function(m){ var p=m.split('-'); return '<option value="'+m+'"'+(m===mesActual?' selected':'')+'>'+(MN[parseInt(p[1])]||p[1])+' '+p[0]+'</option>'; }).join('')
+    + '</select>'
+    + '<button class="btn btn-g btn-sm" onclick="openGestionTecnicos()">Gestionar</button>'
+    + '</div></div>'
+    + '<div id="balComWrap"></div>';
+  cnt.appendChild(secCom);
+  renderBalComisiones();
+
+  // ── Desglose mensual reparaciones ────────────────
   var mes = {};
   REPS.forEach(function(r) {
     if (!r.fecha) return;
-    var p = r.fecha.split('/');
-    if (p.length < 3) return;
-    var k = p[2] + '-' + p[1];
-    if (!mes[k]) mes[k] = { cobrado: 0, total: 0 };
+    var k = fechaAMesKey ? fechaAMesKey(r.fecha) : r.fecha.slice(0,7);
+    if (!mes[k]) mes[k] = { cobrado:0, total:0, gar:0 };
     mes[k].total++;
-    if (r.pago === 'Pagado') mes[k].cobrado += Number(r.presupuesto || 0);
+    if (r.pago==='Pagado') mes[k].cobrado += Number(r.presupuesto||0);
+    if (r.es_garantia==='si') mes[k].gar++;
   });
-  var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  // Sumar ventas al mes
+  var mesVen = {};
+  (window.VENTAS||[]).forEach(function(v) {
+    if (!v.fecha) return;
+    var k = fechaAMesKey ? fechaAMesKey(v.fecha) : v.fecha.slice(0,7);
+    if (!mesVen[k]) mesVen[k] = { total:0, monto:0 };
+    mesVen[k].total++; mesVen[k].monto += Number(v.precio||0);
+  });
+
+  var secMes = document.createElement('div'); secMes.style.marginTop = '20px';
+  secMes.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--mu);margin-bottom:8px">Historico mensual</div>';
 
   var tw = document.createElement('div'); tw.className = 'tw';
   var tbl = document.createElement('table');
-  tbl.innerHTML = '<thead><tr><th>Mes</th><th>Reparaciones</th><th>Cobrado</th></tr></thead>';
+  tbl.innerHTML = '<thead><tr><th>Mes</th><th>Reparaciones</th><th>Garantias</th><th>Cobrado</th><th>Ventas</th></tr></thead>';
   var tbody = document.createElement('tbody');
-  Object.entries(mes)
-    .sort(function(a, b) { return b[0].localeCompare(a[0]); })
-    .forEach(function(entry) {
-      var k = entry[0], v = entry[1];
-      var pt = k.split('-');
-      var tr = document.createElement('tr');
-      tr.innerHTML = ''
-        + '<td style="font-weight:600">' + (MN[parseInt(pt[1])] || pt[1]) + ' ' + pt[0] + '</td>'
-        + '<td class="mono">' + v.total + '</td>'
-        + '<td class="mono cg">' + pesos(v.cobrado) + '</td>';
-      tbody.appendChild(tr);
-    });
-  tbl.appendChild(tbody); tw.appendChild(tbl); cnt.appendChild(tw);
+  var allMeses = {};
+  Object.keys(mes).forEach(function(k){allMeses[k]=true;});
+  Object.keys(mesVen).forEach(function(k){allMeses[k]=true;});
+  Object.keys(allMeses).sort().reverse().forEach(function(k) {
+    var mr = mes[k]||{total:0,cobrado:0,gar:0};
+    var mv = mesVen[k]||{total:0,monto:0};
+    var pt = k.split('-');
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td style="font-weight:600">' + (MN[parseInt(pt[1])]||pt[1]) + ' ' + pt[0] + '</td>'
+      + '<td class="mono">' + mr.total + '</td>'
+      + '<td class="mono cr">' + (mr.gar||0) + '</td>'
+      + '<td class="mono cg">' + pesos(mr.cobrado) + '</td>'
+      + '<td class="mono co">' + mv.total + ' / ' + pesos(mv.monto) + '</td>';
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(tbody); tw.appendChild(tbl); secMes.appendChild(tw);
+  cnt.appendChild(secMes);
+}
+
+function renderBalComisiones() {
+  var wrap = el('balComWrap'); if (!wrap) return;
+  var sel  = el('balMesSel');
+  var mesKey = sel ? sel.value : null;
+  var com = calcComisiones ? calcComisiones(mesKey) : {};
+  var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  if (!Object.keys(com).length) {
+    wrap.innerHTML = '<div style="color:var(--mu);font-size:12px;padding:12px 0">Sin datos — carga tecnico en las reparaciones y vendedor en las ventas</div>';
+    return;
+  }
+
+  wrap.innerHTML = '';
+  Object.keys(com).forEach(function(nom) {
+    var d = com[nom];
+    if (!d.reps && !d.gar && !d.ven) return;
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:8px';
+    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+      + '<div style="font-size:14px;font-weight:800;color:var(--tx)">' + esc(nom) + '</div>'
+      + '<div style="font-size:18px;font-weight:900;color:var(--gr)">' + pesos(d.total) + '</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--mu);flex-wrap:wrap">'
+      + (d.reps ? '<span>&#128295; ' + d.reps + ' reparaciones = ' + pesos(d.com_rep) + '</span>' : '')
+      + (d.gar  ? '<span style="color:var(--rd)">&#9888; ' + d.gar + ' garantias (no cobran)</span>' : '')
+      + (d.ven  ? '<span>&#128201; ' + d.ven + ' ventas = ' + pesos(d.com_ven) + '</span>' : '')
+      + '</div>'
+      + '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--bd);display:flex;gap:8px;font-size:11px;color:var(--mu)">'
+      + '<span>Com. rep: ' + pesos(COM_CFG.com_rep) + ' c/u</span>'
+      + '<span>Com. ven: ' + pesos(COM_CFG.com_ven) + ' c/u</span>'
+      + '<button class="btn btn-g btn-sm" onclick="editarComisiones()" style="margin-left:auto;font-size:10px">Editar montos</button>'
+      + '</div>';
+    wrap.appendChild(card);
+  });
+}
+
+function editarComisiones() {
+  var rep = prompt('Comision por reparacion ($):', COM_CFG.com_rep);
+  if (rep === null) return;
+  var ven = prompt('Comision por venta ($):', COM_CFG.com_ven);
+  if (ven === null) return;
+  COM_CFG.com_rep = Number(rep) || COM_CFG.com_rep;
+  COM_CFG.com_ven = Number(ven) || COM_CFG.com_ven;
+  comGuardarCfg(function(err) {
+    if (err) { toast('Error: '+err,'var(--rd)'); return; }
+    toast('Montos actualizados');
+    renderBalComisiones();
+  });
 }
 
 // ── COPIAR LISTA PARA PROVEEDOR ─────────────────────────────
@@ -542,16 +626,117 @@ function fallbackCopy(texto) {
   document.body.removeChild(ta);
 }
 
+// ── RENDER VENTAS ────────────────────────────────────
+function renderVen() {
+  var cnt = el('cnt'); cnt.innerHTML = '';
+  var total        = VENTAS.length;
+  var totalPesos   = VENTAS.reduce(function(s,v) { return s + Number(v.precio||0); }, 0);
+  var totalCosto   = VENTAS.reduce(function(s,v) { return s + Number(v.costo||0); }, 0);
+  var totalGanancia = totalPesos - totalCosto;
+
+  var sc = document.createElement('div'); sc.className = 'sc-row';
+  sc.innerHTML = '<div class="sc"><div class="scl">Ventas</div><div class="scv cb">' + total + '</div></div>'
+    + '<div class="sc"><div class="scl">Facturado</div><div class="scv co">' + pesos(totalPesos) + '</div></div>'
+    + '<div class="sc"><div class="scl">Costo</div><div class="scv cy">' + pesos(totalCosto) + '</div></div>'
+    + '<div class="sc"><div class="scl">Ganancia</div><div class="scv cg">' + pesos(totalGanancia) + '</div></div>';
+  cnt.appendChild(sc);
+
+  if (!VENTAS.length) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'padding:32px;text-align:center;color:var(--mu)';
+    empty.innerHTML = '<div style="font-size:32px;margin-bottom:12px">&#128201;</div>'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin ventas registradas</div>'
+      + '<div style="font-size:13px">Usa "+ Nueva venta" para registrar</div>';
+    cnt.appendChild(empty);
+    return;
+  }
+
+  var lista = document.createElement('div');
+  lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
+  VENTAS.slice().sort(function(a,b) { return (b.fecha||'').localeCompare(a.fecha||''); })
+  .forEach(function(v) {
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px';
+    var modelo = [v.modelo, v.capacidad, v.color].filter(Boolean).join(' ');
+    var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
+    var gan = (v.precio && v.costo && Number(v.costo)) ? Number(v.precio) - Number(v.costo) : null;
+    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      + '<div style="flex:1">'
+      + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
+      + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
+      + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI: ' + esc(v.imei||'') + '</div>'
+      + '</div>'
+      + '<div style="text-align:right;flex-shrink:0">'
+      + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
+      + (v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(v.costo) + '</div>' : '')
+      + (gan !== null ? '<div style="font-size:11px;font-weight:700;color:' + (gan>=0?'var(--gr)':'var(--rd)') + '">Gan: ' + pesos(gan) + '</div>' : '')
+      + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
+      + '</div></div>'
+      + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
+      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
+      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
+      + '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>'
+      + '</div>';
+    lista.appendChild(card);
+  });
+  cnt.appendChild(lista);
+}
+
+// ── RENDER STOCK ─────────────────────────────────────
+function renderStock() {
+  var cnt = el('cnt'); cnt.innerHTML = '';
+  var estados = ['A revisar','En reparacion','Disponible','Reservado','Prestado','Vendido'];
+  var colorMap = { 'A revisar':'var(--pu)', 'En reparacion':'var(--acc)', 'Disponible':'var(--gr)',
+    'Reservado':'var(--bl)', 'Prestado':'var(--or)', 'Vendido':'var(--mu)' };
+  var disp = STOCK.filter(function(s){return s.estado==='Disponible';}).length;
+  var rev  = STOCK.filter(function(s){return s.estado==='A revisar';}).length;
+  var sc = document.createElement('div'); sc.className = 'sc-row';
+  sc.innerHTML = '<div class="sc"><div class="scl">Total</div><div class="scv cb">' + STOCK.length + '</div></div>'
+    + '<div class="sc"><div class="scl">Disponibles</div><div class="scv cg">' + disp + '</div></div>'
+    + '<div class="sc"><div class="scl">A revisar</div><div class="scv cp">' + rev + '</div></div>';
+  cnt.appendChild(sc);
+  if (!STOCK.length) {
+    cnt.innerHTML += '<div style="padding:32px;text-align:center;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">&#128241;</div><div style="font-size:15px;font-weight:700">Stock vacio</div></div>';
+    return;
+  }
+  estados.forEach(function(est) {
+    var items = STOCK.filter(function(s) { return s.estado === est; });
+    if (!items.length) return;
+    var sec = document.createElement('div'); sec.style.cssText = 'margin-top:16px';
+    sec.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:' + (colorMap[est]||'var(--mu)') + ';margin-bottom:8px">' + est + ' (' + items.length + ')</div>';
+    items.forEach(function(s) {
+      var card = document.createElement('div');
+      card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
+      var label = [s.modelo, s.capacidad, s.color].filter(Boolean).join(' ');
+      var margen = (s.precio_venta && s.precio_costo) ? Number(s.precio_venta)-Number(s.precio_costo) : null;
+      card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+        + '<div style="flex:1"><div style="font-size:13px;font-weight:800">' + esc(label) + '</div>'
+        + (s.detalles ? '<div style="font-size:11px;color:var(--mu);margin-top:2px">' + esc(s.detalles) + '</div>' : '')
+        + (s.imei ? '<div style="font-size:10px;color:var(--mu);font-family:monospace">IMEI: ' + esc(s.imei) + '</div>' : '')
+        + '</div>'
+        + '<div style="text-align:right;flex-shrink:0">'
+        + (s.precio_venta ? '<div style="font-size:15px;font-weight:900;color:var(--gr)">' + pesos(s.precio_venta) + '</div>' : '')
+        + (s.precio_costo ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(s.precio_costo) + '</div>' : '')
+        + (margen !== null ? '<div style="font-size:10px;font-weight:700;color:' + (margen>=0?'var(--gr)':'var(--rd)') + '">Margen: ' + pesos(margen) + '</div>' : '')
+        + '</div></div>'
+        + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
+        + '<select class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
+        + estados.map(function(e) { return '<option' + (e===s.estado?' selected':'') + '>' + e + '</option>'; }).join('')
+        + '</select>'
+        + '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>'
+        + '<button class="btn btn-d btn-sm" data-sid="' + s.id + '" onclick="eliminarStock(this.dataset.sid)">&#128465;</button>'
+        + '</div>';
+      sec.appendChild(card);
+    });
+    cnt.appendChild(sec);
+  });
+}
+
 // ── RENDER COTIZADOR ─────────────────────────────────
 function renderCot() {
-  var cnt = el('cnt');
-  cnt.innerHTML = '';
+  var cnt = el('cnt'); cnt.innerHTML = '';
   if (!USADOS.length) {
-    cnt.innerHTML = '<div style="padding:32px;text-align:center;color:var(--mu)">'
-      + '<div style="font-size:32px;margin-bottom:12px">&#128242;</div>'
-      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin modelos cargados</div>'
-      + '<div style="font-size:13px">Usa "Actualizar lista" para cargar precios del proveedor</div>'
-      + '</div>';
+    cnt.innerHTML = '<div style="padding:32px;text-align:center;color:var(--mu)"><div style="font-size:32px;margin-bottom:12px">&#128242;</div><div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin modelos cargados</div><div style="font-size:13px">Usa "Actualizar lista" para cargar precios del proveedor</div></div>';
     return;
   }
   var precios = USADOS.map(function(u){return u.precio_usd;});
@@ -560,12 +745,11 @@ function renderCot() {
     + '<div class="sc"><div class="scl">Desde</div><div class="scv cg">USD ' + Math.min.apply(null,precios) + '</div></div>'
     + '<div class="sc"><div class="scl">Hasta</div><div class="scv cb">USD ' + Math.max.apply(null,precios) + '</div></div>';
   cnt.appendChild(sc);
-  var lista = document.createElement('div');
-  lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
+  var lista = document.createElement('div'); lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
   USADOS.slice().sort(function(a,b){return b.precio_usd-a.precio_usd;}).forEach(function(u) {
     var row = document.createElement('div');
     row.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;display:flex;align-items:center;cursor:pointer';
-    row.innerHTML = '<span style="flex:1;font-size:13px;font-weight:600">' + u.modelo + '</span>'
+    row.innerHTML = '<span style="flex:1;font-size:13px;font-weight:600">' + esc(u.modelo) + '</span>'
       + '<span style="font-size:14px;font-weight:800;color:var(--bl)">USD ' + u.precio_usd + '</span>';
     row.addEventListener('click', (function(modelo){
       return function() {
@@ -585,138 +769,113 @@ function renderCot() {
   cnt.appendChild(lista);
 }
 
-// ── RENDER VENTAS ────────────────────────────────────
-function renderVen() {
+// ── RENDER SEGUIMIENTOS ───────────────────────────────
+function renderSeg() {
   var cnt = el('cnt'); cnt.innerHTML = '';
+  var lista = calcSeguimientos();
+  var pendAlta = lista.filter(function(s){ return s.estado==='pendiente' && s.urgencia==='alta'; }).length;
+  var pendProx = lista.filter(function(s){ return s.estado==='pendiente' && s.urgencia==='proxima'; }).length;
 
   // Stats
-  var total = VENTAS.length;
-  var hoy   = new Date().toLocaleDateString('es-AR').split('/').reverse().join('-');
-  var hoyV  = VENTAS.filter(function(v) { return v.fecha === hoy.slice(0,10); }).length;
-  var totalPesos = VENTAS.reduce(function(s,v) { return s + Number(v.precio||0); }, 0);
-
   var sc = document.createElement('div'); sc.className = 'sc-row';
-  sc.innerHTML = '<div class="sc"><div class="scl">Total ventas</div><div class="scv cb">' + total + '</div></div>'
-    + '<div class="sc"><div class="scl">Hoy</div><div class="scv cg">' + hoyV + '</div></div>'
-    + '<div class="sc"><div class="scl">Facturado</div><div class="scv co">' + pesos(totalPesos) + '</div></div>';
+  sc.innerHTML = '<div class="sc"><div class="scl">Urgentes</div><div class="scv cr">' + pendAlta + '</div></div>'
+    + '<div class="sc"><div class="scl">Proximos</div><div class="scv co">' + pendProx + '</div></div>'
+    + '<div class="sc"><div class="scl">Total</div><div class="scv cb">' + lista.length + '</div></div>'
+    + '<div class="sc" onclick="segEditarDescuento()" style="cursor:pointer"><div class="scl">Descuento</div><div class="scv cg">' + SEG_DESC + '%</div></div>';
   cnt.appendChild(sc);
 
-  if (!VENTAS.length) {
-    cnt.innerHTML += '<div style="padding:32px;text-align:center;color:var(--mu)">'
-      + '<div style="font-size:32px;margin-bottom:12px">&#128201;</div>'
-      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin ventas registradas</div>'
-      + '<div style="font-size:13px">Usa "+ Nueva venta" para registrar</div>'
-      + '</div>';
-    return;
+  // Seguimientos pendientes
+  if (lista.filter(function(s){return s.estado==='pendiente';}).length) {
+    var secP = document.createElement('div'); secP.style.cssText = 'margin-top:16px';
+    secP.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:8px">Pendientes</div>';
+    lista.filter(function(s){return s.estado==='pendiente';}).forEach(function(s) {
+      secP.appendChild(mkSegCard(s));
+    });
+    cnt.appendChild(secP);
   }
 
-  var lista = document.createElement('div');
-  lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
+  // Contactados / cerrados
+  var cerrados = lista.filter(function(s){return s.estado!=='pendiente';});
+  if (cerrados.length) {
+    var secC = document.createElement('div'); secC.style.cssText = 'margin-top:16px';
+    secC.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--mu);margin-bottom:8px">Gestionados</div>';
+    cerrados.forEach(function(s) { secC.appendChild(mkSegCard(s)); });
+    cnt.appendChild(secC);
+  }
 
-  VENTAS.slice().sort(function(a,b) { return (b.fecha||'').localeCompare(a.fecha||''); })
-  .forEach(function(v) {
-    var card = document.createElement('div');
-    card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px';
-
-    var modelo = (v.modelo||'') + (v.capacidad?' '+v.capacidad:'') + (v.color?' '+v.color:'');
-    var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
-
-    card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-      + '<div style="flex:1">'
-      + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
-      + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
-      + '<div style="font-size:10px;color:var(--mu);margin-top:2px;font-family:monospace">IMEI: ' + esc(v.imei||'') + '</div>'
-      + '</div>'
-      + '<div style="text-align:right;flex-shrink:0">'
-      + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
-      + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
-      + '<div style="font-size:10px;color:var(--mu)">' + esc(v.pago||'') + '</div>'
-      + '</div>'
-      + '</div>'
-      + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
-      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">&#128424; Comprobante</button>'
-      + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
-      + '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>'
+  if (!lista.length) {
+    cnt.innerHTML += '<div style="padding:32px;text-align:center;color:var(--mu)">'
+      + '<div style="font-size:32px;margin-bottom:12px">&#127881;</div>'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin seguimientos pendientes</div>'
+      + '<div style="font-size:13px">Los clientes apareceran automaticamente cuando llegue el momento</div>'
       + '</div>';
-    lista.appendChild(card);
-  });
-  cnt.appendChild(lista);
+  }
+
+  // Estadisticas
+  var divStats = document.createElement('div'); divStats.style.cssText = 'margin-top:24px';
+
+  // Podio
+  var podio = calcPodio();
+  if (podio.length) {
+    var medallas = ['🥇','🥈','🥉'];
+    divStats.innerHTML += '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc);margin-bottom:8px">Podio de clientes</div>'
+      + podio.map(function(p, i) {
+        return '<div style="background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'
+          + '<div><span style="font-size:20px;margin-right:8px">' + (medallas[i]||'') + '</span>'
+          + '<span style="font-size:13px;font-weight:700">' + esc(p.nombre) + '</span></div>'
+          + '<div style="font-size:13px;font-weight:800;color:var(--acc)">' + p.total + ' transacciones</div>'
+          + '</div>';
+      }).join('');
+  }
+
+  // Modelos mas vendidos
+  var modelos = calcModelos();
+  if (modelos.length) {
+    divStats.innerHTML += '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--bl);margin-bottom:8px;margin-top:16px">Modelos mas vendidos</div>'
+      + modelos.map(function(m, i) {
+        return '<div style="background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'
+          + '<div><span style="font-size:11px;color:var(--mu);margin-right:8px">#' + (i+1) + '</span>'
+          + '<span style="font-size:13px;font-weight:700">' + esc(m.modelo) + '</span></div>'
+          + '<div style="text-align:right">'
+          + '<div style="font-size:13px;font-weight:800;color:var(--gr)">' + m.ventas + ' vendidos</div>'
+          + '</div></div>';
+      }).join('');
+  }
+
+  cnt.appendChild(divStats);
 }
 
-// ── RENDER STOCK ─────────────────────────────────────
-function renderStock() {
-  var cnt = el('cnt'); cnt.innerHTML = '';
+function mkSegCard(s) {
+  var card = document.createElement('div');
+  var urgColor = s.urgencia === 'alta' ? 'var(--rd)' : 'var(--acc)';
+  var estColors = { pendiente:'var(--acc)', contactado:'var(--bl)', interesado:'var(--gr)', compro:'var(--gr)', no_interesa:'var(--mu)' };
+  var estLabels = { pendiente:'Pendiente', contactado:'Contactado', interesado:'Interesado', compro:'Compro', no_interesa:'No interesa' };
+  var tipoLabel = { reparacion:'Reparacion', venta_90:'Venta 90d', venta_365:'Venta 1 anio' };
 
-  var estados = ['A revisar','En reparacion','Disponible','Reservado','Prestado','Vendido'];
-  var colorMap = {
-    'A revisar':'var(--pu)', 'En reparacion':'var(--acc)', 'Disponible':'var(--gr)',
-    'Reservado':'var(--bl)', 'Prestado':'var(--or)', 'Vendido':'var(--mu)'
-  };
+  card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-left:3px solid ' + urgColor + ';border-radius:8px;padding:12px 14px;margin-bottom:6px';
+  card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+    + '<div style="flex:1">'
+    + '<div style="font-size:13px;font-weight:800">' + esc(s.nombre) + '</div>'
+    + '<div style="font-size:11px;color:var(--mu);margin-top:2px">' + esc(s.equipo) + '</div>'
+    + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + (tipoLabel[s.tipo]||s.tipo) + ' — dia ' + s.dias + '</div>'
+    + '</div>'
+    + '<div style="text-align:right;flex-shrink:0">'
+    + '<select style="background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:3px 6px;font-size:11px;color:' + (estColors[s.estado]||'var(--mu)') + ';outline:none" data-sid="' + s.id + '" onchange="segSetEst(this)">'
+    + ['pendiente','contactado','interesado','compro','no_interesa'].map(function(e) {
+        return '<option value="' + e + '"' + (e===s.estado?' selected':'') + '>' + (estLabels[e]||e) + '</option>';
+      }).join('')
+    + '</select>'
+    + '</div></div>'
+    + '<div style="margin-top:8px">'
+    + '<button class="btn btn-g btn-sm" style="background:rgba(37,211,102,.1);color:#25D366;border-color:rgba(37,211,102,.3)" data-sid="' + s.id + '" onclick="segWA(this.dataset.sid)">&#128242; WhatsApp</button>'
+    + '</div>';
+  return card;
+}
 
-  // Stats
-  var disp = STOCK.filter(function(s){return s.estado==='Disponible';}).length;
-  var rev  = STOCK.filter(function(s){return s.estado==='A revisar';}).length;
-  var rep  = STOCK.filter(function(s){return s.estado==='En reparacion';}).length;
-  var sc = document.createElement('div'); sc.className = 'sc-row';
-  sc.innerHTML = '<div class="sc"><div class="scl">Total</div><div class="scv cb">' + STOCK.length + '</div></div>'
-    + '<div class="sc"><div class="scl">Disponibles</div><div class="scv cg">' + disp + '</div></div>'
-    + '<div class="sc"><div class="scl">A revisar</div><div class="scv cp">' + rev + '</div></div>'
-    + '<div class="sc"><div class="scl">En reparacion</div><div class="scv co">' + rep + '</div></div>';
-  cnt.appendChild(sc);
-
-  if (!STOCK.length) {
-    var empty = document.createElement('div');
-    empty.style.cssText = 'padding:32px;text-align:center;color:var(--mu)';
-    empty.innerHTML = '<div style="font-size:32px;margin-bottom:12px">&#128241;</div>'
-      + '<div style="font-size:15px;font-weight:700;margin-bottom:6px">Stock vacio</div>'
-      + '<div style="font-size:13px">Usa "+ Agregar equipo" para cargar</div>';
-    cnt.appendChild(empty);
-    return;
-  }
-
-  // Agrupar por estado
-  estados.forEach(function(est) {
-    var items = STOCK.filter(function(s) { return s.estado === est; });
-    if (!items.length) return;
-
-    var sec = document.createElement('div');
-    sec.style.cssText = 'margin-top:16px';
-    sec.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:' + (colorMap[est]||'var(--mu)') + ';margin-bottom:8px">' + est + ' (' + items.length + ')</div>';
-
-    items.forEach(function(s) {
-      var card = document.createElement('div');
-      card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
-
-      var label = [s.modelo, s.capacidad, s.color].filter(Boolean).join(' ');
-      var margen = (s.precio_venta && s.precio_costo)
-        ? Math.round(Number(s.precio_venta) - Number(s.precio_costo))
-        : null;
-
-      card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-        + '<div style="flex:1">'
-        + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(label) + '</div>'
-        + (s.detalles ? '<div style="font-size:11px;color:var(--mu);margin-top:2px">' + esc(s.detalles) + '</div>' : '')
-        + (s.imei ? '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI: ' + esc(s.imei) + '</div>' : '')
-        + (s.notas ? '<div style="font-size:10px;color:var(--mu);margin-top:2px;font-style:italic">' + esc(s.notas) + '</div>' : '')
-        + '</div>'
-        + '<div style="text-align:right;flex-shrink:0">'
-        + (s.precio_venta ? '<div style="font-size:15px;font-weight:900;color:var(--gr)">$' + Number(s.precio_venta).toLocaleString('es-AR') + '</div>' : '')
-        + (s.precio_costo ? '<div style="font-size:10px;color:var(--mu)">Costo: $' + Number(s.precio_costo).toLocaleString('es-AR') + '</div>' : '')
-        + (margen !== null ? '<div style="font-size:10px;color:' + (margen>=0?'var(--gr)':'var(--rd)') + ';font-weight:700">Margen: $' + margen.toLocaleString('es-AR') + '</div>' : '')
-        + '</div>'
-        + '</div>'
-
-        // Dropdown estado + botones
-        + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
-        + '<select class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
-        + estados.map(function(e) { return '<option' + (e===s.estado?' selected':'') + '>' + e + '</option>'; }).join('')
-        + '</select>'
-        + '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>'
-        + '<button class="btn btn-d btn-sm" data-sid="' + s.id + '" onclick="eliminarStock(this.dataset.sid)">&#128465;</button>'
-        + '</div>';
-
-      sec.appendChild(card);
-    });
-    cnt.appendChild(sec);
-  });
+function segSetEst(sel) {
+  var sid = sel.dataset.sid;
+  var nuevoEst = sel.value;
+  var lista = calcSeguimientos();
+  var seg = lista.find(function(s){ return s.id === sid; });
+  if (seg) segCambiarEstado(seg, nuevoEst);
 }
