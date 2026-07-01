@@ -393,7 +393,6 @@ function renderPag() {
   var sg = document.createElement('div'); sg.className = 'sg';
   sg.innerHTML = ''
     + '<div class="sc"><div class="scl">Por cobrar</div><div class="scv co">' + pesos(porcobrar) + '</div></div>'
-    + '<div class="sc"><div class="scl">Total cobrado</div><div class="scv cg">' + pesos(cobrado) + '</div></div>'
     + '<div class="sc"><div class="scl">Pendientes</div><div class="scv cr">' + pnd.length + '</div></div>'
     + '<div class="sc"><div class="scl">Con sena</div><div class="scv cy">' + prc.length + '</div></div>';
   cnt.appendChild(sg);
@@ -496,13 +495,15 @@ function renderBal() {
     if (r.pago==='Pagado') mes[k].cobrado += Number(r.presupuesto||0);
     if (r.es_garantia==='si') mes[k].gar++;
   });
-  // Sumar ventas al mes
+  // Ventas por mes (no acumuladas)
   var mesVen = {};
   (window.VENTAS||[]).forEach(function(v) {
     if (!v.fecha) return;
-    var k = fechaAMesKey ? fechaAMesKey(v.fecha) : v.fecha.slice(0,7);
+    var k = typeof fechaAMesKey === 'function' ? fechaAMesKey(v.fecha) : v.fecha.slice(0,7);
+    if (!k) return;
     if (!mesVen[k]) mesVen[k] = { total:0, monto:0 };
-    mesVen[k].total++; mesVen[k].monto += Number(v.precio||0);
+    mesVen[k].total++;
+    mesVen[k].monto += Number(v.precio||0);
   });
 
   var secMes = document.createElement('div'); secMes.style.marginTop = '20px';
