@@ -110,11 +110,14 @@ function calcComisiones(mesKey) {
     resultado[t.nombre] = { reps: 0, gar: 0, ven: 0, com_rep: 0, com_ven: 0, total: 0 };
   });
 
-  // Reparaciones del mes
+  // Reparaciones del mes — solo Pagadas o Entregadas
   (window.REPS || []).forEach(function(r) {
     if (!r.tecnico || !r.fecha) return;
     var k = fechaAMesKey(r.fecha);
     if (k !== mesKey) return;
+    // Solo contar si fue cobrada o entregada
+    var conta = r.pago === 'Pagado' || r.estado === 'Entregado';
+    if (!conta) return;
     if (!resultado[r.tecnico]) resultado[r.tecnico] = { reps:0, gar:0, ven:0, com_rep:0, com_ven:0, total:0 };
     if (r.es_garantia === 'si') {
       resultado[r.tecnico].gar++;
