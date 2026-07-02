@@ -57,7 +57,7 @@ function saveVenta() {
     pp_modelo:   partePago ? val('vPpMod') : '',
     pp_imei:     partePago ? val('vPpImei') : '',
     pp_valor:    partePago ? val('vPpValor') : '',
-    fecha:       hoy(),
+    fecha:       _ventaId ? (VENTAS.find(function(x){return x.id===_ventaId;})||{}).fecha || hoy() : hoy(),
     garantia:    '6 meses',
     seguimiento: 'pendiente',
   };
