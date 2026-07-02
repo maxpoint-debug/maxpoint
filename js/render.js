@@ -509,29 +509,101 @@ function renderBal() {
   });
 
   var secMes = document.createElement('div'); secMes.style.marginTop = '20px';
-  secMes.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--mu);margin-bottom:8px">Historico mensual</div>';
-
+  secMes.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--mu);margin-bottom:8px">Reparaciones por mes</div>';
   var tw = document.createElement('div'); tw.className = 'tw';
   var tbl = document.createElement('table');
-  tbl.innerHTML = '<thead><tr><th>Mes</th><th>Reparaciones</th><th>Garantias</th><th>Cobrado</th><th>Ventas</th></tr></thead>';
+  tbl.innerHTML = '<thead><tr><th>Mes</th><th>Reparaciones</th><th>Garantias</th><th>Cobrado</th></tr></thead>';
   var tbody = document.createElement('tbody');
-  var allMeses = {};
-  Object.keys(mes).forEach(function(k){allMeses[k]=true;});
-  Object.keys(mesVen).forEach(function(k){allMeses[k]=true;});
-  Object.keys(allMeses).sort().reverse().forEach(function(k) {
+  Object.keys(mes).sort().reverse().forEach(function(k) {
     var mr = mes[k]||{total:0,cobrado:0,gar:0};
-    var mv = mesVen[k]||{total:0,monto:0};
     var pt = k.split('-');
     var tr = document.createElement('tr');
     tr.innerHTML = '<td style="font-weight:600">' + (MN[parseInt(pt[1])]||pt[1]) + ' ' + pt[0] + '</td>'
       + '<td class="mono">' + mr.total + '</td>'
       + '<td class="mono cr">' + (mr.gar||0) + '</td>'
-      + '<td class="mono cg">' + pesos(mr.cobrado) + '</td>'
-      + '<td class="mono co">' + mv.total + ' / ' + pesos(mv.monto) + '</td>';
+      + '<td class="mono cg">' + pesos(mr.cobrado) + '</td>';
     tbody.appendChild(tr);
   });
   tbl.appendChild(tbody); tw.appendChild(tbl); secMes.appendChild(tw);
   cnt.appendChild(secMes);
+
+  // ── Balance de ventas ─────────────────────────────
+  if (window.VENTAS && VENTAS.length) {
+    // Calcular por mes
+    var venMes = {};
+    VENTAS.forEach(function(v) {
+      var k = typeof fechaAMesKey === 'function' ? fechaAMesKey(v.fecha) : (v.fecha||'').slice(0,7);
+      if (!k) return;
+      if (!venMes[k]) venMes[k] = { cant:0, bruto:0, costo:0 };
+      venMes[k].cant++;
+      venMes[k].bruto += Number(v.precio||0);
+      venMes[k].costo += Number(v.costo||0);
+    });
+
+    // Totales anuales
+    var anos = {};
+    Object.keys(venMes).forEach(function(k) {
+      var ano = k.split('-')[0];
+      if (!anos[ano]) anos[ano] = { cant:0, bruto:0, costo:0 };
+      anos[ano].cant    += venMes[k].cant;
+      anos[ano].bruto   += venMes[k].bruto;
+      anos[ano].costo   += venMes[k].costo;
+    });
+
+    var totalBruto = VENTAS.reduce(function(s,v){return s+Number(v.precio||0);},0);
+    var totalCosto = VENTAS.reduce(function(s,v){return s+Number(v.costo||0);},0);
+    var totalGan   = totalBruto - totalCosto;
+
+    var secVen = document.createElement('div'); secVen.style.marginTop = '24px';
+    secVen.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--bl);margin-bottom:8px">Balance de ventas</div>';
+
+    // Stats globales
+    var sgv = document.createElement('div'); sgv.className = 'sc-row';
+    sgv.innerHTML = '<div class="sc"><div class="scl">Total ventas</div><div class="scv cb">' + VENTAS.length + '</div></div>'
+      + '<div class="sc"><div class="scl">Facturado</div><div class="scv co">' + pesos(totalBruto) + '</div></div>'
+      + '<div class="sc"><div class="scl">Costo total</div><div class="scv cy">' + pesos(totalCosto) + '</div></div>'
+      + '<div class="sc"><div class="scl">Ganancia total</div><div class="scv cg">' + pesos(totalGan) + '</div></div>';
+    secVen.appendChild(sgv);
+
+    // Tabla mensual
+    var twv = document.createElement('div'); twv.className = 'tw'; twv.style.marginTop = '10px';
+    var tblv = document.createElement('table');
+    tblv.innerHTML = '<thead><tr><th>Mes</th><th>Ventas</th><th>Facturado</th><th>Costo</th><th>Ganancia</th><th>Margen</th></tr></thead>';
+    var tbodyv = document.createElement('tbody');
+    Object.keys(venMes).sort().reverse().forEach(function(k) {
+      var vm = venMes[k];
+      var gan = vm.bruto - vm.costo;
+      var margen = vm.bruto ? Math.round(gan / vm.bruto * 100) : 0;
+      var pt = k.split('-');
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="font-weight:600">' + (MN[parseInt(pt[1])]||pt[1]) + ' ' + pt[0] + '</td>'
+        + '<td class="mono">' + vm.cant + '</td>'
+        + '<td class="mono co">' + pesos(vm.bruto) + '</td>'
+        + '<td class="mono cy">' + pesos(vm.costo) + '</td>'
+        + '<td class="mono ' + (gan>=0?'cg':'cr') + '">' + pesos(gan) + '</td>'
+        + '<td class="mono ' + (margen>=0?'cg':'cr') + '">' + margen + '%</td>';
+      tbodyv.appendChild(tr);
+    });
+
+    // Fila anual
+    Object.keys(anos).sort().reverse().forEach(function(ano) {
+      var av = anos[ano];
+      var gan = av.bruto - av.costo;
+      var margen = av.bruto ? Math.round(gan / av.bruto * 100) : 0;
+      var tr = document.createElement('tr');
+      tr.style.cssText = 'background:rgba(240,180,41,.06);font-weight:700;border-top:2px solid var(--bd)';
+      tr.innerHTML = '<td style="font-weight:800;color:var(--acc)">Total ' + ano + '</td>'
+        + '<td class="mono">' + av.cant + '</td>'
+        + '<td class="mono co">' + pesos(av.bruto) + '</td>'
+        + '<td class="mono cy">' + pesos(av.costo) + '</td>'
+        + '<td class="mono ' + (gan>=0?'cg':'cr') + '">' + pesos(gan) + '</td>'
+        + '<td class="mono ' + (margen>=0?'cg':'cr') + '">' + margen + '%</td>';
+      tbodyv.appendChild(tr);
+    });
+
+    tblv.appendChild(tbodyv); twv.appendChild(tblv); secVen.appendChild(twv);
+    cnt.appendChild(secVen);
+  }
 }
 
 function renderBalComisiones() {
@@ -669,9 +741,8 @@ function renderVen() {
     var ganMes   = vensMes.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
 
     var sec = document.createElement('div'); sec.style.cssText = 'margin-top:16px';
-    sec.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bd)">'
-      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">' + titulo + ' (' + vensMes.length + ')</div>'
-      + '<div style="font-size:11px;color:var(--gr);font-weight:700">' + pesos(totalMes) + (ganMes ? ' | Gan: ' + pesos(ganMes) : '') + '</div>'
+    sec.innerHTML = '<div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bd)">'
+      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">' + titulo + ' — ' + vensMes.length + ' ventas</div>'
       + '</div>';
 
     vensMes.forEach(function(v) {
