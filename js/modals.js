@@ -157,6 +157,11 @@ if (!r) return;
     imeiDiv.innerHTML = '<span class="dl">IMEI</span><span class="mono" style="font-size:11px">' + esc(r.modelo) + '</span>';
     ds2.appendChild(imeiDiv);
   }
+  if (r.clave) {
+    var claveDiv = document.createElement('div'); claveDiv.className = 'dr'; claveDiv.style.marginTop = '4px';
+    claveDiv.innerHTML = '<span class="dl">Clave / PIN</span><span style="font-weight:900;font-size:15px;color:var(--acc);letter-spacing:2px">' + esc(r.clave) + '</span>';
+    ds2.appendChild(claveDiv);
+  }
   col1.appendChild(ds2);
 
   // Repuestos relacionados
@@ -739,4 +744,106 @@ function chkPin() {
     el('pinErr').textContent = 'PIN incorrecto';
     setVal('pinIn', '');
   }
+}
+
+// ── IMPRIMIR ORDEN DE TALLER ─────────────────────────────
+function prtOrdenTaller(id) {
+  var r = REPS.find(function(x) { return x.id === id; });
+  if (!r) return;
+
+  var e2 = function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var fmt = function(n) { return '$\u202F' + Number(n||0).toLocaleString('es-AR'); };
+
+  var chkItems = [
+    ['Bateria',         r.bat ? r.bat + '%' : ''],
+    ['Pantalla',        r.pantalla  || ''],
+    ['Carcasa',         r.carcasa   || ''],
+    ['Camara',          r.camara    || ''],
+    ['Botones',         r.botones   || ''],
+    ['Touch / Face ID', r.faceid    || ''],
+    ['Humedad',         r.mojado    || ''],
+    ['Abierto prev.',   r.abierto   || ''],
+    ['iCloud',          r.icloud    || ''],
+  ].filter(function(x){ return x[1] && x[1] !== ''; });
+
+  var filaChk = chkItems.map(function(ci) {
+    var color = (ci[1]==='Rota'||ci[1]==='Si'||ci[1]==='No funciona'||ci[1]==='Muy danada'||ci[1]==='Falla alguno')
+      ? '#dc2626' : (ci[1]==='OK'||ci[1]==='No') ? '#16a34a' : '#555';
+    return '<tr><td style="color:#aaa;padding:3px 8px 3px 0;font-size:10px;width:45%">' + ci[0] + '</td>'
+      + '<td style="font-weight:700;color:' + color + ';font-size:10px">' + ci[1] + '</td></tr>';
+  }).join('');
+
+  var sal = Number(r.presupuesto||0) - Number(r.sena||0);
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Orden Taller ' + e2(r.orden||'') + '</title>'
+    + '<style>@page{size:A5;margin:8mm}body{font-family:system-ui,sans-serif;font-size:12px;color:#111;background:white;margin:0}@media print{button{display:none}}</style>'
+    + '</head><body>'
+    + '<div style="background:#111;padding:14px 18px 12px;border-radius:6px 6px 0 0">'
+    + '<div style="height:3px;background:#F0B429;border-radius:2px;margin-bottom:12px"></div>'
+    + '<table style="width:100%;border-collapse:collapse"><tr>'
+    + '<td><div style="font-size:22px;font-weight:900;color:#F0B429">MaxPoint</div>'
+    + '<div style="font-size:8px;color:#aaa;letter-spacing:2px;text-transform:uppercase;margin-top:2px">Orden Interna de Taller</div></td>'
+    + '<td style="text-align:right"><div style="font-size:8px;color:#888;line-height:1.7">Av 17 y 34, Mercedes, Bs As<br>(2324) 522082</div></td>'
+    + '</tr></table></div>'
+    + '<div style="background:#F0B429;padding:7px 18px;display:flex;justify-content:space-between;align-items:center">'
+    + '<div><div style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#7a5500">Orden de Reparacion</div>'
+    + '<div style="font-size:18px;font-weight:900;color:#111">' + e2(r.orden||'') + '</div></div>'
+    + '<div style="text-align:right"><div style="font-size:8px;color:#7a5500">Fecha: <b>' + e2(r.fecha||'') + '</b></div>'
+    + '<div style="font-size:8px;color:#7a5500">Tecnico: <b>' + e2(r.tecnico||'Sin asignar') + '</b></div></div>'
+    + '</div>'
+    + '<div style="padding:12px 18px">'
+    + '<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr>'
+    + '<td style="vertical-align:top;width:50%;padding-right:10px;border-right:1px solid #eee">'
+    + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:4px">Cliente</div>'
+    + '<div style="font-size:14px;font-weight:800">' + e2(r.nombre||'') + '</div>'
+    + (r.telefono ? '<div style="font-size:10px;color:#555;margin-top:2px">' + e2(r.telefono) + '</div>' : '')
+    + '</td>'
+    + '<td style="vertical-align:top;padding-left:10px">'
+    + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:4px">Equipo</div>'
+    + '<div style="font-size:14px;font-weight:800">' + e2(r.equipo||'') + '</div>'
+    + (r.modelo ? '<div style="font-size:9px;color:#777;font-family:monospace;margin-top:2px">IMEI: ' + e2(r.modelo) + '</div>' : '')
+    + '</td></tr></table>'
+    + '<div style="background:#fff3cd;border:1px solid #F0B429;border-radius:6px;padding:7px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">'
+    + '<div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#7a5500">Clave / PIN</div>'
+    + '<div style="font-size:18px;font-weight:900;color:#111;letter-spacing:3px">' + e2(r.clave||'\u2014') + '</div>'
+    + '</div>'
+    + '<div style="background:#f8f8f8;border-left:3px solid #F0B429;padding:8px 12px;margin-bottom:10px;border-radius:0 4px 4px 0">'
+    + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:3px">Falla declarada</div>'
+    + '<div style="font-size:11px;color:#222;line-height:1.5">' + e2(r.falla||'\u2014') + '</div>'
+    + '</div>'
+    + (r.notas ? '<div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:8px 12px;margin-bottom:10px">'
+      + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#0284c7;margin-bottom:3px">Notas del tecnico</div>'
+      + '<div style="font-size:10px;color:#0c4a6e;line-height:1.5">' + e2(r.notas) + '</div></div>' : '')
+    + '<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr>'
+    + '<td style="font-size:10px;color:#555;padding:3px 0">Presupuesto</td>'
+    + '<td style="text-align:right;font-weight:700;font-size:10px">' + (Number(r.presupuesto||0) ? fmt(r.presupuesto) : 'A confirmar') + '</td></tr>'
+    + (Number(r.sena||0) ? '<tr><td style="font-size:10px;color:#555;padding:3px 0">Sena</td><td style="text-align:right;font-size:10px;color:#2DCE89">- ' + fmt(r.sena) + '</td></tr>'
+      + '<tr style="border-top:1px solid #eee"><td style="font-weight:800;font-size:10px;padding-top:3px">Saldo</td><td style="text-align:right;font-weight:900;font-size:12px;padding-top:3px">' + fmt(sal) + '</td></tr>' : '')
+    + '</table>'
+    + (chkItems.length ? '<div style="border-top:1px solid #eee;padding-top:8px;margin-bottom:10px">'
+      + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:6px">Checklist de recepcion</div>'
+      + '<table style="width:100%;border-collapse:collapse">' + filaChk + '</table>'
+      + (r.obs_recep ? '<div style="margin-top:5px;font-size:9px;color:#666;background:#fef2f2;border-radius:4px;padding:5px 8px"><b>Obs:</b> ' + e2(r.obs_recep) + '</div>' : '')
+      + '</div>' : '')
+    + '<div style="border-top:1px dashed #ddd;padding-top:8px;margin-bottom:10px">'
+    + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:6px">Novedades durante la reparacion</div>'
+    + '<div style="border:1px dashed #ddd;border-radius:4px;height:50px"></div>'
+    + '</div>'
+    + '<div style="border-top:1px dashed #ddd;padding-top:10px">'
+    + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:18px">Firma del cliente conforme</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px">'
+    + '<div style="flex:1;border-bottom:1px solid #333;height:32px"></div>'
+    + '<div style="font-size:8px;color:#999;white-space:nowrap">Firma y aclaracion</div>'
+    + '</div></div>'
+    + '</div>'
+    + '<div style="background:#111;padding:6px 18px;border-radius:0 0 6px 6px;display:flex;justify-content:space-between">'
+    + '<div style="font-size:8px;color:#555">USO INTERNO</div>'
+    + '<div style="font-size:8px;color:#F0B429;font-weight:700">MaxPoint</div>'
+    + '</div>'
+    + '<br><button onclick="window.print()" style="width:100%;padding:10px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Imprimir A5</button>'
+    + '</body></html>';
+
+  var w = window.open('', '_blank', 'width=600,height=850,scrollbars=yes');
+  w.document.write(html);
+  w.document.close();
 }
