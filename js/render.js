@@ -485,10 +485,12 @@ function renderBal() {
   cnt.appendChild(secCom);
   renderBalComisiones();
 
-  // ── Desglose mensual reparaciones ────────────────
+  // ── Desglose mensual reparaciones (solo Pagadas o Entregadas) ──
   var mes = {};
   REPS.forEach(function(r) {
     if (!r.fecha) return;
+    // Solo contar las terminadas
+    if (r.pago !== 'Pagado' && r.estado !== 'Entregado') return;
     var k = fechaAMesKey ? fechaAMesKey(r.fecha) : r.fecha.slice(0,7);
     if (!mes[k]) mes[k] = { cobrado:0, total:0, gar:0 };
     mes[k].total++;
