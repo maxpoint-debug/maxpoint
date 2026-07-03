@@ -27,7 +27,8 @@
 <div class="app">
 
   <!-- SIDEBAR -->
-  <aside class="sidebar">
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+  <aside class="sidebar" id="sidebar">
     <div class="logo">
       <div class="logo-t">MaxPoint</div>
       <div class="logo-s">Mercedes — Av 17 &amp; 34</div>
@@ -67,6 +68,7 @@
       <span id="syncmsg">Conectando con Firebase...</span>
     </div>
     <div class="topbar">
+      <button class="menu-btn" id="menuBtn" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
       <div class="topbar-t" id="topT">Reparaciones</div>
       <div class="topbar-r" id="topA"></div>
     </div>
