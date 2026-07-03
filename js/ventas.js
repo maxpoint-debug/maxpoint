@@ -108,7 +108,10 @@ function openEditVenta(id) {
   setVal('vImei',   v.imei      || '');
   setVal('vPrecio', v.precio    || '');
   setVal('vCosto',  v.costo     || '');
-  if (el('vVendedor')) el('vVendedor').value = v.vendedor || '';
+  // Actualizar opciones del select antes de setear el valor
+  var selVed = el('vVendedor');
+  if (selVed && typeof comOpcionesTecnicos === 'function') selVed.innerHTML = comOpcionesTecnicos(v.vendedor || '');
+  else if (selVed) selVed.value = v.vendedor || '';
   if (el('vCanal'))    el('vCanal').value    = v.canal    || '';
   el('vPago').value = v.pago || 'Efectivo';
   setVal('vNot',    v.notas     || '');
