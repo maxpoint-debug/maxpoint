@@ -1,6 +1,8 @@
 // ===================== APP — init y navegacion =====================
 
 function showView(v, navEl) {
+  // Cerrar sidebar en mobile al navegar
+  if (window.innerWidth <= 700) closeSidebar();
   VIEW = v;
   PAGE = 1;
 
@@ -50,3 +52,25 @@ document.addEventListener('click', function(e) {
 
 // Init
 setTopActions('reps');
+
+function toggleSidebar() {
+  var sb  = document.getElementById('sidebar');
+  var ov  = document.getElementById('sidebarOverlay');
+  if (!sb) return;
+  var open = sb.classList.contains('open');
+  if (open) { closeSidebar(); } else { openSidebar(); }
+}
+
+function openSidebar() {
+  var sb = document.getElementById('sidebar');
+  var ov = document.getElementById('sidebarOverlay');
+  if (sb) sb.classList.add('open');
+  if (ov) ov.classList.add('open');
+}
+
+function closeSidebar() {
+  var sb = document.getElementById('sidebar');
+  var ov = document.getElementById('sidebarOverlay');
+  if (sb) sb.classList.remove('open');
+  if (ov) ov.classList.remove('open');
+}
