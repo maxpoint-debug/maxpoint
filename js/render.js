@@ -459,11 +459,18 @@ function renderBal() {
   var cRepuestos = RPUS.filter(function(r){return r.estado==='Usado';}).reduce(function(s,r){return s+Number(r.costo||0);},0);
   var tVentas    = (window.VENTAS||[]).reduce(function(s,v){return s+Number(v.precio||0);},0);
   var cVentas    = (window.VENTAS||[]).reduce(function(s,v){return s+Number(v.costo||0);},0);
+  var tEfectivo  = (window.VENTAS||[]).reduce(function(s,v){
+    var pp = Number(v.pp_valor||0);
+    return s + (Number(v.precio||0) - pp);
+  },0);
+  var tPartePago = (window.VENTAS||[]).reduce(function(s,v){return s+Number(v.pp_valor||0);},0);
 
   var sg = document.createElement('div'); sg.className = 'sc-row';
   sg.innerHTML = '<div class="sc"><div class="scl">Reparaciones cobradas</div><div class="scv cg">' + pesos(tCobrado) + '</div></div>'
     + '<div class="sc"><div class="scl">Costo repuestos</div><div class="scv cr">' + pesos(cRepuestos) + '</div></div>'
-    + '<div class="sc"><div class="scl">Ventas</div><div class="scv co">' + pesos(tVentas) + '</div></div>'
+    + '<div class="sc"><div class="scl">Ventas total</div><div class="scv co">' + pesos(tVentas) + '</div></div>'
+    + '<div class="sc"><div class="scl">Efectivo ventas</div><div class="scv cb">' + pesos(tEfectivo) + '</div></div>'
+    + (tPartePago ? '<div class="sc"><div class="scl">Parte de pago</div><div class="scv cy">' + pesos(tPartePago) + '</div></div>' : '')
     + '<div class="sc"><div class="scl">Ganancia ventas</div><div class="scv cg">' + pesos(tVentas-cVentas) + '</div></div>';
   cnt.appendChild(sg);
 
@@ -534,9 +541,10 @@ function renderBal() {
     VENTAS.forEach(function(v) {
       var k = typeof fechaAMesKey === 'function' ? fechaAMesKey(v.fecha) : (v.fecha||'').slice(0,7);
       if (!k) return;
-      if (!venMes[k]) venMes[k] = { cant:0, bruto:0, costo:0 };
+      if (!venMes[k]) venMes[k] = { cant:0, bruto:0, costo:0, pp:0 };
       venMes[k].cant++;
       venMes[k].bruto += Number(v.precio||0);
+      venMes[k].pp    += Number(v.pp_valor||0);
       venMes[k].costo += Number(v.costo||0);
     });
 
@@ -559,8 +567,12 @@ function renderBal() {
 
     // Stats globales
     var sgv = document.createElement('div'); sgv.className = 'sc-row';
+    var totalPP = VENTAS.reduce(function(s,v){return s+Number(v.pp_valor||0);},0);
+    var totalEfectivo = totalBruto - totalPP;
     sgv.innerHTML = '<div class="sc"><div class="scl">Total ventas</div><div class="scv cb">' + VENTAS.length + '</div></div>'
       + '<div class="sc"><div class="scl">Facturado</div><div class="scv co">' + pesos(totalBruto) + '</div></div>'
+      + '<div class="sc"><div class="scl">Efectivo</div><div class="scv cb">' + pesos(totalEfectivo) + '</div></div>'
+      + (totalPP ? '<div class="sc"><div class="scl">Parte de pago</div><div class="scv cy">' + pesos(totalPP) + '</div></div>' : '')
       + '<div class="sc"><div class="scl">Costo total</div><div class="scv cy">' + pesos(totalCosto) + '</div></div>'
       + '<div class="sc"><div class="scl">Ganancia total</div><div class="scv cg">' + pesos(totalGan) + '</div></div>';
     secVen.appendChild(sgv);
@@ -568,7 +580,7 @@ function renderBal() {
     // Tabla mensual
     var twv = document.createElement('div'); twv.className = 'tw'; twv.style.marginTop = '10px';
     var tblv = document.createElement('table');
-    tblv.innerHTML = '<thead><tr><th>Mes</th><th>Ventas</th><th>Facturado</th><th>Costo</th><th>Ganancia</th><th>Margen</th></tr></thead>';
+    tblv.innerHTML = '<thead><tr><th>Mes</th><th>Ventas</th><th>Facturado</th><th>Efectivo</th><th>Parte pago</th><th>Costo</th><th>Gan.</th><th>%</th></tr></thead>';
     var tbodyv = document.createElement('tbody');
     Object.keys(venMes).sort().reverse().forEach(function(k) {
       var vm = venMes[k];
@@ -576,9 +588,12 @@ function renderBal() {
       var margen = vm.bruto ? Math.round(gan / vm.bruto * 100) : 0;
       var pt = k.split('-');
       var tr = document.createElement('tr');
+      var efect = vm.bruto - (vm.pp||0);
       tr.innerHTML = '<td style="font-weight:600">' + (MN[parseInt(pt[1])]||pt[1]) + ' ' + pt[0] + '</td>'
         + '<td class="mono">' + vm.cant + '</td>'
         + '<td class="mono co">' + pesos(vm.bruto) + '</td>'
+        + '<td class="mono cb">' + pesos(efect) + '</td>'
+        + '<td class="mono cy">' + (vm.pp ? pesos(vm.pp) : '—') + '</td>'
         + '<td class="mono cy">' + pesos(vm.costo) + '</td>'
         + '<td class="mono ' + (gan>=0?'cg':'cr') + '">' + pesos(gan) + '</td>'
         + '<td class="mono ' + (margen>=0?'cg':'cr') + '">' + margen + '%</td>';
@@ -595,6 +610,8 @@ function renderBal() {
       tr.innerHTML = '<td style="font-weight:800;color:var(--acc)">Total ' + ano + '</td>'
         + '<td class="mono">' + av.cant + '</td>'
         + '<td class="mono co">' + pesos(av.bruto) + '</td>'
+        + '<td class="mono cb">' + pesos(av.bruto-(av.pp||0)) + '</td>'
+        + '<td class="mono cy">' + (av.pp ? pesos(av.pp) : '—') + '</td>'
         + '<td class="mono cy">' + pesos(av.costo) + '</td>'
         + '<td class="mono ' + (gan>=0?'cg':'cr') + '">' + pesos(gan) + '</td>'
         + '<td class="mono ' + (margen>=0?'cg':'cr') + '">' + margen + '%</td>';
@@ -603,6 +620,71 @@ function renderBal() {
 
     tblv.appendChild(tbodyv); twv.appendChild(tblv); secVen.appendChild(twv);
     cnt.appendChild(secVen);
+
+  // ── Repuestos en Balance ─────────────────────────
+  var anioCurR = new Date().getFullYear();
+  var MN4 = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var rpusAnio = (window.RPUS||[]).filter(function(rp) {
+    var k = typeof fechaAMesKey === 'function' ? fechaAMesKey(rp.fecha||'') : (rp.fecha||'').slice(0,7);
+    return k.startsWith(String(anioCurR));
+  });
+  var totalGastoAnio = rpusAnio.reduce(function(s,rp){return s+Number(rp.costo||0);},0);
+  var rpUsadosAnio   = rpusAnio.filter(function(rp){return rp.estado==='Usado';}).length;
+
+  var secRpu = document.createElement('div'); secRpu.style.marginTop = '20px';
+  secRpu.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--pu);margin-bottom:8px">Repuestos ' + anioCurR + '</div>';
+  var scRpu = document.createElement('div'); scRpu.className = 'sc-row';
+  scRpu.innerHTML = '<div class="sc"><div class="scl">Comprados</div><div class="scv cp">' + rpusAnio.length + '</div></div>'
+    + '<div class="sc"><div class="scl">Usados</div><div class="scv cg">' + rpUsadosAnio + '</div></div>'
+    + '<div class="sc"><div class="scl">Gasto anual</div><div class="scv cr">' + pesos(totalGastoAnio) + '</div></div>';
+  secRpu.appendChild(scRpu);
+
+  var mesRpu = {};
+  (window.RPUS||[]).forEach(function(rp) {
+    if (!rp.fecha) return;
+    var k = typeof fechaAMesKey === 'function' ? fechaAMesKey(rp.fecha) : rp.fecha.slice(0,7);
+    if (!mesRpu[k]) mesRpu[k] = { cant:0, gasto:0, usados:0 };
+    mesRpu[k].cant++; mesRpu[k].gasto += Number(rp.costo||0);
+    if (rp.estado==='Usado') mesRpu[k].usados++;
+  });
+  var twRpu = document.createElement('div'); twRpu.className = 'tw'; twRpu.style.marginTop = '8px';
+  var tblRpu = document.createElement('table');
+  tblRpu.innerHTML = '<thead><tr><th>Mes</th><th>Comprados</th><th>Usados</th><th>Gasto</th></tr></thead>';
+  var tbodyRpu = document.createElement('tbody');
+  Object.keys(mesRpu).sort().reverse().forEach(function(k) {
+    var d = mesRpu[k]; var pt = k.split('-');
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td style="font-weight:600">' + (MN4[parseInt(pt[1])]||pt[1]) + ' ' + pt[0] + '</td>'
+      + '<td class="mono cp">' + d.cant + '</td>'
+      + '<td class="mono cg">' + d.usados + '</td>'
+      + '<td class="mono cr">' + pesos(d.gasto) + '</td>';
+    tbodyRpu.appendChild(tr);
+  });
+  tblRpu.appendChild(tbodyRpu); twRpu.appendChild(tblRpu); secRpu.appendChild(twRpu);
+
+  var topRpu = {};
+  (window.RPUS||[]).forEach(function(rp) {
+    var n = (rp.nombre||'').trim(); if (!n) return;
+    if (!topRpu[n]) topRpu[n] = { cant:0, gasto:0 };
+    topRpu[n].cant++; topRpu[n].gasto += Number(rp.costo||0);
+  });
+  var topArr = Object.keys(topRpu).map(function(n){ return {nombre:n,cant:topRpu[n].cant,gasto:topRpu[n].gasto}; })
+    .sort(function(a,b){return b.cant-a.cant;}).slice(0,10);
+  if (topArr.length) {
+    var divTop = document.createElement('div'); divTop.style.marginTop = '12px';
+    divTop.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--mu);margin-bottom:6px">Top 10 repuestos</div>';
+    topArr.forEach(function(t,i) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px;gap:8px';
+      row.innerHTML = '<span style="color:var(--mu);font-size:10px;width:18px">#' + (i+1) + '</span>'
+        + '<span style="flex:1;color:var(--tx)">' + esc(t.nombre) + '</span>'
+        + '<span style="color:var(--pu);font-weight:700">' + t.cant + 'x</span>'
+        + '<span style="color:var(--mu);font-size:11px">' + pesos(t.gasto) + '</span>';
+      divTop.appendChild(row);
+    });
+    secRpu.appendChild(divTop);
+  }
+  cnt.appendChild(secRpu);
   }
 }
 
