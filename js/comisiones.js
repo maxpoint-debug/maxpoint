@@ -118,6 +118,7 @@ function calcComisiones(mesKey) {
     // Solo contar si fue cobrada o entregada
     var conta = r.pago === 'Pagado' || r.estado === 'Entregado';
     if (!conta) return;
+    if (r.gremio === 'si') return; // gremio no cuenta comision
     if (!resultado[r.tecnico]) resultado[r.tecnico] = { reps:0, gar:0, ven:0, com_rep:0, com_ven:0, total:0 };
     if (r.es_garantia === 'si') {
       resultado[r.tecnico].gar++;
