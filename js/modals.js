@@ -39,6 +39,7 @@ function openEditRep(id) {
   el('fTec').value = r.tecnico   || '';
   setVal('fGar',  r.garantia_ref || '');
   setVal('fNot',  r.notas        || '');
+  var fGremio = el('fGremio'); if (fGremio) fGremio.checked = r.gremio === 'si';
   el('suggBanner').style.display = 'none';
   openM('mForm');
 }
@@ -66,6 +67,7 @@ function saveRep() {
     tecnico:      el('fTec').value,
     garantia_ref: val('fGar'),
     notas:        val('fNot'),
+    gremio:       el('fGremio') && el('fGremio').checked ? 'si' : 'no',
   };
 
   function done(err) {
@@ -530,7 +532,7 @@ function prtEtiq() {
 function openNewRepuesto() {
   el('mRpuT').textContent = 'Nuevo repuesto';
   ['rpNom','rpMod','rpCli','rpOrd','rpNot'].forEach(function(id) { setVal(id, ''); });
-  setVal('rpCos', ''); setVal('rpPrecio', '');
+  setVal('rpCos', ''); setVal('rpPrecio', ''); setVal('rpCant', '1');
   el('rpEst').value = 'Esperando';
   setVal('rpPro', '');
   _afterRpu = null;
@@ -554,13 +556,25 @@ function saveRepuesto() {
     notas:          val('rpNot'),
     fecha:          hoy(),
   };
-  FB.addR(d, function(err) {
-    btn.disabled = false; btn.textContent = 'Guardar';
-    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    closeM('mRpu');
-    if (_afterRpu === 'reopen') { _afterRpu = null; openM('mForm'); }
-    toast('Repuesto guardado', 'var(--pu)');
-  });
+  var cant = Math.max(1, parseInt(val('rpCant')) || 1);
+  var guardados = 0;
+  var errores   = 0;
+  function guardarUno() {
+    FB.addR(d, function(err) {
+      if (err) errores++;
+      guardados++;
+      if (guardados < cant) {
+        guardarUno();
+      } else {
+        btn.disabled = false; btn.textContent = 'Guardar';
+        if (errores) { toast('Error guardando ' + errores + ' repuesto/s', 'var(--rd)'); return; }
+        closeM('mRpu');
+        if (_afterRpu === 'reopen') { _afterRpu = null; openM('mForm'); }
+        toast(cant > 1 ? cant + ' repuestos guardados' : 'Repuesto guardado', 'var(--pu)');
+      }
+    });
+  }
+  guardarUno();
 }
 
 // Sugerencia desde formulario de reparacion
