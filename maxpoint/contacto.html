@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contacto — Max Point</title>
+<meta name="description" content="Escribinos por WhatsApp, visitá nuestro laboratorio en Mercedes o dejanos tu consulta. Estamos para ayudarte.">
+<link rel="icon" href="assets/img/logo.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="nav">
+  <a href="index.html" class="nav__logo">
+    <img src="assets/img/logo.png" alt="Max Point">
+  </a>
+  <nav>
+    <ul class="nav__links">
+      <li><a class="nav__link" href="reparaciones.html">Reparaciones</a></li>
+      <li><a class="nav__link" href="tienda">Equipos</a></li>
+      <li><a class="nav__link" href="index.html#casos">Casos reales</a></li>
+      <li><a class="nav__link" href="index.html#nosotros">Nosotros</a></li>
+      <li><a class="nav__link" href="contacto.html">Contacto</a></li>
+    </ul>
+  </nav>
+  <div class="nav__right">
+    <a href="contacto.html" class="btn btn--primary nav__cta">
+      Solicitar diagnóstico
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </a>
+  </div>
+</header>
+
+<section class="page-hero">
+  <div class="wrap reveal">
+    <div class="eyebrow">Contacto</div>
+    <h1 style="margin-top:16px;">Estamos para ayudarte.</h1>
+    <p>Elegí el canal que prefieras. Nunca vas a esperar una respuesta automática.</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap reveal" style="display:grid; grid-template-columns:1.1fr 0.9fr; gap:clamp(40px,6vw,96px); align-items:start;">
+
+    <!-- Formulario -->
+    <div>
+      <div class="eyebrow" style="margin-bottom:24px;">Contanos qué necesitás</div>
+      <form id="contactForm" onsubmit="return false;">
+        <div class="form-field">
+          <label for="nombre">Nombre</label>
+          <input type="text" id="nombre" name="nombre" required>
+        </div>
+        <div class="form-field">
+          <label for="equipo">Equipo</label>
+          <select id="equipo" name="equipo">
+            <option>iPhone</option>
+            <option>iPad</option>
+            <option>Mac</option>
+            <option>Apple Watch</option>
+            <option>AirPods</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="mensaje">Contanos qué le pasa</label>
+          <textarea id="mensaje" name="mensaje" required></textarea>
+        </div>
+        <button type="submit" class="btn btn--primary" id="sendBtn">
+          Enviar por WhatsApp
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+
+      <div class="contact-channels">
+        <div class="channel">
+          <div class="channel__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M17.6 6.3A8.9 8.9 0 0 0 3.1 16.9L2 22l5.2-1.4a8.9 8.9 0 0 0 4.3 1.1h0a8.9 8.9 0 0 0 6.1-15.4Z"/></svg>
+            <div><h4>WhatsApp</h4><span>Respuesta rápida en horario comercial</span></div>
+          </div>
+          <a href="https://wa.me/5490000000000" target="_blank" rel="noopener" class="link-arrow">Escribir</a>
+        </div>
+        <div class="channel">
+          <div class="channel__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="0.6"/></svg>
+            <div><h4>Instagram</h4><span>@maxpoint — reemplazá por el usuario real</span></div>
+          </div>
+          <a href="https://instagram.com/maxpoint" target="_blank" rel="noopener" class="link-arrow">Ver perfil</a>
+        </div>
+        <div class="channel">
+          <div class="channel__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <div><h4>Local</h4><span>Mercedes, Buenos Aires — completar dirección</span></div>
+          </div>
+          <a href="#mapa" class="link-arrow">Ver mapa</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ubicación / horarios -->
+    <div>
+      <div class="eyebrow" style="margin-bottom:24px;">Ubicación y horarios</div>
+      <div id="mapa" class="ph" style="--ar:16/9;">
+        <div class="ph__label"><b>Mapa</b>Pegá acá el iframe de Google Maps de tu local</div>
+      </div>
+      <!-- Cuando tengas el link "insertar mapa" de Google Maps, reemplazá el bloque .ph de arriba por: -->
+      <!-- <iframe class="map-frame" src="URL_DE_GOOGLE_MAPS_EMBED" loading="lazy"></iframe> -->
+
+      <div class="hours-list">
+        <div><span>Lunes a viernes</span><span>[completar]</span></div>
+        <div><span>Sábados</span><span>[completar]</span></div>
+        <div><span>Domingos</span><span>Cerrado</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section section--paper">
+  <div class="wrap reveal">
+    <div class="eyebrow">Preguntas frecuentes</div>
+    <h2 style="margin-top:16px; font-size:var(--step-3); margin-bottom:40px;">Antes de escribirnos.</h2>
+    <div class="faq">
+      <div class="faq-item">
+        <button class="faq-item__q">¿Necesito sacar turno?
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="faq-item__a"><p>No es obligatorio, pero coordinar por WhatsApp reduce el tiempo de espera.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-item__q">¿Qué formas de pago aceptan?
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="faq-item__a"><p>[Completar con los medios de pago reales del local]</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer__top">
+      <div>
+        <div class="footer__brand"><img src="assets/img/logo.png" alt="Max Point"></div>
+        <p class="footer__desc">Especialistas en el ecosistema Apple. Mercedes, Buenos Aires.</p>
+      </div>
+      <div><h4>Empresa</h4><ul><li><a href="index.html#nosotros">Nosotros</a></li><li><a href="index.html#casos">Casos reales</a></li></ul></div>
+      <div><h4>Servicios</h4><ul><li><a href="reparaciones.html">Reparaciones</a></li><li><a href="tienda">Equipos</a></li></ul></div>
+      <div><h4>Contacto</h4><ul><li><a href="https://wa.me/5490000000000">WhatsApp</a></li><li><a href="https://instagram.com/maxpoint">Instagram</a></li><li><a href="contacto.html">Ubicación</a></li></ul></div>
+    </div>
+    <div class="footer__bottom"><span>© 2026 Max Point.</span><span>La confianza comienza cuando tu equipo llega a las manos correctas.</span></div>
+  </div>
+</footer>
+
+<a href="https://wa.me/5490000000000" target="_blank" rel="noopener" class="wa-float" aria-label="Escribir por WhatsApp">
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.3A8.9 8.9 0 0 0 3.1 16.9L2 22l5.2-1.4a8.9 8.9 0 0 0 4.3 1.1h0a8.9 8.9 0 0 0 6.1-15.4ZM12 20.1a7.4 7.4 0 0 1-3.8-1l-.3-.2-3.1.8.8-3-.2-.3a7.4 7.4 0 1 1 13.7-3.9 7.4 7.4 0 0 1-7.1 7.6Zm4-5.5c-.2-.1-1.3-.6-1.5-.7s-.4-.1-.5.1-.6.7-.7.9-.3.2-.5.1a6 6 0 0 1-3-2.6c-.2-.4.2-.4.5-1.3 0-.1 0-.2 0-.3l-.6-1.5c-.2-.4-.3-.3-.5-.3h-.4a.9.9 0 0 0-.6.3 2.7 2.7 0 0 0-.8 2 4.6 4.6 0 0 0 1 2.5 10.6 10.6 0 0 0 4.4 3.9c1.5.6 1.5.4 1.8.4a1.5 1.5 0 0 0 1-.7 1.2 1.2 0 0 0 .1-.7c-.1-.1-.2-.2-.4-.3Z"/></svg>
+</a>
+
+<script src="js/main.js"></script>
+<script>
+  document.getElementById('contactForm').addEventListener('submit', () => {
+    const nombre = document.getElementById('nombre').value;
+    const equipo = document.getElementById('equipo').value;
+    const mensaje = document.getElementById('mensaje').value;
+    const texto = encodeURIComponent(`Hola Max Point! Soy ${nombre}. Tengo un ${equipo} y necesito: ${mensaje}`);
+    window.open(`https://wa.me/5490000000000?text=${texto}`, '_blank');
+  });
+</script>
+</body>
+</html>
