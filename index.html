@@ -27,8 +27,7 @@
 <div class="app">
 
   <!-- SIDEBAR -->
-  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar">
     <div class="logo">
       <div class="logo-t">MaxPoint</div>
       <div class="logo-s">Mercedes — Av 17 &amp; 34</div>
@@ -45,10 +44,6 @@
         <span class="nb r" id="nb-r" style="display:none"></span>
       </div>
       <div class="ns">Gestion</div>
-      <div class="ni" onclick="showView('seg',this)"><span class="ico">&#128276;</span>Seguimientos<span class="nb r" id="nb-seg" style="display:none">0</span></div>
-      <div class="ni" onclick="showView('ven',this)"><span class="ico">&#128201;</span>Ventas</div>
-      <div class="ni" onclick="showView('stock',this)"><span class="ico">&#128241;</span>Stock</div>
-      <div class="ni" onclick="showView('cot',this)"><span class="ico">&#128242;</span>Cotizador</div>
       <div class="ni" onclick="showView('cli',this)"><span class="ico">👤</span>Clientes</div>
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
       <div class="ns">Admin</div>
@@ -68,7 +63,6 @@
       <span id="syncmsg">Conectando con Firebase...</span>
     </div>
     <div class="topbar">
-      <button class="menu-btn" id="menuBtn" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
       <div class="topbar-t" id="topT">Reparaciones</div>
       <div class="topbar-r" id="topA"></div>
     </div>
@@ -132,10 +126,6 @@
       </select>
     </div>
     <div class="f"><label>Garantia de orden</label><input id="fGar" placeholder="Ej: #0045"/></div>
-    <div class="f full" style="display:flex;align-items:center;gap:10px;padding:4px 0">
-      <input type="checkbox" id="fGremio" style="width:18px;height:18px;cursor:pointer"/>
-      <label for="fGremio" style="cursor:pointer;font-size:13px;color:var(--tx)">Cliente gremio <span style="font-size:11px;color:var(--mu)">(no suma comision)</span></label>
-    </div>
     <div class="f full"><label>Notas</label><textarea id="fNot"></textarea></div>
   </div>
   <div class="fa">
@@ -209,7 +199,6 @@
     <div class="f full"><label>Nombre repuesto *</label><input id="rpNom"/></div>
     <div class="f"><label>Modelo equipo</label><input id="rpMod"/></div>
     <div class="f"><label>Costo interno ($)</label><input id="rpCos" type="number"/></div>
-    <div class="f"><label>Cantidad</label><input id="rpCant" type="number" value="1" min="1" max="50" placeholder="1"/></div>
     <div class="f"><label>Precio al cliente ($)</label><input id="rpPrecio" type="number" placeholder="Sugerido por catalogo"/></div>
     <div class="f"><label>Estado</label>
       <select id="rpEst">
@@ -282,6 +271,12 @@
     <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu);margin-bottom:10px">Equipo vendido</div>
       <div class="f full"><label>Modelo *</label><input id="vMod" placeholder="iPhone 14 Pro"/></div>
+      <div class="f"><label>Condicion</label>
+        <select id="vCondicion">
+          <option value="usado">Usado</option>
+          <option value="nuevo">Nuevo en caja</option>
+        </select>
+      </div>
       <div class="f"><label>Capacidad</label><input id="vCap" placeholder="128GB"/></div>
       <div class="f"><label>Color</label><input id="vCol" placeholder="Negro"/></div>
       <div class="f full"><label>IMEI *</label><input id="vImei" type="number" placeholder="354001..."/></div>
