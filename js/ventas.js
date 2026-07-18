@@ -58,7 +58,7 @@ function saveVenta() {
     pp_imei:     partePago ? val('vPpImei') : '',
     pp_valor:    partePago ? val('vPpValor') : '',
     fecha:       _ventaId ? (VENTAS.find(function(x){return x.id===_ventaId;})||{}).fecha || hoy() : hoy(),
-    garantia:    '6 meses',
+    garantia:    el('vCondicion') && el('vCondicion').value === 'nuevo' ? 'Equipo nuevo en caja sellada. 1 año de garantia oficial' : '6 meses',
     seguimiento: 'pendiente',
   };
 
