@@ -19,7 +19,7 @@ var _pagoMedio = 'Efectivo'; // Medio de pago seleccionado
 var _sugg     = null;        // Repuesto sugerido pendiente { nombre, equipo }
 var _afterRpu = null;        // Acción post-guardado de repuesto
 
-var PIN = '1234'; // ← CAMBIAR antes de usar
+var PIN = '4354'; // ← CAMBIAR antes de usar
 
 // ===================== CATALOGO =====================
 var CATALOGO   = [];   // productos del proveedor (desde Firebase)
