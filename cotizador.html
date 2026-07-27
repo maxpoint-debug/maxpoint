@@ -263,12 +263,111 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
     </div>
   </div>
 
-  <!-- Extras -->
+  <!-- Problemas predefinidos -->
   <div class="card">
     <h2>Otros problemas <span style="font-size:13px;font-weight:400;color:var(--mu)">(opcional)</span></h2>
-    <p>Agregá otros daños: cámara, Face ID, botones, tapa, etc.</p>
-    <div id="extrasWrap"></div>
-    <button class="btn-add-extra" onclick="agregarExtra()">+ Agregar problema</button>
+    <p>Seleccioná si hay algún problema adicional.</p>
+
+    <!-- Face ID -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Face ID</div>
+      <div class="opts">
+        <div class="opt sel" data-grupo="faceid" data-val="ok" onclick="selProblema(this,'faceid')">
+          <div class="opt-ico">✅</div><div class="opt-lbl">Anda</div>
+        </div>
+        <div class="opt" data-grupo="faceid" data-val="no" onclick="selProblema(this,'faceid')">
+          <div class="opt-ico">❌</div><div class="opt-lbl">No anda</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camara trasera -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Cámara trasera</div>
+      <div class="opts" style="grid-template-columns:repeat(3,1fr)">
+        <div class="opt sel" data-grupo="camtras" data-val="ok" onclick="selProblema(this,'camtras')">
+          <div class="opt-ico">✅</div><div class="opt-lbl">Anda</div>
+        </div>
+        <div class="opt" data-grupo="camtras" data-val="no" onclick="selProblema(this,'camtras')">
+          <div class="opt-ico">❌</div><div class="opt-lbl">No anda</div>
+        </div>
+        <div class="opt" data-grupo="camtras" data-val="borrosa" onclick="selProblema(this,'camtras')">
+          <div class="opt-ico">🌫️</div><div class="opt-lbl">Borrosa</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Camara frontal -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Cámara frontal</div>
+      <div class="opts" style="grid-template-columns:repeat(3,1fr)">
+        <div class="opt sel" data-grupo="camfront" data-val="ok" onclick="selProblema(this,'camfront')">
+          <div class="opt-ico">✅</div><div class="opt-lbl">Anda</div>
+        </div>
+        <div class="opt" data-grupo="camfront" data-val="no" onclick="selProblema(this,'camfront')">
+          <div class="opt-ico">❌</div><div class="opt-lbl">No anda</div>
+        </div>
+        <div class="opt" data-grupo="camfront" data-val="borrosa" onclick="selProblema(this,'camfront')">
+          <div class="opt-ico">🌫️</div><div class="opt-lbl">Borrosa</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Carcasa -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Carcasa trasera</div>
+      <div class="opts">
+        <div class="opt sel" data-grupo="carcasa" data-val="ok" onclick="selProblema(this,'carcasa')">
+          <div class="opt-ico">✅</div><div class="opt-lbl">Ok</div>
+        </div>
+        <div class="opt" data-grupo="carcasa" data-val="danada" onclick="selProblema(this,'carcasa')">
+          <div class="opt-ico">💥</div><div class="opt-lbl">Dañada</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vidrio camara -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Vidrio de cámara</div>
+      <div class="opts">
+        <div class="opt sel" data-grupo="vidriocam" data-val="ok" onclick="selProblema(this,'vidriocam')">
+          <div class="opt-ico">✅</div><div class="opt-lbl">Ok</div>
+        </div>
+        <div class="opt" data-grupo="vidriocam" data-val="roto" onclick="selProblema(this,'vidriocam')">
+          <div class="opt-ico">🔍</div><div class="opt-lbl">Roto</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Botones</div>
+      <div class="opts">
+        <div class="opt sel" data-grupo="botones" data-val="ok" onclick="selProblema(this,'botones')">
+          <div class="opt-ico">✅</div><div class="opt-lbl">Ok</div>
+        </div>
+        <div class="opt" data-grupo="botones" data-val="falla" onclick="selProblema(this,'botones')">
+          <div class="opt-ico">❌</div><div class="opt-lbl">Falla alguno</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pieza desconocida -->
+    <div style="margin-bottom:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Pieza desconocida</div>
+      <div class="opts" style="margin-bottom:8px">
+        <div class="opt sel" data-grupo="pieza" data-val="ok" onclick="selProblema(this,'pieza')">
+          <div class="opt-ico">✅</div><div class="opt-lbl">Sin problemas</div>
+        </div>
+        <div class="opt" data-grupo="pieza" data-val="si" onclick="selProblema(this,'pieza')">
+          <div class="opt-ico">❓</div><div class="opt-lbl">Hay algo raro</div>
+        </div>
+      </div>
+      <div id="piezaDescWrap" style="display:none">
+        <input type="text" id="piezaDesc" placeholder="¿Qué notás que no anda bien?"
+          style="width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;color:var(--tx);font-size:14px;outline:none"/>
+      </div>
+    </div>
   </div>
 
   <!-- Interés -->
@@ -364,7 +463,6 @@ let equipoSel = null;
 let pantalla  = 'ok';
 let estetica  = 'ok';
 let interes   = 'usado';
-let extras    = [];
 let acResults = [];
 let acIdx     = -1;
 
@@ -502,33 +600,84 @@ window.selInteres = function(el) {
   interes = el.dataset.val;
 };
 
-// ── Extras ────────────────────────────────────────────
-window.agregarExtra = function() {
-  const id = 'ex_' + Date.now();
-  extras.push({ id, lbl: '', usd: 0 });
-  renderExtras();
+// ── Problemas predefinidos ────────────────────────────
+let problemas = { faceid:'ok', camtras:'ok', camfront:'ok', carcasa:'ok', vidriocam:'ok', botones:'ok', pieza:'ok' };
+
+window.selProblema = function(el, grupo) {
+  el.closest('.opts').querySelectorAll('.opt').forEach(o => o.classList.remove('sel'));
+  el.classList.add('sel');
+  problemas[grupo] = el.dataset.val;
+  if (grupo === 'pieza') {
+    document.getElementById('piezaDescWrap').style.display = el.dataset.val === 'si' ? 'block' : 'none';
+  }
 };
 
-function renderExtras() {
-  const wrap = document.getElementById('extrasWrap');
-  wrap.innerHTML = '';
-  extras.forEach(ex => {
-    const row = document.createElement('div');
-    row.className = 'extra-row';
-    row.innerHTML = `
-      <input type="text" placeholder="Ej: cámara trasera, Face ID..." value="${ex.lbl}"
-        data-id="${ex.id}" oninput="extraLbl(this)" style="flex:1;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;color:var(--tx);font-size:13px;outline:none"/>
-      <input type="number" placeholder="USD" value="${ex.usd||''}" min="0"
-        data-id="${ex.id}" oninput="extraUsd(this)" style="width:70px;background:var(--s2);border:1px solid rgba(242,95,92,.3);border-radius:6px;padding:8px;color:var(--rd);font-size:13px;font-weight:700;text-align:center;outline:none"/>
-      <button data-id="${ex.id}" onclick="quitarExtra(this.dataset.id)"
-        style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:18px;padding:0 4px">✕</button>`;
-    wrap.appendChild(row);
+function esPro(modelo) {
+  return /pro/i.test(modelo);
+}
+
+function buscarEnCatalogo(keywords) {
+  return CATALOGO.find(p => {
+    const lbl = p.label.toLowerCase();
+    return keywords.every(k => lbl.includes(k));
   });
 }
 
-window.extraLbl = el => { const ex = extras.find(e => e.id === el.dataset.id); if(ex) ex.lbl = el.value; };
-window.extraUsd = el => { const ex = extras.find(e => e.id === el.dataset.id); if(ex) ex.usd = parseFloat(el.value)||0; };
-window.quitarExtra = id => { extras = extras.filter(e => e.id !== id); renderExtras(); };
+function getDescuentoProblema(grupo, val, modelo) {
+  const mNum = modelo.toLowerCase().match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
+  const mStr = mNum ? mNum[0].trim() : null;
+  const isPro = esPro(modelo);
+  let cat, desc, lbl, consultar = false;
+
+  switch(grupo) {
+    case 'faceid':
+      if (val !== 'no') return null;
+      cat = mStr ? buscarEnCatalogo(['face', 'iphone', mStr]) : null;
+      desc = cat ? Math.round(cat.costo_usd) : 80;
+      lbl  = cat ? 'Face ID (' + cat.label + ')' : 'Face ID (estimado)';
+      return { lbl, usd: desc };
+
+    case 'camtras':
+      if (val === 'ok') return null;
+      cat = mStr ? buscarEnCatalogo(['camara', 'iphone', mStr]) || buscarEnCatalogo(['camera', 'iphone', mStr]) : null;
+      desc = cat ? Math.round(cat.costo_usd) : (isPro ? 100 : 40);
+      lbl  = cat ? 'Cámara trasera (' + cat.label + ')' : 'Cámara trasera ' + (val === 'borrosa' ? '(borrosa)' : '') + ' (estimado)';
+      return { lbl, usd: desc };
+
+    case 'camfront':
+      if (val === 'ok') return null;
+      cat = mStr ? buscarEnCatalogo(['frontal', 'iphone', mStr]) : null;
+      if (!cat) return { lbl: 'Cámara frontal ' + (val === 'borrosa' ? '(borrosa)' : '(no anda)'), usd: 0, consultar: true };
+      return { lbl: 'Cámara frontal (' + cat.label + ')', usd: Math.round(cat.costo_usd) };
+
+    case 'carcasa':
+      if (val === 'ok') return null;
+      cat = mStr ? buscarEnCatalogo(['carcasa', 'iphone', mStr]) || buscarEnCatalogo(['tapa', 'iphone', mStr]) : null;
+      if (!cat) return { lbl: 'Carcasa dañada', usd: 0, consultar: true };
+      return { lbl: 'Carcasa (' + cat.label + ')', usd: Math.round(cat.costo_usd) };
+
+    case 'vidriocam':
+      if (val === 'ok') return null;
+      cat = mStr ? buscarEnCatalogo(['vidrio', 'camara', mStr]) : null;
+      desc = cat ? Math.round(cat.costo_usd) : 20;
+      lbl  = cat ? 'Vidrio cámara (' + cat.label + ')' : 'Vidrio de cámara (estimado)';
+      return { lbl, usd: desc };
+
+    case 'botones':
+      if (val === 'ok') return null;
+      cat = mStr ? buscarEnCatalogo(['boton', 'iphone', mStr]) || buscarEnCatalogo(['flex', 'boton', mStr]) : null;
+      desc = cat ? Math.round(cat.costo_usd) : 30;
+      lbl  = cat ? 'Botones (' + cat.label + ')' : 'Botones (estimado)';
+      return { lbl, usd: desc };
+
+    case 'pieza':
+      if (val === 'ok') return null;
+      const desc2 = document.getElementById('piezaDesc') ? document.getElementById('piezaDesc').value.trim() : '';
+      return { lbl: 'Pieza desconocida' + (desc2 ? ': ' + desc2 : ''), usd: 40 };
+
+    default: return null;
+  }
+}
 
 // ── Calcular ──────────────────────────────────────────
 window.calcularResultado = function() {
@@ -568,8 +717,11 @@ window.calcularResultado = function() {
     descuentos.push({ lbl: lblPan, usd: descPan });
   }
 
-  // Extras
-  extras.forEach(ex => { if (ex.usd) descuentos.push({ lbl: ex.lbl || 'Descuento', usd: ex.usd }); });
+  // Problemas predefinidos
+  Object.keys(problemas).forEach(grupo => {
+    const d = getDescuentoProblema(grupo, problemas[grupo], equipoSel.modelo);
+    if (d) descuentos.push(d);
+  });
 
   const totalDesc = descuentos.reduce((s, d) => s + d.usd, 0);
   const total     = Math.max(0, base - totalDesc);
@@ -580,7 +732,8 @@ window.calcularResultado = function() {
 
   let det = `<div class="res-row"><span class="res-lbl">Precio base</span><span class="res-val base">USD ${base}</span></div>`;
   descuentos.forEach(d => {
-    det += `<div class="res-row"><span class="res-lbl">${d.lbl}</span><span class="res-val neg">- USD ${d.usd}</span></div>`;
+    const valStr = d.consultar ? '<span style="color:var(--or)">Consultar precio</span>' : `- USD ${d.usd}`;
+    det += `<div class="res-row"><span class="res-lbl">${d.lbl}</span><span class="res-val neg">${valStr}</span></div>`;
   });
   document.getElementById('resDetalle').innerHTML = det;
 
@@ -618,8 +771,10 @@ window.enviarWA = function() {
     '',
     `📊 *Resultado de la cotización:*`,
     `• Batería: ${r.bat}%`,
-    ...(r.descuentos.map(d => `• ${d.lbl}: - USD ${d.usd}`)),
-    `• *Valor de toma: USD ${r.total}*`,
+    ...(r.descuentos.map(d => d.consultar
+      ? `• ${d.lbl}: consultar precio`
+      : `• ${d.lbl}: - USD ${d.usd}`)),
+    `• *Valor de toma estimado: USD ${r.total}*`,
     '',
     `Estoy buscando: *${intTexto[r.interes] || r.interes}*`,
     '',
@@ -644,7 +799,12 @@ window.reiniciar = function() {
   document.querySelectorAll('.opt[data-val="ok"]').forEach(o => o.classList.add('sel'));
   document.querySelectorAll('.iopt').forEach(o => o.classList.remove('sel'));
   document.querySelector('.iopt[data-val="usado"]').classList.add('sel');
-  renderExtras();
+  problemas = { faceid:'ok', camtras:'ok', camfront:'ok', carcasa:'ok', vidriocam:'ok', botones:'ok', pieza:'ok' };
+  document.querySelectorAll('[data-grupo]').forEach(o => {
+    o.classList.remove('sel');
+    if (o.dataset.val === 'ok') o.classList.add('sel');
+  });
+  document.getElementById('piezaDescWrap').style.display = 'none';
   mostrarVista('view1');
 };
 </script>
