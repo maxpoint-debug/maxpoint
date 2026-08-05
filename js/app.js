@@ -74,3 +74,8 @@ function closeSidebar() {
   if (sb) sb.classList.remove('open');
   if (ov) ov.classList.remove('open');
 }
+
+// Exponer handlers usados desde HTML inline (compatibilidad Safari/iOS).
+window.toggleSidebar = toggleSidebar;
+window.openSidebar = openSidebar;
+window.closeSidebar = closeSidebar;

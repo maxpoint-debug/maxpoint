@@ -38,10 +38,84 @@ const cSt  = collection(db, 'stock');
 const dCfg  = doc(db, 'config', 'catalogo');
 const dCom  = doc(db, 'config', 'comisiones');
 
+// V2.1 — entidades base. Conviven con las colecciones actuales.
+const cCli = collection(db, 'clientes');
+const cEq  = collection(db, 'equipos');
+const cMov = collection(db, 'movimientos');
+
+function normKey(v) {
+  return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+}
+function phoneKey(v) { return String(v || '').replace(/\D/g, ''); }
+function safeId(prefix, key) { return prefix + '_' + (key || Math.random().toString(36).slice(2, 12)).slice(0, 80); }
+
+async function v21Cliente(data) {
+  const tel = phoneKey(data.telefono);
+  const key = tel || normKey(data.nombre);
+  if (!key) return null;
+  const id = safeId('cli', key);
+  await setDoc(doc(db, 'clientes', id), {
+    nombre: data.nombre || '', telefono: data.telefono || '', dni: data.dni || '',
+    direccion: data.direccion || '', email: data.email || '',
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  return id;
+}
+
+async function v21Equipo(data, origen, origenId, clienteId) {
+  const imei = normKey(data.imei);
+  const key = imei || normKey(origen + '_' + origenId);
+  if (!key) return null;
+  const id = safeId('eq', key);
+  await setDoc(doc(db, 'equipos', id), {
+    imei: data.imei || '', modelo: data.modelo || data.equipo || '', capacidad: data.capacidad || '',
+    color: data.color || '', estadoActual: data.estado || '', origen: origen, origenId: origenId,
+    clienteId: clienteId || '', updatedAt: serverTimestamp()
+  }, { merge: true });
+  return id;
+}
+
+async function v21Movimiento(tipo, origen, origenId, data, extra) {
+  await addDoc(cMov, {
+    tipo: tipo, origen: origen, origenId: origenId,
+    clienteId: (extra && extra.clienteId) || '', equipoId: (extra && extra.equipoId) || '',
+    estado: data.estado || '', detalle: (extra && extra.detalle) || '',
+    fecha: serverTimestamp()
+  });
+}
+
+async function v21Sync(origen, origenId, data, tipo, extra) {
+  try {
+    // Updates parciales (ej. solo estado/pago) no deben borrar relaciones existentes.
+    const tieneIdentidad = !!(data.nombre || data.telefono || data.imei || data.modelo || data.equipo);
+    let clienteId = null, equipoId = null;
+    if (tieneIdentidad) {
+      clienteId = await v21Cliente(data);
+      equipoId = await v21Equipo(data, origen, origenId, clienteId);
+      const col = origen === 'reparacion' ? 'reparaciones' : (origen === 'venta' ? 'ventas' : 'stock');
+      const links = { _v2: 1 };
+      if (clienteId) links.clienteId = clienteId;
+      if (equipoId) links.equipoId = equipoId;
+      await updateDoc(doc(db, col, origenId), links);
+    }
+    await v21Movimiento(tipo, origen, origenId, data, { clienteId, equipoId, detalle: extra && extra.detalle });
+  } catch (e) {
+    // V2.1 nunca debe impedir la operacion principal de V1.
+    console.warn('MaxPoint V2.1 sync:', e);
+  }
+}
+
+
 // --- Sobreescribir FB con funciones reales ---
-window.FB.add   = (d, cb)      => addDoc(cR,  { ...d, _ts: serverTimestamp() }).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.addId = (id, d, cb)  => setDoc(doc(db, 'reparaciones', id), { ...d, _ts: serverTimestamp() }).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.upd   = (id, d, cb)  => updateDoc(doc(db, 'reparaciones', id), { ...d, _upd: serverTimestamp() }).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.add = (d, cb) => addDoc(cR, { ...d, _ts: serverTimestamp() })
+  .then(ref => { cb(null); v21Sync('reparacion', ref.id, d, 'reparacion_creada'); })
+  .catch(e => cb(e.message));
+// Importacion historica queda intacta: no migra masivamente datos a V2.1.
+window.FB.addId = (id, d, cb) => setDoc(doc(db, 'reparaciones', id), { ...d, _ts: serverTimestamp() })
+  .then(() => cb(null)).catch(e => cb(e.message));
+window.FB.upd = (id, d, cb) => updateDoc(doc(db, 'reparaciones', id), { ...d, _upd: serverTimestamp() })
+  .then(() => { cb(null); v21Sync('reparacion', id, d, 'reparacion_actualizada'); })
+  .catch(e => cb(e.message));
 window.FB.del   = (id, cb)     => deleteDoc(doc(db, 'reparaciones', id)).then(() => cb(null)).catch(e => cb(e.message));
 window.FB.addR  = (d, cb)      => addDoc(cRp, { ...d, _ts: serverTimestamp() }).then(() => cb(null)).catch(e => cb(e.message));
 window.FB.updR  = (id, d, cb)  => updateDoc(doc(db, 'repuestos', id), { ...d, _upd: serverTimestamp() }).then(() => cb(null)).catch(e => cb(e.message));
@@ -134,13 +208,21 @@ onSnapshot(dCfg, (snap) => {
 window.FB.setComCfg = (d, cb) => setDoc(dCom, d).then(()=>cb(null)).catch(e=>cb(e.message));
 
 // ── CRUD ventas ──
-window.FB.addV  = (d, cb)      => addDoc(cVen, d).then(()=>cb(null)).catch(e=>cb(e.message));
-window.FB.updV  = (id, d, cb)  => updateDoc(doc(cVen,id), d).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.addV = (d, cb) => addDoc(cVen, { ...d, _ts: serverTimestamp() })
+  .then(ref => { cb(null); v21Sync('venta', ref.id, d, 'venta_creada'); })
+  .catch(e => cb(e.message));
+window.FB.updV = (id, d, cb) => updateDoc(doc(cVen,id), { ...d, _upd: serverTimestamp() })
+  .then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); })
+  .catch(e => cb(e.message));
 window.FB.delV  = (id, cb)     => deleteDoc(doc(cVen,id)).then(()=>cb(null)).catch(e=>cb(e.message));
 
 // ── CRUD stock ──
-window.FB.addSt = (d, cb)      => addDoc(cSt, d).then(()=>cb(null)).catch(e=>cb(e.message));
-window.FB.updSt = (id, d, cb)  => updateDoc(doc(cSt,id), d).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.addSt = (d, cb) => addDoc(cSt, { ...d, _ts: serverTimestamp() })
+  .then(ref => { cb(null); v21Sync('stock', ref.id, d, 'stock_creado'); })
+  .catch(e => cb(e.message));
+window.FB.updSt = (id, d, cb) => updateDoc(doc(cSt,id), { ...d, _upd: serverTimestamp() })
+  .then(() => { cb(null); v21Sync('stock', id, d, 'stock_actualizado'); })
+  .catch(e => cb(e.message));
 window.FB.delSt = (id, cb)     => deleteDoc(doc(cSt,id)).then(()=>cb(null)).catch(e=>cb(e.message));
 
 // ── setUsados ──
