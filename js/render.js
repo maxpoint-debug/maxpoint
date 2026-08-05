@@ -61,7 +61,14 @@ function renderReps() {
   var inp = document.createElement('input');
   inp.placeholder = 'Buscar nombre, equipo, orden...';
   inp.value = SEARCH;
-  inp.addEventListener('input', function() { SEARCH = this.value; PAGE = 1; renderReps(); });
+  inp.addEventListener('input', function() {
+    var pos = this.selectionStart;
+    SEARCH = this.value; PAGE = 1; renderReps();
+    requestAnimationFrame(function() {
+      var next = document.querySelector('.toolbar .si input');
+      if (next) { next.focus(); try { next.setSelectionRange(pos, pos); } catch(e) {} }
+    });
+  });
   si.appendChild(ico); si.appendChild(inp); tb.appendChild(si);
 
   var sel = document.createElement('select'); sel.className = 'fsel';
