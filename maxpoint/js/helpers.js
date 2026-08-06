@@ -112,6 +112,23 @@ function setVal(id, v) {
   if (e) e.value = v || '';
 }
 
+function copiarTexto(texto, mensaje) {
+  if (!texto) { toast('No hay dato para copiar', 'var(--rd)'); return; }
+  function copiarFallback() {
+    var area = document.createElement('textarea');
+    area.value = texto; area.style.position = 'fixed'; area.style.opacity = '0';
+    document.body.appendChild(area); area.select();
+    try { document.execCommand('copy'); toast(mensaje || 'Copiado'); }
+    catch(e) { toast('Error al copiar', 'var(--rd)'); }
+    document.body.removeChild(area);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(texto).then(function() { toast(mensaje || 'Copiado'); }).catch(copiarFallback);
+  } else {
+    copiarFallback();
+  }
+}
+
 // --- Toast ---
 function toast(msg, color) {
   var t = el('toast');
