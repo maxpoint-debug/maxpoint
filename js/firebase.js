@@ -11,6 +11,7 @@ import {
   deleteDoc,
   doc,
   setDoc,
+  getDoc,
   getDocs,
   writeBatch,
   onSnapshot,
@@ -49,56 +50,81 @@ function normKey(v) {
 function phoneKey(v) { return String(v || '').replace(/\D/g, ''); }
 function safeId(prefix, key) { return prefix + '_' + (key || Math.random().toString(36).slice(2, 12)).slice(0, 80); }
 
+// Normaliza los campos V1 sin modificar los documentos de origen.
+// En reparaciones, `equipo` es el modelo comercial y `modelo` es IMEI/serie.
+function v22DatosEquipo(data, origen) {
+  return {
+    imei: origen === 'reparacion' ? (data.modelo || '') : (data.imei || ''),
+    modelo: origen === 'reparacion' ? (data.equipo || '') : (data.modelo || data.equipo || ''),
+    capacidad: data.capacidad || '',
+    color: data.color || '',
+    estadoActual: data.estado || '',
+  };
+}
+
+async function v22Upsert(ref, data) {
+  const previo = await getDoc(ref);
+  const meta = { schemaVersion: 2, updatedAt: serverTimestamp() };
+  if (!previo.exists() || !previo.data().createdAt) meta.createdAt = serverTimestamp();
+  await setDoc(ref, Object.assign({}, data, meta), { merge: true });
+}
+
 async function v21Cliente(data) {
   const tel = phoneKey(data.telefono);
   const key = tel || normKey(data.nombre);
   if (!key) return null;
   const id = safeId('cli', key);
-  await setDoc(doc(db, 'clientes', id), {
+  await v22Upsert(doc(db, 'clientes', id), {
     nombre: data.nombre || '', telefono: data.telefono || '', dni: data.dni || '',
-    direccion: data.direccion || '', email: data.email || '',
-    updatedAt: serverTimestamp()
-  }, { merge: true });
+    direccion: data.direccion || '', email: data.email || ''
+  });
   return id;
 }
 
 async function v21Equipo(data, origen, origenId, clienteId) {
-  const imei = normKey(data.imei);
+  const equipo = v22DatosEquipo(data, origen);
+  const imei = normKey(equipo.imei);
   const key = imei || normKey(origen + '_' + origenId);
   if (!key) return null;
   const id = safeId('eq', key);
-  await setDoc(doc(db, 'equipos', id), {
-    imei: data.imei || '', modelo: data.modelo || data.equipo || '', capacidad: data.capacidad || '',
-    color: data.color || '', estadoActual: data.estado || '', origen: origen, origenId: origenId,
-    clienteId: clienteId || '', updatedAt: serverTimestamp()
-  }, { merge: true });
+  await v22Upsert(doc(db, 'equipos', id), Object.assign({}, equipo, {
+    origen: origen, origenId: origenId, clienteId: clienteId || ''
+  }));
   return id;
 }
 
 async function v21Movimiento(tipo, origen, origenId, data, extra) {
   await addDoc(cMov, {
+    schemaVersion: 2,
     tipo: tipo, origen: origen, origenId: origenId,
     clienteId: (extra && extra.clienteId) || '', equipoId: (extra && extra.equipoId) || '',
     estado: data.estado || '', detalle: (extra && extra.detalle) || '',
-    fecha: serverTimestamp()
+    fecha: serverTimestamp(),
+    createdAt: serverTimestamp()
   });
 }
 
 async function v21Sync(origen, origenId, data, tipo, extra) {
   try {
-    // Updates parciales (ej. solo estado/pago) no deben borrar relaciones existentes.
-    const tieneIdentidad = !!(data.nombre || data.telefono || data.imei || data.modelo || data.equipo);
-    let clienteId = null, equipoId = null;
+    // Las actualizaciones parciales usan el documento actual para conservar
+    // clienteId y equipoId en cada movimiento V2.2.
+    const col = origen === 'reparacion' ? 'reparaciones' : (origen === 'venta' ? 'ventas' : 'stock');
+    const origenRef = doc(db, col, origenId);
+    const previo = await getDoc(origenRef);
+    const actual = previo.exists() ? previo.data() : {};
+    const completo = Object.assign({}, actual, data);
+    const tieneIdentidad = !!(completo.nombre || completo.telefono || completo.imei || completo.modelo || completo.equipo);
+    let clienteId = actual.clienteId || null;
+    let equipoId = actual.equipoId || null;
     if (tieneIdentidad) {
-      clienteId = await v21Cliente(data);
-      equipoId = await v21Equipo(data, origen, origenId, clienteId);
-      const col = origen === 'reparacion' ? 'reparaciones' : (origen === 'venta' ? 'ventas' : 'stock');
-      const links = { _v2: 1 };
+      clienteId = await v21Cliente(completo) || clienteId;
+      equipoId = await v21Equipo(completo, origen, origenId, clienteId) || equipoId;
+      const links = { _v2: 2 };
       if (clienteId) links.clienteId = clienteId;
       if (equipoId) links.equipoId = equipoId;
-      await updateDoc(doc(db, col, origenId), links);
+      await updateDoc(origenRef, links);
     }
-    await v21Movimiento(tipo, origen, origenId, data, { clienteId, equipoId, detalle: extra && extra.detalle });
+    await v21Movimiento(tipo, origen, origenId, completo, { clienteId, equipoId, detalle: extra && extra.detalle });
   } catch (e) {
     // V2.1 nunca debe impedir la operacion principal de V1.
     console.warn('MaxPoint V2.1 sync:', e);
