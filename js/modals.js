@@ -78,12 +78,7 @@ function saveRep() {
   }
 
   if (_eid) {
-    var prev = REPS.find(function(r) { return r.id === _eid; });
-    var tl   = ((prev && prev.timeline) || []).slice();
-    if (!prev || prev.estado !== est) {
-      tl.push({ estado: est, fecha: hoy(), hora: horaActual() });
-    }
-    FB.upd(_eid, Object.assign({}, d, { timeline: tl }), done);
+    actualizarReparacion(_eid, d, done);
   } else {
     var orden = nextOrden();
     FB.add(Object.assign({}, d, {
@@ -92,6 +87,19 @@ function saveRep() {
       timeline: [{ estado: est, fecha: hoy(), hora: horaActual() }],
     }), done);
   }
+}
+
+function actualizarReparacion(id, datos, done) {
+  var prev = REPS.find(function(r) { return r.id === id; });
+  if (!prev) { done('Orden no encontrada'); return; }
+
+  var cambios = Object.assign({}, datos);
+  if (Object.prototype.hasOwnProperty.call(cambios, 'estado') && prev.estado !== cambios.estado) {
+    var tl = (prev.timeline || []).slice();
+    tl.push({ estado: cambios.estado, fecha: hoy(), hora: horaActual() });
+    cambios.timeline = tl;
+  }
+  FB.upd(id, cambios, done);
 }
 
 // ============================================================
@@ -247,6 +255,31 @@ if (!r) return;
     fa.appendChild(mkBtn('btn-w', '💬 WhatsApp', (function(id) { return function() { abrirWA2(id); }; })(r.id)));
     fa.appendChild(mkBtn('btn-g btn-sm', 'Llamar', (function(tel) { return function() { llamarCliente(tel); }; })(r.telefono)));
   }
+  var estadoSel = document.createElement('select');
+  var estadoActual = r.estado || 'Ingresado';
+  estadoSel.className = 'btn btn-g btn-sm';
+  estadoSel.setAttribute('aria-label', 'Cambiar estado');
+  ESTADOS.forEach(function(estado) {
+    var opcion = document.createElement('option');
+    opcion.value = estado; opcion.textContent = 'Estado: ' + estado;
+    opcion.selected = estado === estadoActual;
+    estadoSel.appendChild(opcion);
+  });
+  estadoSel.addEventListener('change', function() {
+    var nuevoEstado = estadoSel.value;
+    estadoSel.disabled = true;
+    actualizarReparacion(r.id, { estado: nuevoEstado }, function(err) {
+      estadoSel.disabled = false;
+      if (err) { estadoSel.value = estadoActual; toast('Error: ' + err, 'var(--rd)'); return; }
+      toast('Estado: ' + nuevoEstado);
+    });
+  });
+  fa.appendChild(estadoSel);
+  if (r.pago !== 'Pagado') {
+    fa.appendChild(mkBtn('btn-g', '💳 Registrar pago', (function(id) {
+      return function() { closeM('mDet'); openPago(id); };
+    })(r.id)));
+  }
   if (r.modelo) {
     fa.appendChild(mkBtn('btn-g btn-sm', 'Copiar IMEI / Serie', (function(serie) { return function() { copiarTexto(serie, 'IMEI / Serie copiado'); }; })(r.modelo)));
   }
@@ -255,11 +288,6 @@ if (!r) return;
   var garLabel = r.es_garantia === 'si' ? '✓ Garantia' : 'Garantia';
   var garStyle = r.es_garantia === 'si' ? 'background:rgba(242,95,92,.12);color:var(--rd);border-color:rgba(242,95,92,.3)' : '';
   fa.appendChild(mkBtn('btn-g btn-sm', garLabel, (function(id) { return function() { marcarGarantia(id); }; })(r.id), garStyle));
-  if (r.pago !== 'Pagado') {
-    fa.appendChild(mkBtn('btn-g', '💳 Registrar pago', (function(id) {
-      return function() { closeM('mDet'); openPago(id); };
-    })(r.id)));
-  }
   fa.appendChild(mkBtn('btn-p', '✏️ Editar', (function(id) {
     return function() { closeM('mDet'); openEditRep(id); };
   })(r.id)));
