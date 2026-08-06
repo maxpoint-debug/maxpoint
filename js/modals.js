@@ -240,48 +240,15 @@ if (!r) return;
 
   grid.appendChild(col1); grid.appendChild(col2); det.appendChild(grid);
 
-  // Acciones de uso frecuente. Reutilizan los flujos existentes del detalle.
-  var quick = document.createElement('div'); quick.className = 'fa';
-  quick.style.cssText = 'margin-top:14px;padding-top:12px';
-  var quickTitle = document.createElement('div'); quickTitle.className = 'dst';
-  quickTitle.textContent = 'Acciones rápidas'; quickTitle.style.width = '100%';
-  quick.appendChild(quickTitle);
-  if (r.telefono) {
-    quick.appendChild(mkBtn('btn-w btn-sm', 'WhatsApp', (function(id) { return function() { abrirWA2(id); }; })(r.id)));
-    quick.appendChild(mkBtn('btn-g btn-sm', 'Llamar', (function(tel) { return function() { llamarCliente(tel); }; })(r.telefono)));
-  }
-  if (r.modelo) {
-    quick.appendChild(mkBtn('btn-g btn-sm', 'Copiar IMEI / Serie', (function(serie) { return function() { copiarTexto(serie, 'IMEI / Serie copiado'); }; })(r.modelo)));
-  }
-  if (r.pago !== 'Pagado') {
-    quick.appendChild(mkBtn('btn-g btn-sm', 'Registrar pago', (function(id) {
-      return function() { closeM('mDet'); openPago(id); };
-    })(r.id)));
-  }
-  quick.appendChild(mkBtn('btn-g btn-sm', 'Imprimir comprobante', (function(id) {
-    return function() { _recId = id; prtRec(); };
-  })(r.id)));
-  if (r.estado !== 'Entregado') {
-    quick.appendChild(mkBtn('btn-g btn-sm', 'Marcar entregado', (function(id) {
-      return function() { actualizarEstadoReparacion(id, 'Entregado'); };
-    })(r.id)));
-  }
-  var estadoRapido = document.createElement('select'); estadoRapido.className = 'btn btn-g btn-sm';
-  estadoRapido.setAttribute('aria-label', 'Cambiar estado');
-  ESTADOS.forEach(function(estado) {
-    var opcion = document.createElement('option'); opcion.value = estado; opcion.textContent = 'Estado: ' + estado;
-    opcion.selected = estado === r.estado; estadoRapido.appendChild(opcion);
-  });
-  estadoRapido.addEventListener('change', function() {
-    actualizarEstadoReparacion(r.id, estadoRapido.value);
-  });
-  quick.appendChild(estadoRapido); det.appendChild(quick);
-
   // Botones de accion
   var fa = document.createElement('div');
   fa.style.cssText = 'display:flex;gap:7px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--bd)';
   if (r.telefono) {
     fa.appendChild(mkBtn('btn-w', '💬 WhatsApp', (function(id) { return function() { abrirWA2(id); }; })(r.id)));
+    fa.appendChild(mkBtn('btn-g btn-sm', 'Llamar', (function(tel) { return function() { llamarCliente(tel); }; })(r.telefono)));
+  }
+  if (r.modelo) {
+    fa.appendChild(mkBtn('btn-g btn-sm', 'Copiar IMEI / Serie', (function(serie) { return function() { copiarTexto(serie, 'IMEI / Serie copiado'); }; })(r.modelo)));
   }
   fa.appendChild(mkBtn('btn-g', '🖨️ Recibo', (function(id) { return function() { abrirRec(id); }; })(r.id)));
   fa.appendChild(mkBtn('btn-g btn-sm', '📋 Orden Taller', (function(id) { return function() { prtOrdenTaller(id); }; })(r.id)));
@@ -305,18 +272,6 @@ function llamarCliente(telefono) {
   var numero = String(telefono || '').replace(/\D/g, '');
   if (!numero) { toast('Sin numero de telefono cargado', 'var(--rd)'); return; }
   window.location.href = 'tel:' + numero;
-}
-
-function actualizarEstadoReparacion(id, nuevoEstado, done) {
-  var r = REPS.find(function(item) { return item.id === id; });
-  if (!r || r.estado === nuevoEstado) { if (done) done(null); return; }
-  var timeline = (r.timeline || [{ estado: r.estado, fecha: r.fecha || '', hora: '' }]).slice();
-  timeline.push({ estado: nuevoEstado, fecha: hoy(), hora: horaActual() });
-  FB.upd(id, { estado: nuevoEstado, timeline: timeline }, function(err) {
-    if (err) { toast('Error: ' + err, 'var(--rd)'); if (done) done(err); return; }
-    toast('Estado: ' + nuevoEstado);
-    if (done) done(null);
-  });
 }
 
 function badgeRpu(estado) {
