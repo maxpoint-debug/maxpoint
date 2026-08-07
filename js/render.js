@@ -1144,8 +1144,8 @@ function renderCot() {
       return function() {
         var found = USADOS.find(function(x){return x.modelo===modelo;});
         if (!found) return;
-        _cotSel = found; _cotRes = [found];
         cotReset();
+        _cotSel = found; _cotRes = [found];
         el('cotQ').value = found.modelo;
         el('cotQ').classList.add('sel');
         el('cotPanel').style.display = '';
