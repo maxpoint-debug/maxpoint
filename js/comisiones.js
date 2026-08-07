@@ -44,12 +44,18 @@ function comCalcularElegibles(mesKey) {
     if (!personas[nombre]) personas[nombre] = { nombre:nombre, lineas:[], excluidas:[] };
     return personas[nombre];
   }
-  function excluir(p, tipo, origenId, referencia, motivo) {
-    p.excluidas.push({ tipo:tipo, origenId:origenId, referencia:referencia, motivo:motivo });
+  function excluir(p, tipo, origenId, referencia, motivo, estado) {
+    p.excluidas.push({ tipo:tipo, origenId:origenId, referencia:referencia, motivo:motivo, estado:estado || 'Pendiente' });
   }
   (window.REPS || []).forEach(function(r) {
     if (!r.tecnico || fechaAMesKey(r.fecha) !== mesKey) return;
     var p = persona(r.tecnico), clave = 'reparacion:' + r.id;
+    var decision = r.comisionExcepcion || {};
+    if (decision.estado === 'No comisiona') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Resuelta: no comisiona', 'No comisiona'); return; }
+    if (decision.estado === 'Incluida') {
+      if (!bloqueadas[clave]) p.lineas.push({ clave:clave, tipo:'reparacion', origenId:r.id, referencia:r.orden || r.id, fecha:r.fecha, montoArs:Number(decision.montoArs || 0), detalle:'Excepción aprobada por administración' });
+      return;
+    }
     if (r.estado !== 'Entregado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'No entregada'); return; }
     if (r.pago !== 'Pagado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Saldo pendiente'); return; }
     if (r.controlComisionV1 && r.resultadoServicio !== 'Reparación realizada') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Resultado sin comisión: ' + (r.resultadoServicio || 'pendiente')); return; }
@@ -63,6 +69,12 @@ function comCalcularElegibles(mesKey) {
     if (!v.vendedor || fechaAMesKey(v.fecha) !== mesKey) return;
     var p = persona(v.vendedor), clave = 'venta:' + v.id;
     var precio = Number(v.precio || 0), costo = Number(v.costo || 0), ganancia = precio - costo;
+    var decision = v.comisionExcepcion || {};
+    if (decision.estado === 'No comisiona') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Resuelta: no comisiona', 'No comisiona'); return; }
+    if (decision.estado === 'Incluida') {
+      if (!bloqueadas[clave]) p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:Number(decision.montoArs || 0), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Excepción aprobada por administración' });
+      return;
+    }
     if (v.parte_pago === 'Si') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Parte de pago pendiente de valuación'); return; }
     if (!costo || costo <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin costo confirmado'); return; }
     if (ganancia <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin ganancia positiva'); return; }
@@ -89,6 +101,28 @@ function comVerificarReparacion(id) {
 function comAbrirExcepcion(tipo, id) {
   if (tipo === 'reparacion') { openDet(id); return; }
   if (tipo === 'venta' && typeof openEditVenta === 'function') openEditVenta(id);
+}
+
+function comResolverExcepcion(tipo, id, accion) {
+  if (!puede('gestionar_comisiones')) { toast('Solo administrador puede resolver excepciones', 'var(--rd)'); return; }
+  var item = tipo === 'reparacion' ? (window.REPS || []).find(function(x) { return x.id === id; }) : (window.VENTAS || []).find(function(x) { return x.id === id; });
+  if (!item) { toast('Operación no encontrada', 'var(--rd)'); return; }
+  var decision;
+  if (accion === 'incluir') {
+    var sugerido = tipo === 'reparacion' ? Number(COM_CFG.com_rep || 0) : comMontoVenta(Number(item.precio || 0) - Number(item.costo || 0));
+    var ingreso = prompt('Comisión excepcional a incluir (ARS):', sugerido);
+    if (ingreso === null) return;
+    var monto = Number(ingreso);
+    if (!Number.isFinite(monto) || monto <= 0) { toast('Ingresá una comisión válida', 'var(--rd)'); return; }
+    if (!confirm('¿Incluir esta operación excepcionalmente por ' + pesos(monto) + '?')) return;
+    decision = { estado:'Incluida', montoArs:monto, resueltoPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() };
+  } else {
+    if (!confirm('¿Marcar esta operación como no comisionable? Quedará registrada como decisión administrativa.')) return;
+    decision = { estado:'No comisiona', montoArs:0, resueltoPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() };
+  }
+  var done = function(err) { if (err) { toast('Error: ' + err, 'var(--rd)'); return; } toast(accion === 'incluir' ? 'Excepción incluida para comisión' : 'Excepción marcada como no comisionable'); };
+  if (tipo === 'reparacion') FB.upd(id, { comisionExcepcion:decision }, done);
+  else FB.updV(id, { comisionExcepcion:decision }, done);
 }
 
 function comMesActual() {
@@ -159,7 +193,10 @@ function comRenderControl() {
     var tabla = document.createElement('div'); tabla.className = 'tw';
     tabla.innerHTML = '<table><thead><tr><th>Persona</th><th>Operación</th><th>Motivo</th><th></th></tr></thead><tbody>' + excepciones.map(function(x) {
       var d = x.dato;
-      return '<tr><td>' + esc(x.persona) + '</td><td>' + esc(d.referencia) + '<div class="mu" style="font-size:10px">' + esc(d.tipo) + '</div></td><td style="color:var(--or)">' + esc(d.motivo) + '</td><td><button class="btn btn-g btn-sm" onclick="comAbrirExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\')">Revisar</button></td></tr>';
+      var acciones = '<button class="btn btn-g btn-sm" onclick="comAbrirExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\')">Revisar</button>';
+      if (d.estado === 'No comisiona') acciones += '<span class="mu" style="font-size:10px;margin-left:6px">No comisiona</span>';
+      else acciones += '<button class="btn btn-p btn-sm" style="margin-left:5px" title="Incluir excepcionalmente" onclick="comResolverExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\',\'incluir\')">✓</button><button class="btn btn-g btn-sm" style="margin-left:5px" title="Marcar como no comisionable" onclick="comResolverExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\',\'excluir\')">✕</button>';
+      return '<tr><td>' + esc(x.persona) + '</td><td>' + esc(d.referencia) + '<div class="mu" style="font-size:10px">' + esc(d.tipo) + '</div></td><td style="color:' + (d.estado === 'No comisiona' ? 'var(--mu)' : 'var(--or)') + '">' + esc(d.motivo) + '</td><td style="white-space:nowrap">' + acciones + '</td></tr>';
     }).join('') + '</tbody></table>';
     secEx.appendChild(tabla);
   }
