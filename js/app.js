@@ -35,7 +35,7 @@ function setTopActions(v) {
     ta.appendChild(mkBtn('btn-g btn-sm', 'Copiar lista WA', copiarListaStock));
     ta.appendChild(mkBtn('btn-p', '+  Agregar equipo', function() { openNewStock(null); }));
   } else if (v === 'cot') {
-    ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar lista', openListaParser));
+    if (puede('actualizar_cotizador')) ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar lista', openListaParser));
     ta.appendChild(mkBtn('btn-p', '+  Cotizar', openCotizador));
   } else if (v === 'bal') {
     ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar catalogo', openCatAdmin));
