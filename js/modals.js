@@ -243,22 +243,6 @@ if (!r) return;
   });
   col2.appendChild(ds4);
 
-  // Actividad registrada: cambios de datos efectuados sobre esta reparación.
-  var actividad = (window.AUDITORIA || []).filter(function(a) { return a.entidad === 'reparacion' && a.entidadId === r.id; })
-    .sort(function(a, b) { return (b._ordenAuditoria || 0) - (a._ordenAuditoria || 0); });
-  if (actividad.length) {
-    var dsActividad = document.createElement('div'); dsActividad.className = 'ds';
-    dsActividad.innerHTML = '<div class="dst">Actividad</div>';
-    actividad.forEach(function(a) {
-      var fila = document.createElement('div'); fila.style.cssText = 'font-size:11px;padding:5px 0;border-bottom:1px solid var(--bd)';
-      var actor = a.actor && a.actor.nombre ? a.actor.nombre : 'Usuario no registrado';
-      var detalle = (a.cambios || []).map(function(c) { return c.campo + ': ' + c.antes + ' → ' + c.despues; }).join(' · ');
-      fila.textContent = actor + ' · ' + (a.accion || 'actualizado') + (detalle ? ' · ' + detalle : '') + ' · ' + (a.fecha || '') + (a.hora ? ' ' + a.hora : '');
-      dsActividad.appendChild(fila);
-    });
-    col2.appendChild(dsActividad);
-  }
-
   // Notas
   if (r.notas) {
     var ds5 = document.createElement('div'); ds5.className = 'ds';
