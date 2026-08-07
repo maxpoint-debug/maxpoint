@@ -288,7 +288,7 @@ async function registrarAuditoria(entidad, entidadId, accion, antes, despues) {
 async function agregarAuditable(coleccion, entidad, datos, id) {
   var actor = usuarioActualRegistro();
   if (!actor) throw new Error('Sesión activa requerida para guardar');
-  var ref = id ? doc(db, coleccion, id) : doc(coleccion);
+  var ref = id ? doc(db, coleccion, id) : doc(db, coleccion);
   var batch = writeBatch(db);
   batch.set(ref, Object.assign({}, datos, { _ts: serverTimestamp() }));
   batch.set(doc(cAud), { entidad: entidad, entidadId: ref.id, accion: 'creado', actor: actor, cambios: [], fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
