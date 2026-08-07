@@ -240,12 +240,16 @@ function cotCalcular() {
 // ── PARSER LISTA WHATSAPP ────────────────────────────────────
 function openListaParser() {
   if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede actualizar la base del cotizador', 'var(--rd)'); return; }
-  setVal('listaInput', '');
-  el('listaPreview').style.display = 'none';
-  el('listaPreviewContent').innerHTML = '';
-  el('btnSubirLista').disabled = true;
-  cotManualCargar();
   openM('mLista');
+  try {
+    setVal('listaInput', '');
+    el('listaPreview').style.display = 'none';
+    el('listaPreviewContent').innerHTML = '';
+    el('btnSubirLista').disabled = true;
+    cotManualCargar();
+  } catch (err) {
+    toast('Se abrió la lista, pero no se pudo cargar la base: ' + err.message, 'var(--or)');
+  }
 }
 
 function cotManualCargar() {
