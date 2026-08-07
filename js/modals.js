@@ -124,7 +124,9 @@ if (!r) return;
 
   var sal = Number(r.presupuesto || 0) - Number(r.sena || 0);
   var rpu = RPUS.filter(function(rp) { return rp.orden === r.orden; });
-  var tl  = r.timeline || [{ estado: r.estado, fecha: r.fecha, hora: '' }];
+  // Las entradas históricas sin usuario se conservan en Firestore, pero no se
+  // muestran: el historial visible comienza con los cambios auditables.
+  var tl = (r.timeline || []).filter(function(t) { return t.usuario && t.usuario.nombre; });
   var det = el('mDetC'); det.innerHTML = '';
 
   // Header
@@ -227,9 +229,10 @@ if (!r) return;
   col2.appendChild(ds3);
 
   // Timeline
-  var ds4 = document.createElement('div'); ds4.className = 'ds';
-  ds4.innerHTML = '<div class="dst">Historial de estados</div>';
-  tl.forEach(function(t) {
+  if (tl.length) {
+    var ds4 = document.createElement('div'); ds4.className = 'ds';
+    ds4.innerHTML = '<div class="dst">Historial de estados</div>';
+    tl.forEach(function(t) {
     var tliDiv = document.createElement('div'); tliDiv.className = 'tli';
     var dot = document.createElement('div'); dot.className = 'tld'; dot.style.background = colorEst(t.estado);
     var info = document.createElement('div');
@@ -239,9 +242,10 @@ if (!r) return;
       var autor = document.createElement('div'); autor.className = 'tldt'; autor.textContent = t.usuario.nombre;
       info.appendChild(autor);
     }
-    tliDiv.appendChild(dot); tliDiv.appendChild(info); ds4.appendChild(tliDiv);
-  });
-  col2.appendChild(ds4);
+      tliDiv.appendChild(dot); tliDiv.appendChild(info); ds4.appendChild(tliDiv);
+    });
+    col2.appendChild(ds4);
+  }
 
   // Notas
   if (r.notas) {
