@@ -49,6 +49,8 @@ const cEq  = collection(db, 'equipos');
 const cMov = collection(db, 'movimientos');
 const cUsr = collection(db, 'usuarios');
 const cAud = collection(db, 'auditoria');
+const cFx  = collection(db, 'tiposCambio');
+const dMon = doc(db, 'config', 'moneda');
 
 let authModo = 'login', bootstrapDisponible = false;
 function authMensaje(msg, color) { const e = document.getElementById('authErr'); if (e) { e.textContent = msg || ''; e.style.color = color || 'var(--rd)'; } }
@@ -429,8 +431,32 @@ onSnapshot(dCfg, (snap) => {
   if (snap.exists() && typeof catLoadConfig === 'function') catLoadConfig(snap.data());
 }, () => {});
 
+// --- Tipo de cambio de referencia e historial ---
+onSnapshot(dMon, (snap) => {
+  if (snap.exists() && typeof monedaLoadConfig === 'function') monedaLoadConfig(snap.data());
+}, () => {});
+onSnapshot(cFx, (snap) => {
+  window.TIPOS_CAMBIO = snap.docs.map(d => Object.assign({ id: d.id }, d.data(), {
+    _ordenFx: d.data().createdAt && d.data().createdAt.toMillis ? d.data().createdAt.toMillis() : 0
+  }));
+}, () => {});
+
 // ── Config comisiones ──
 window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message));
+
+window.FB.setMoneda = async (d, cb) => {
+  var actor = usuarioActualRegistro();
+  if (!actor || !puede('editar_tipo_cambio')) { cb('Sin permiso para actualizar la cotización'); return; }
+  try {
+    var previo = await getDoc(dMon);
+    var batch = writeBatch(db);
+    batch.set(dMon, Object.assign({}, d, { updatedAt: serverTimestamp(), updatedBy: actor }), { merge: true });
+    batch.set(doc(cFx), Object.assign({}, d, { usuario: actor, fecha: hoy(), hora: horaActual(), createdAt: serverTimestamp() }));
+    batch.set(doc(cAud), { entidad: 'tipo_cambio', entidadId: 'blue_venta', accion: 'actualizado', actor: actor,
+      cambios: cambiosAuditables(previo.exists() ? previo.data() : {}, d), fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+    await batch.commit(); cb(null);
+  } catch (e) { cb(e.message); }
+};
 
 // ── CRUD ventas ──
 window.FB.addV = (d, cb) => agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message));

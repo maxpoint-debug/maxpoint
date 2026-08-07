@@ -36,6 +36,7 @@ function setTopActions(v) {
     if (puede('actualizar_cotizador')) ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar lista', openListaParser));
     ta.appendChild(mkBtn('btn-p', '+  Cotizar', openCotizador));
   } else if (v === 'bal') {
+    if (puede('editar_tipo_cambio')) ta.appendChild(mkBtn('btn-g btn-sm', 'USD Blue Venta', openMoneda));
     ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar catalogo', openCatAdmin));
   }
 }
