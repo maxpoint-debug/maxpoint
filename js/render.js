@@ -554,6 +554,10 @@ function renderCentroControl() {
   if (rpuPend.length) alertas.push({ color:'var(--pu)', texto:'Hay ' + rpuPend.length + ' repuesto(s) pendiente(s) de resolución.' });
   var garantias = reps.filter(function(r) { return r.es_garantia === 'si' || r.estado === 'Garantia'; });
   if (garantias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + garantias.length + ' garantía(s) marcada(s) para revisar.' });
+  var incidencias = reps.filter(function(r) { return r.incidencia && r.incidencia.estado !== 'Resuelta'; });
+  if (incidencias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + incidencias.length + ' incidencia(s) abierta(s) que requieren resolución.' });
+  var sinRecepcion = abiertas.filter(function(r) { return r.controlComisionV1 && !r.estadoFisicoRecepcion; });
+  if (sinRecepcion.length) alertas.push({ color:'var(--or)', texto:'Hay ' + sinRecepcion.length + ' orden(es) nueva(s) sin estado físico de recepción.' });
   var sinTecnico = abiertas.filter(function(r) { return !r.tecnico; });
   if (sinTecnico.length) alertas.push({ color:'var(--mu)', texto:'Hay ' + sinTecnico.length + ' orden(es) abierta(s) sin técnico asignado.' });
   var secAt = document.createElement('div'); secAt.style.marginTop = '22px';
