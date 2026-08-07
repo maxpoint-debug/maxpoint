@@ -37,6 +37,19 @@ function comLiquidacionesBloqueadas() {
   return claves;
 }
 
+function comMesSiguiente() { var d = new Date(); d.setMonth(d.getMonth() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function comGenerarAjuste(tipo, origenId, motivo) {
+  if (!puede('gestionar_comisiones')) return;
+  var clave = tipo + ':' + origenId;
+  (window.COM_LIQUIDACIONES || []).filter(function(l) { return l.estado === 'Pagada'; }).forEach(function(l) {
+    (l.lineas || []).filter(function(x) { return x.clave === clave; }).forEach(function(x) {
+      if ((window.COM_AJUSTES || []).some(function(a) { return a.liquidacionId === l.id && a.claveOrigen === clave; })) return;
+      FB.crearAjusteComision({ periodo:comMesSiguiente(), persona:l.persona, estado:'Pendiente', liquidacionId:l.id, claveOrigen:clave, referencia:x.referencia || origenId, motivo:motivo, montoArs:-Math.abs(Number(x.montoArs || 0)), creadoPor:usuarioActualRegistro(), fecha:hoy() }, function(err) { if (err) toast('No se pudo crear ajuste: ' + err, 'var(--rd)'); else toast('Ajuste de comisión pendiente creado'); });
+    });
+  });
+}
+function comAprobarAjuste(id) { FB.actualizarAjusteComision(id, { estado:'Aprobado', aprobadoPor:usuarioActualRegistro(), fechaAprobacion:hoy() }, function(err) { if (err) toast('Error: ' + err, 'var(--rd)'); else toast('Ajuste aprobado'); }); }
+
 function comCalcularElegibles(mesKey) {
   var bloqueadas = comLiquidacionesBloqueadas();
   var personas = {};
@@ -82,6 +95,9 @@ function comCalcularElegibles(mesKey) {
     if (ganancia <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin ganancia positiva'); return; }
     if (bloqueadas[clave]) return;
     p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:comMontoVenta(ganancia), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Venta con costo confirmado' });
+  });
+  (window.COM_AJUSTES || []).filter(function(a) { return a.periodo === mesKey && a.estado === 'Aprobado'; }).forEach(function(a) {
+    var p = persona(a.persona); p.lineas.push({ clave:'ajuste:' + a.id, tipo:'ajuste', origenId:a.id, referencia:a.referencia || 'Ajuste', fecha:a.fecha, montoArs:Number(a.montoArs || 0), detalle:a.motivo || 'Ajuste de comisión' });
   });
   return Object.keys(personas).map(function(nombre) {
     var p = personas[nombre]; p.totalArs = p.lineas.reduce(function(s, x) { return s + Number(x.montoArs || 0); }, 0); return p;
@@ -203,6 +219,8 @@ function comRenderControl() {
     secEx.appendChild(tabla);
   }
   sec.appendChild(secEx);
+  var ajustes = (window.COM_AJUSTES || []).filter(function(a) { return a.periodo === seleccionado && a.estado === 'Pendiente'; });
+  if (ajustes.length) { var aj = document.createElement('div'); aj.style.marginTop = '16px'; aj.innerHTML = '<div class="ct" style="margin-bottom:8px">AJUSTES DE COMISIONES</div>'; ajustes.forEach(function(a) { var row=document.createElement('div'); row.className='card'; row.style.marginBottom='6px'; row.innerHTML='<b>'+esc(a.persona)+'</b><div class="mu" style="font-size:11px">'+esc(a.referencia)+' · '+esc(a.motivo)+'</div><div class="mono cr" style="margin-top:4px">'+pesos(a.montoArs)+'</div>'; row.appendChild(mkBtn('btn-p btn-sm','Aprobar ajuste',(function(id){return function(){comAprobarAjuste(id);};})(a.id))); aj.appendChild(row); }); sec.appendChild(aj); }
   return sec;
 }
 
@@ -312,6 +330,7 @@ function marcarGarantia(id) {
   var nuevo = esGar ? 'no' : 'si';
   FB.upd(id, { es_garantia: nuevo }, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    if (nuevo === 'si') comGenerarAjuste('reparacion', id, 'Garantía posterior a liquidación');
     toast(nuevo === 'si' ? 'Marcada como garantia' : 'Garantia removida');
   });
 }

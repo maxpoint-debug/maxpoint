@@ -74,6 +74,7 @@ function saveVenta() {
     FB.updV(_ventaId, d, function(err) {
       btn.disabled = false; btn.textContent = 'Guardar venta';
       if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+      if (d.estadoVenta === 'Devuelta' && anterior && anterior.estadoVenta !== 'Devuelta' && typeof comGenerarAjuste === 'function') comGenerarAjuste('venta', _ventaId, 'Devolución posterior a liquidación');
       closeM('mVen'); toast('Venta actualizada');
     });
   } else {
