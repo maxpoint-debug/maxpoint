@@ -31,13 +31,15 @@ var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 // ===================== SESION Y PERMISOS =====================
 // El perfil se completa desde Firebase Authentication + usuarios/{uid}.
 var SESION = { usuario: null, perfil: null, cargando: true };
+var MONEDA_CFG = { blueVenta: 0, fuente: 'Blue Venta', updated: '' };
 var PERMISOS_BASE = {
   ver_balance: ['administrador'],
   ver_costos: ['administrador'],
   editar_costos: ['administrador'],
   editar_reparacion: ['administrador', 'tecnico', 'recepcionista'],
   crear_usuario: ['administrador'],
-  actualizar_cotizador: ['administrador']
+  actualizar_cotizador: ['administrador'],
+  editar_tipo_cambio: ['administrador']
 };
 
 function sesionActiva() {
