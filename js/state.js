@@ -41,7 +41,8 @@ var PERMISOS_BASE = {
   crear_usuario: ['administrador'],
   actualizar_cotizador: ['administrador'],
   editar_tipo_cambio: ['administrador'],
-  gestionar_comisiones: ['administrador']
+  gestionar_comisiones: ['administrador'],
+  resolver_incidencias: ['administrador']
 };
 
 function sesionActiva() {

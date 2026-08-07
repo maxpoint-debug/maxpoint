@@ -7,7 +7,7 @@
 function openNewRep() {
   _eid = null;
   el('mFormT').textContent = 'Nuevo ingreso';
-  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot'].forEach(function(id) { setVal(id, ''); });
+  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot','fEstadoFisico'].forEach(function(id) { setVal(id, ''); });
   setVal('fFal', ''); setVal('fPres', ''); setVal('fSen', '');
   el('fEst').value  = 'Ingresado';
   el('fPag').value  = 'Pendiente';
@@ -40,6 +40,7 @@ function openEditRep(id) {
   el('fResultadoServicio').value = r.resultadoServicio || 'Pendiente de cierre';
   el('fTec').value = r.tecnico   || '';
   setVal('fGar',  r.garantia_ref || '');
+  setVal('fEstadoFisico', r.estadoFisicoRecepcion || '');
   setVal('fNot',  r.notas        || '');
   var fGremio = el('fGremio'); if (fGremio) fGremio.checked = r.gremio === 'si';
   el('suggBanner').style.display = 'none';
@@ -57,6 +58,9 @@ function saveRep() {
 
   var est = el('fEst').value;
   var resultadoServicio = el('fResultadoServicio').value;
+  if (est === 'Entregado' && resultadoServicio === 'Pendiente de cierre') {
+    toast('Elegí el resultado del servicio antes de entregar la reparación', 'var(--rd)'); return;
+  }
   var anterior = _eid ? REPS.find(function(x) { return x.id === _eid; }) : null;
   var presupuestoNumero = Number(val('fPres') || 0);
   var d = {
@@ -72,6 +76,7 @@ function saveRep() {
     pago:         el('fPag').value,
     tecnico:      el('fTec').value,
     garantia_ref: val('fGar'),
+    estadoFisicoRecepcion: val('fEstadoFisico'),
     notas:        val('fNot'),
     gremio:       el('fGremio') && el('fGremio').checked ? 'si' : 'no',
     resultadoServicio: resultadoServicio,
@@ -112,12 +117,43 @@ function actualizarReparacion(id, datos, done) {
   if (!prev) { done('Orden no encontrada'); return; }
 
   var cambios = Object.assign({}, datos);
+  var estadoFinal = cambios.estado || prev.estado;
+  var resultadoFinal = Object.prototype.hasOwnProperty.call(cambios, 'resultadoServicio') ? cambios.resultadoServicio : prev.resultadoServicio;
+  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && (!resultadoFinal || resultadoFinal === 'Pendiente de cierre')) {
+    done('Elegí el resultado del servicio antes de entregar la reparación'); return;
+  }
   if (Object.prototype.hasOwnProperty.call(cambios, 'estado') && prev.estado !== cambios.estado) {
     var tl = (prev.timeline || []).slice();
     tl.push({ estado: cambios.estado, fecha: hoy(), hora: horaActual(), usuario: usuarioActualRegistro() });
     cambios.timeline = tl;
   }
   FB.upd(id, cambios, done);
+}
+
+var _incidenciaRepId = null;
+function abrirIncidencia(id) {
+  var r = REPS.find(function(x) { return x.id === id; }); if (!r) return;
+  _incidenciaRepId = id;
+  var i = r.incidencia || {};
+  el('incTipo').value = i.tipo || 'Daño preexistente';
+  setVal('incResponsable', i.responsable || ''); setVal('incCosto', i.costoEstimado || '');
+  setVal('incDescripcion', i.descripcion || ''); setVal('incEvidencia', i.evidencia || '');
+  el('incResolucion').value = i.resolucion || '';
+  openM('mIncidencia');
+}
+
+function guardarIncidencia() {
+  var r = REPS.find(function(x) { return x.id === _incidenciaRepId; }); if (!r) return;
+  var descripcion = val('incDescripcion').trim(); if (!descripcion) { toast('Describí la incidencia', 'var(--rd)'); return; }
+  var resolucion = el('incResolucion').value;
+  if (resolucion && !puede('resolver_incidencias')) { toast('Solo administración puede resolver una incidencia', 'var(--rd)'); return; }
+  var anterior = r.incidencia || {};
+  var incidencia = { tipo:el('incTipo').value, responsable:val('incResponsable').trim(), costoEstimado:val('incCosto') || '0', descripcion:descripcion, evidencia:val('incEvidencia').trim(), estado:resolucion ? 'Resuelta' : 'Abierta', resolucion:resolucion, reportadaPor:anterior.reportadaPor || usuarioActualRegistro(), fechaReporte:anterior.fechaReporte || hoy() };
+  if (resolucion) { incidencia.resueltaPor = usuarioActualRegistro(); incidencia.fechaResolucion = hoy(); }
+  FB.upd(r.id, { incidencia:incidencia }, function(err) {
+    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    closeM('mIncidencia'); toast(resolucion ? 'Incidencia resuelta' : 'Incidencia registrada');
+  });
 }
 
 // ============================================================
@@ -254,6 +290,16 @@ if (!r) return;
   }
   col2.appendChild(ds3);
 
+  if (r.incidencia) {
+    var dsInc = document.createElement('div'); dsInc.className = 'ds';
+    var abierta = r.incidencia.estado !== 'Resuelta';
+    dsInc.innerHTML = '<div class="dst">Incidencia <span style="color:' + (abierta ? 'var(--rd)' : 'var(--gr)') + '">' + (abierta ? '· Abierta' : '· Resuelta') + '</span></div>'
+      + '<div style="font-size:12px">' + esc(r.incidencia.tipo || '') + '</div><div class="mu" style="font-size:11px;margin-top:4px">' + esc(r.incidencia.descripcion || '') + '</div>'
+      + (r.incidencia.resolucion ? '<div class="mu" style="font-size:11px;margin-top:4px">Resolución: ' + esc(r.incidencia.resolucion) + '</div>' : '');
+    var editarInc = mkBtn('btn-g btn-sm', abierta ? 'Resolver incidencia' : 'Ver incidencia', (function(id) { return function() { abrirIncidencia(id); }; })(r.id));
+    editarInc.style.marginTop = '7px'; dsInc.appendChild(editarInc); col2.appendChild(dsInc);
+  }
+
   // Actividad auditada: operaciones nuevas con un usuario identificado.
   var actividad = (window.AUDITORIA || []).filter(function(a) { return a.entidad === 'reparacion' && a.entidadId === r.id; })
     .sort(function(a, b) { return (b._ordenAuditoria || 0) - (a._ordenAuditoria || 0); });
@@ -342,6 +388,7 @@ if (!r) return;
   var garLabel = r.es_garantia === 'si' ? '✓ Garantia' : 'Garantia';
   var garStyle = r.es_garantia === 'si' ? 'background:rgba(242,95,92,.12);color:var(--rd);border-color:rgba(242,95,92,.3)' : '';
   fa.appendChild(mkBtn('btn-g btn-sm', garLabel, (function(id) { return function() { marcarGarantia(id); }; })(r.id), garStyle));
+  fa.appendChild(mkBtn('btn-g btn-sm', r.incidencia && r.incidencia.estado !== 'Resuelta' ? 'Incidencia abierta' : 'Registrar incidencia', (function(id) { return function() { abrirIncidencia(id); }; })(r.id)));
   fa.appendChild(mkBtn('btn-p', '✏️ Editar', (function(id) {
     return function() { closeM('mDet'); openEditRep(id); };
   })(r.id)));

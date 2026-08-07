@@ -58,6 +58,7 @@ function comCalcularElegibles(mesKey) {
     }
     if (r.estado !== 'Entregado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'No entregada'); return; }
     if (r.pago !== 'Pagado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Saldo pendiente'); return; }
+    if (r.incidencia && r.incidencia.estado !== 'Resuelta') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Incidencia abierta'); return; }
     if (r.controlComisionV1 && r.resultadoServicio !== 'Reparación realizada') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Resultado sin comisión: ' + (r.resultadoServicio || 'pendiente')); return; }
     if (r.controlComisionV1 && Number(r.presupuesto || 0) < 100000 && !r.comisionVerificada) { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Pendiente de verificación administrativa'); return; }
     if (r.es_garantia === 'si') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Garantía'); return; }
