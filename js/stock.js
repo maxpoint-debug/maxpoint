@@ -5,6 +5,7 @@ var _stockId = null;
 
 function openNewStock(prefill) {
   _stockId = null;
+  var costoWrap = el('wSCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('mStockT').textContent = 'Agregar equipo';
   ['sMod','sCap','sCol','sDet','sPrecioVenta','sPrecioCosto','sNot','sImei'].forEach(function(id) {
     setVal(id, '');
@@ -26,6 +27,7 @@ function openEditStock(id) {
   var s = STOCK.find(function(x) { return x.id === id; });
   if (!s) return;
   _stockId = id;
+  var costoWrap = el('wSCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('mStockT').textContent = 'Editar equipo';
   setVal('sMod',         s.modelo        || '');
   setVal('sCap',         s.capacidad     || '');
