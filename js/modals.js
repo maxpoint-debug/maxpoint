@@ -763,7 +763,9 @@ function acEq() {
   var v  = val('fEq').toLowerCase();
   var ac = el('acEqL');
   if (v.length < 2) { ac.style.display = 'none'; return; }
-  var matches = ordenarPorModelo(EQUIPOS_APPLE).filter(function(e) { return e.toLowerCase().includes(v); }).slice(0, 8);
+  var matches = EQUIPOS_APPLE.filter(function(e) { return e.toLowerCase().includes(v); });
+  matches.sort(function(a, b) { return String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' }); });
+  matches = matches.slice(0, 8);
   if (!matches.length) { ac.style.display = 'none'; return; }
   ac.innerHTML = '';
   matches.forEach(function(e) {
