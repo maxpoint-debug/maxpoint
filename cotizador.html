@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>MaxPoint — Cotizador</title>
+<title>MaxPoint — Cotizá tu iPhone online</title>
 <style>
 :root {
   --bg:#0E0E10; --s1:#17171A; --s2:#1F1F24; --bd:#2A2A30;
@@ -149,7 +149,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 <body>
 
 <div class="hdr">
-  <div class="logo">MaxPoint <span>Cotizador de equipos</span></div>
+  <div class="logo">MaxPoint <span>Cotizá tu iPhone online</span></div>
   <div style="font-size:11px;color:var(--mu)">Mercedes, Bs As</div>
 </div>
 
@@ -181,8 +181,8 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 <!-- VISTA 1: Elegir equipo -->
 <div id="view1" class="view wrap" style="display:none">
   <div class="card">
-    <h2>¿Qué equipo traés?</h2>
-    <p>Buscá tu modelo para obtener el precio de toma en parte de pago.</p>
+    <h2>Conocé el valor de tu iPhone</h2>
+    <p>Te damos una cotización estimada para usarlo como parte de pago.</p>
     <div class="field">
       <label>Modelo del equipo</label>
       <div class="ac-wrap">
@@ -401,7 +401,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 
   <div class="resultado">
     <div class="res-hdr">
-      <div class="res-hdr-t">Precio de toma en parte de pago</div>
+      <div class="res-hdr-t">Valor estimado de toma</div>
       <div class="res-precio" id="resPrecio">USD 0</div>
       <div class="res-sub" id="resSub"></div>
     </div>
@@ -730,11 +730,9 @@ window.calcularResultado = function() {
   document.getElementById('resPrecio').textContent = 'USD ' + total;
   document.getElementById('resSub').textContent = equipoSel.modelo + ' · ' + bat + '% batería';
 
-  let det = `<div class="res-row"><span class="res-lbl">Precio base</span><span class="res-val base">USD ${base}</span></div>`;
-  descuentos.forEach(d => {
-    const valStr = d.consultar ? '<span style="color:var(--or)">Consultar precio</span>' : `- USD ${d.usd}`;
-    det += `<div class="res-row"><span class="res-lbl">${d.lbl}</span><span class="res-val neg">${valStr}</span></div>`;
-  });
+  let det = `<div class="res-row"><span class="res-lbl">Equipo</span><span class="res-val base">${equipoSel.modelo}</span></div>`;
+  det += `<div class="res-row"><span class="res-lbl">Estado informado</span><span class="res-val base">Batería ${bat}%</span></div>`;
+  det += `<div style="font-size:12px;color:var(--mu);line-height:1.5;padding-top:14px">Valor estimado sujeto a revisión presencial. Atención especializada y evaluación sin compromiso.</div>`;
   document.getElementById('resDetalle').innerHTML = det;
 
   // Texto de interés
@@ -763,6 +761,7 @@ window.enviarWA = function() {
   const r = window._cotResult;
   if (!r) return;
   const nombre = document.getElementById('waNombre').value.trim();
+  if (!nombre) { document.getElementById('waNombre').focus(); return; }
   const intTexto = { usado: 'equipos usados', nuevo: 'equipos nuevos', ambos: 'equipos nuevos y usados' };
   const lineas = [
     nombre ? `Hola! Soy ${nombre}.` : 'Hola!',
