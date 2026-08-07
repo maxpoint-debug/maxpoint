@@ -556,6 +556,8 @@ function renderCentroControl() {
   if (garantias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + garantias.length + ' garantía(s) marcada(s) para revisar.' });
   var incidencias = reps.filter(function(r) { return r.incidencia && r.incidencia.estado !== 'Resuelta'; });
   if (incidencias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + incidencias.length + ' incidencia(s) abierta(s) que requieren resolución.' });
+  var garantiasAbiertas = reps.filter(function(r) { return r.garantiaOrigenId && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; });
+  if (garantiasAbiertas.length) alertas.push({ color:'var(--pu)', texto:'Hay ' + garantiasAbiertas.length + ' garantía(s) vinculada(s) aún abierta(s).' });
   var sinRecepcion = abiertas.filter(function(r) { return r.controlComisionV1 && !r.estadoFisicoRecepcion; });
   if (sinRecepcion.length) alertas.push({ color:'var(--or)', texto:'Hay ' + sinRecepcion.length + ' orden(es) nueva(s) sin estado físico de recepción.' });
   var sinTecnico = abiertas.filter(function(r) { return !r.tecnico; });
@@ -565,6 +567,18 @@ function renderCentroControl() {
   if (alertas.length) alertas.slice(0, 6).forEach(function(a) { var x = document.createElement('div'); x.style.cssText = 'border-left:3px solid ' + a.color + ';background:var(--s1);padding:10px 12px;margin-bottom:6px;border-radius:0 7px 7px 0;font-size:12px'; x.textContent = '⚠ ' + a.texto; secAt.appendChild(x); });
   else secAt.innerHTML += '<div class="empty" style="padding:18px">Sin alertas operativas relevantes.</div>';
   cnt.appendChild(secAt);
+
+  var postventa = garantiasAbiertas.map(function(r) { return { tipo:'Garantía', orden:r.orden || r.id, id:r.id, detalle:'Vinculada a ' + (r.garantia_ref || 'orden original'), color:'var(--pu)' }; })
+    .concat(incidencias.map(function(r) { return { tipo:'Incidencia', orden:r.orden || r.id, id:r.id, detalle:(r.incidencia && r.incidencia.tipo) || 'Pendiente de resolución', color:'var(--rd)' }; }));
+  if (postventa.length) {
+    var secPost = document.createElement('div'); secPost.style.marginTop = '22px'; secPost.innerHTML = '<div class="ct" style="margin-bottom:8px">SEGUIMIENTO POSTVENTA</div>';
+    postventa.slice(0, 10).forEach(function(x) {
+      var fila = document.createElement('div'); fila.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--s1);border-left:3px solid ' + x.color + ';padding:9px 10px;margin-bottom:5px;border-radius:0 7px 7px 0;font-size:12px';
+      fila.innerHTML = '<div><b>' + esc(x.tipo) + ' · ' + esc(x.orden) + '</b><div class="mu" style="font-size:11px;margin-top:2px">' + esc(x.detalle) + '</div></div>';
+      fila.appendChild(mkBtn('btn-g btn-sm', 'Abrir', (function(id) { return function() { openDet(id); }; })(x.id))); secPost.appendChild(fila);
+    });
+    cnt.appendChild(secPost);
+  }
 
   var pulso = document.createElement('div'); pulso.style.marginTop = '22px'; pulso.innerHTML = '<div class="ct" style="margin-bottom:8px">PULSO DEL NEGOCIO</div>';
   var ultimos = []; for (var i = 6; i >= 0; i--) ultimos.push(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - i));
