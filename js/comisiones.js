@@ -104,12 +104,17 @@ function comRenderControl() {
   personas.forEach(function(p) {
     var existente = comLiquidacionExistente(seleccionado, p.nombre);
     var card = document.createElement('div'); card.className = 'card'; card.style.marginBottom = '8px';
-    var reps = p.lineas.filter(function(x) { return x.tipo === 'reparacion'; });
-    var ventas = p.lineas.filter(function(x) { return x.tipo === 'venta'; });
-    card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><b>' + esc(p.nombre) + '</b><div class="mu" style="font-size:11px;margin-top:3px">' + reps.length + ' reparación(es) · ' + ventas.length + ' venta(s)' + (p.excluidas.length ? ' · ' + p.excluidas.length + ' excluida(s)' : '') + '</div></div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr)">' + pesos(p.totalArs) + '</div></div>';
+    var lineasMostrar = existente ? (existente.lineas || []) : p.lineas;
+    var totalMostrar = existente ? Number(existente.totalArs || 0) : p.totalArs;
+    var reps = lineasMostrar.filter(function(x) { return x.tipo === 'reparacion'; });
+    var ventas = lineasMostrar.filter(function(x) { return x.tipo === 'venta'; });
+    var subtitulo = existente
+      ? reps.length + ' reparación(es) · ' + ventas.length + ' venta(s) incluidas en la liquidación'
+      : reps.length + ' reparación(es) · ' + ventas.length + ' venta(s)' + (p.excluidas.length ? ' · ' + p.excluidas.length + ' excluida(s)' : '');
+    card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><b>' + esc(p.nombre) + '</b><div class="mu" style="font-size:11px;margin-top:3px">' + subtitulo + '</div></div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr)">' + pesos(totalMostrar) + '</div></div>';
     var detalle = document.createElement('div'); detalle.style.cssText = 'font-size:11px;color:var(--mu);margin-top:8px';
-    detalle.innerHTML = p.lineas.map(function(x) { return '<div>' + esc(x.referencia) + ' · ' + esc(x.tipo) + ' · ' + pesos(x.montoArs) + (x.gananciaUsd !== undefined ? ' · ganancia ' + x.gananciaUsd + ' USD' : '') + '</div>'; }).join('');
-    if (p.excluidas.length) detalle.innerHTML += '<div style="margin-top:5px;color:var(--or)">Excluidas: ' + esc(p.excluidas.slice(0, 3).join(' · ')) + (p.excluidas.length > 3 ? '…' : '') + '</div>';
+    detalle.innerHTML = lineasMostrar.map(function(x) { return '<div>' + esc(x.referencia) + ' · ' + esc(x.tipo) + ' · ' + pesos(x.montoArs) + (x.gananciaUsd !== undefined ? ' · ganancia ' + x.gananciaUsd + ' USD' : '') + '</div>'; }).join('');
+    if (!existente && p.excluidas.length) detalle.innerHTML += '<div style="margin-top:5px;color:var(--or)">Excluidas: ' + esc(p.excluidas.slice(0, 3).join(' · ')) + (p.excluidas.length > 3 ? '…' : '') + '</div>';
     card.appendChild(detalle);
     var acciones = document.createElement('div'); acciones.className = 'fa'; acciones.style.marginTop = '10px';
     if (existente) {
