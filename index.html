@@ -127,6 +127,7 @@
     <div class="f"><label>IMEI / Serie</label><input id="fMod"/></div>
     <div class="f"><label>Clave / PIN</label><input id="fCla" placeholder="Clave de desbloqueo"/></div>
     <div class="f full"><label>Falla *</label><textarea id="fFal" oninput="chkSugg()"></textarea></div>
+    <div class="f full"><label>Estado físico al recibir</label><textarea id="fEstadoFisico" placeholder="Ej: pantalla quebrada, marco marcado, cámara OK, enciende, sin humedad visible"></textarea></div>
     <div class="f"><label>Presupuesto ($)</label><input id="fPres" type="number"/></div>
     <div class="f"><label>Sena ($)</label><input id="fSen" type="number"/></div>
     <div class="f"><label>Estado</label>
@@ -175,6 +176,19 @@
     <button class="btn btn-g" onclick="closeM('mForm')">Cancelar</button>
     <button class="btn btn-p" id="btnSave" onclick="saveRep()">Guardar</button>
   </div>
+</div></div>
+<!-- Incidencia o rotura de reparación -->
+<div class="ov" id="mIncidencia"><div class="modal" style="max-width:520px">
+  <div class="mh"><div class="mt">Incidencia de reparación</div><button class="mc" onclick="closeM('mIncidencia')">✕</button></div>
+  <div class="mb"><div class="fgrid">
+    <div class="f"><label>Tipo</label><select id="incTipo"><option>Daño preexistente</option><option>Daño durante el servicio</option><option>Falla posterior al arreglo</option><option>Error de diagnóstico</option><option>Repuesto / proveedor</option><option>Pérdida / robo</option><option>Otro</option></select></div>
+    <div class="f"><label>Responsable informado</label><input id="incResponsable" placeholder="Opcional"/></div>
+    <div class="f"><label>Costo estimado (ARS)</label><input id="incCosto" type="number" min="0"/></div>
+    <div class="f"><label>Resolución</label><select id="incResolucion"><option value="">Pendiente de resolución</option><option>Absorbida por el negocio</option><option>Reclamo a proveedor</option><option>Garantía sin costo</option><option>Acuerdo con cliente</option><option>Responsabilidad compartida</option><option>Responsabilidad individual</option></select></div>
+    <div class="f full"><label>Descripción *</label><textarea id="incDescripcion" placeholder="Qué ocurrió y en qué momento"></textarea></div>
+    <div class="f full"><label>Evidencia / referencia</label><input id="incEvidencia" placeholder="Ej: foto recibida por WhatsApp, video, testigo, remito"/></div>
+  </div></div>
+  <div class="mf"><button class="btn btn-g" onclick="closeM('mIncidencia')">Cancelar</button><button class="btn btn-p" onclick="guardarIncidencia()">Guardar incidencia</button></div>
 </div></div>
 <!-- Mi perfil -->
 <div class="ov" id="mPerfil"><div class="modal" style="max-width:400px">
@@ -586,13 +600,13 @@ document.addEventListener('DOMContentLoaded', function() {
 -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="js/data.js?v=22"></script>
-<script src="js/state.js?v=28"></script>
+<script src="js/state.js?v=29"></script>
 <script src="js/helpers.js?v=23"></script>
 <script src="js/moneda.js?v=2"></script>
-<script src="js/render.js?v=29"></script>
-<script src="js/modals.js?v=33"></script>
+<script src="js/render.js?v=30"></script>
+<script src="js/modals.js?v=35"></script>
 <script src="js/catalogo.js?v=22"></script>
-<script src="js/comisiones.js?v=27"></script>
+<script src="js/comisiones.js?v=28"></script>
 <script src="js/seguimientos.js?v=22"></script>
 <script src="js/cotizador.js?v=26"></script>
 <script src="js/ventas.js?v=24"></script>
