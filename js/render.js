@@ -563,14 +563,58 @@ function renderCentroControl() {
   if (listaTec.length) { var tabla = document.createElement('div'); tabla.className = 'tw'; tabla.style.marginTop = '12px'; tabla.innerHTML = '<table><thead><tr><th>Técnico</th><th>Abiertas</th><th>Finalizadas</th><th>Facturación período</th></tr></thead><tbody>' + listaTec.map(function(t) { return '<tr><td>' + esc(t.nombre) + '</td><td>' + t.datos.abiertas + '</td><td>' + t.datos.finalizadas + '</td><td class="mono">' + pesos(t.datos.facturacion) + '</td></tr>'; }).join('') + '</tbody></table>'; oper.appendChild(tabla); }
   cnt.appendChild(oper);
 
+  // Rentabilidad: sólo ventas que tienen costo informado.
+  var ventasConCosto = ventasPeriodo.filter(function(v) { return Number(v.costo || 0) > 0; });
+  var ticketPromedio = ventasPeriodo.length ? ingresoVentas / ventasPeriodo.length : 0;
+  var margenPromedio = ventasConCosto.length ? ventasConCosto.reduce(function(s, v) { return s + (Number(v.precio || 0) - Number(v.costo || 0)); }, 0) / ventasConCosto.length : 0;
+  var modelosVentas = {};
+  ventasPeriodo.forEach(function(v) {
+    var modelo = [v.modelo, v.capacidad].filter(Boolean).join(' ').trim() || 'Sin modelo';
+    if (!modelosVentas[modelo]) modelosVentas[modelo] = { cantidad:0, facturacion:0 };
+    modelosVentas[modelo].cantidad++; modelosVentas[modelo].facturacion += Number(v.precio || 0);
+  });
+  var topModelos = Object.keys(modelosVentas).map(function(nombre) { return { nombre:nombre, datos:modelosVentas[nombre] }; })
+    .sort(function(a, b) { return b.datos.cantidad - a.datos.cantidad || b.datos.facturacion - a.datos.facturacion; }).slice(0, 5);
+  var bajoMargen = ventasConCosto.filter(function(v) { return Number(v.precio || 0) - Number(v.costo || 0) <= 0; });
+  var secRent = document.createElement('div'); secRent.style.marginTop = '22px'; secRent.innerHTML = '<div class="ct" style="margin-bottom:8px">RENTABILIDAD Y CAPITAL</div>';
+  var rentCards = document.createElement('div'); rentCards.className = 'sc-row';
+  rentCards.innerHTML = ccCard('Ticket promedio', pesos(ticketPromedio), ventasPeriodo.length + ' venta(s) del período', 'var(--bl)')
+    + ccCard('Margen promedio', pesos(margenPromedio), ventasConCosto.length + ' venta(s) con costo', margenPromedio >= 0 ? 'var(--gr)' : 'var(--rd)')
+    + ccCard('Margen potencial stock', pesos(stockVenta - stockCosto), stockActivo.length + ' equipo(s) no vendidos', 'var(--gr)')
+    + ccCard('Stock sin precio', stockActivo.filter(function(s) { return !Number(s.precio_venta); }).length, 'Requiere definir precio de venta', 'var(--or)');
+  secRent.appendChild(rentCards);
+  if (topModelos.length || bajoMargen.length) {
+    var rentGrid = document.createElement('div'); rentGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:12px';
+    var topBox = document.createElement('div'); topBox.className = 'card'; topBox.innerHTML = '<div class="ct">Modelos más vendidos</div>';
+    topBox.innerHTML += topModelos.length ? topModelos.map(function(m, i) { return '<div class="dr"><span class="dl">#' + (i+1) + ' ' + esc(m.nombre) + '</span><span class="mono">' + m.datos.cantidad + ' · ' + pesos(m.datos.facturacion) + '</span></div>'; }).join('') : '<div class="mu" style="font-size:12px">Sin ventas en el período.</div>';
+    var margenBox = document.createElement('div'); margenBox.className = 'card'; margenBox.innerHTML = '<div class="ct">Margen a revisar</div>';
+    margenBox.innerHTML += bajoMargen.length ? bajoMargen.slice(0,5).map(function(v) { return '<div class="dr"><span class="dl">' + esc(v.modelo || 'Sin modelo') + '</span><span class="mono cr">' + pesos(Number(v.precio || 0) - Number(v.costo || 0)) + '</span></div>'; }).join('') : '<div class="mu" style="font-size:12px">No hay ventas sin margen o con pérdida.</div>';
+    rentGrid.appendChild(topBox); rentGrid.appendChild(margenBox); secRent.appendChild(rentGrid);
+  }
+  cnt.appendChild(secRent);
+
+  var rpuActivos = rpus.filter(function(r) { return r.estado !== 'Usado'; });
+  var capitalRpu = rpuActivos.reduce(function(s, r) { return s + Number(r.costo || 0); }, 0);
+  var rpuUso = {};
+  rpus.filter(function(r) { return r.estado === 'Usado'; }).forEach(function(r) { var n = r.nombre || 'Sin nombre'; rpuUso[n] = (rpuUso[n] || 0) + 1; });
+  var topUso = Object.keys(rpuUso).map(function(n) { return { nombre:n, cantidad:rpuUso[n] }; }).sort(function(a,b) { return b.cantidad - a.cantidad; }).slice(0,5);
+  var rpuAbiertos = rpuActivos.filter(function(rp) { return rp.orden && reps.some(function(r) { return r.orden === rp.orden && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; }); });
+  var secRpu = document.createElement('div'); secRpu.style.marginTop = '22px'; secRpu.innerHTML = '<div class="ct" style="margin-bottom:8px">REPUESTOS</div>';
+  var rpuCards = document.createElement('div'); rpuCards.className = 'sc-row';
+  rpuCards.innerHTML = ccCard('Capital inmovilizado', pesos(capitalRpu), rpuActivos.length + ' repuesto(s) no usados', 'var(--pu)')
+    + ccCard('Pendientes de llegada', rpus.filter(function(r) { return r.estado === 'Esperando' || r.estado === 'Encargado'; }).length, 'Esperando o encargados', 'var(--or)')
+    + ccCard('Vinculados a órdenes abiertas', rpuAbiertos.length, 'Requieren seguimiento operativo', 'var(--rd)')
+    + ccCard('Repuestos usados', rpus.filter(function(r) { return r.estado === 'Usado'; }).length, 'Histórico registrado', 'var(--gr)');
+  secRpu.appendChild(rpuCards);
+  if (topUso.length) { var usoBox = document.createElement('div'); usoBox.className = 'card'; usoBox.style.marginTop = '12px'; usoBox.innerHTML = '<div class="ct">Repuestos más utilizados</div>' + topUso.map(function(r, i) { return '<div class="dr"><span class="dl">#' + (i+1) + ' ' + esc(r.nombre) + '</span><span class="mono">' + r.cantidad + ' uso(s)</span></div>'; }).join(''); secRpu.appendChild(usoBox); }
+  cnt.appendChild(secRpu);
+
   var oportunidades = [];
   var inmovilizados = stockActivo.filter(function(s) { var d = ccFecha(s.fecha); return d && Math.floor((ahora - d) / 86400000) > 60; });
   if (inmovilizados.length) oportunidades.push('Hay ' + inmovilizados.length + ' equipo(s) en stock hace más de 60 días; revisá precio o publicación.');
   var sinPrecio = stockActivo.filter(function(s) { return !Number(s.precio_venta); });
   if (sinPrecio.length) oportunidades.push('Hay ' + sinPrecio.length + ' equipo(s) de stock sin precio de venta.');
-  var uso = {}; rpus.filter(function(r) { return r.estado === 'Usado'; }).forEach(function(r) { var n = r.nombre || 'Sin nombre'; uso[n] = (uso[n] || 0) + 1; });
-  var masUsado = Object.keys(uso).sort(function(a,b) { return uso[b] - uso[a]; })[0];
-  if (masUsado) oportunidades.push('El repuesto más usado registrado es ' + masUsado + ' (' + uso[masUsado] + ' uso(s)).');
+  if (topUso.length) oportunidades.push('El repuesto más usado registrado es ' + topUso[0].nombre + ' (' + topUso[0].cantidad + ' uso(s)).');
   var secOp = document.createElement('div'); secOp.style.marginTop = '22px'; secOp.innerHTML = '<div class="ct" style="margin-bottom:8px">OPORTUNIDADES</div>';
   if (oportunidades.length) oportunidades.forEach(function(t) { var x = document.createElement('div'); x.style.cssText = 'background:rgba(45,206,137,.06);border:1px solid rgba(45,206,137,.2);padding:10px 12px;margin-bottom:6px;border-radius:7px;font-size:12px'; x.textContent = '↗ ' + t; secOp.appendChild(x); });
   else secOp.innerHTML += '<div class="empty" style="padding:18px">Aún no hay datos suficientes para oportunidades accionables.</div>';
