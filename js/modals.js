@@ -186,6 +186,9 @@ function guardarIncidencia() {
   if (resolucion) { incidencia.resueltaPor = usuarioActualRegistro(); incidencia.fechaResolucion = hoy(); }
   FB.upd(r.id, { incidencia:incidencia }, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    if (resolucion === 'Garantía sin costo' || resolucion === 'Acuerdo con cliente' || resolucion === 'Responsabilidad compartida' || resolucion === 'Responsabilidad individual') {
+      if (typeof comGenerarAjuste === 'function') comGenerarAjuste('reparacion', r.id, 'Incidencia resuelta: ' + resolucion);
+    }
     closeM('mIncidencia'); toast(resolucion ? 'Incidencia resuelta' : 'Incidencia registrada');
   });
 }
