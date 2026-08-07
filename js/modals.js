@@ -88,7 +88,7 @@ function saveRep() {
     FB.add(Object.assign({}, d, {
       orden:    orden,
       fecha:    hoy(),
-      timeline: [{ estado: est, fecha: hoy(), hora: horaActual() }],
+      timeline: [{ estado: est, fecha: hoy(), hora: horaActual(), usuario: usuarioActualRegistro() }],
     }), done);
   }
 }
@@ -100,7 +100,7 @@ function actualizarReparacion(id, datos, done) {
   var cambios = Object.assign({}, datos);
   if (Object.prototype.hasOwnProperty.call(cambios, 'estado') && prev.estado !== cambios.estado) {
     var tl = (prev.timeline || []).slice();
-    tl.push({ estado: cambios.estado, fecha: hoy(), hora: horaActual() });
+    tl.push({ estado: cambios.estado, fecha: hoy(), hora: horaActual(), usuario: usuarioActualRegistro() });
     cambios.timeline = tl;
   }
   FB.upd(id, cambios, done);
@@ -235,9 +235,29 @@ if (!r) return;
     var info = document.createElement('div');
     info.innerHTML = '<div class="tlt">' + esc(t.estado) + '</div>'
       + '<div class="tldt">' + esc(t.fecha || '') + (t.hora ? ' · ' + esc(t.hora) : '') + '</div>';
+    if (t.usuario && t.usuario.nombre) {
+      var autor = document.createElement('div'); autor.className = 'tldt'; autor.textContent = t.usuario.nombre;
+      info.appendChild(autor);
+    }
     tliDiv.appendChild(dot); tliDiv.appendChild(info); ds4.appendChild(tliDiv);
   });
   col2.appendChild(ds4);
+
+  // Actividad registrada: cambios de datos efectuados sobre esta reparación.
+  var actividad = (window.AUDITORIA || []).filter(function(a) { return a.entidad === 'reparacion' && a.entidadId === r.id; })
+    .sort(function(a, b) { return (b._ordenAuditoria || 0) - (a._ordenAuditoria || 0); });
+  if (actividad.length) {
+    var dsActividad = document.createElement('div'); dsActividad.className = 'ds';
+    dsActividad.innerHTML = '<div class="dst">Actividad</div>';
+    actividad.forEach(function(a) {
+      var fila = document.createElement('div'); fila.style.cssText = 'font-size:11px;padding:5px 0;border-bottom:1px solid var(--bd)';
+      var actor = a.actor && a.actor.nombre ? a.actor.nombre : 'Usuario no registrado';
+      var detalle = (a.cambios || []).map(function(c) { return c.campo + ': ' + c.antes + ' → ' + c.despues; }).join(' · ');
+      fila.textContent = actor + ' · ' + (a.accion || 'actualizado') + (detalle ? ' · ' + detalle : '') + ' · ' + (a.fecha || '') + (a.hora ? ' ' + a.hora : '');
+      dsActividad.appendChild(fila);
+    });
+    col2.appendChild(dsActividad);
+  }
 
   // Notas
   if (r.notas) {
@@ -743,7 +763,7 @@ function acEq() {
   var v  = val('fEq').toLowerCase();
   var ac = el('acEqL');
   if (v.length < 2) { ac.style.display = 'none'; return; }
-  var matches = EQUIPOS_APPLE.filter(function(e) { return e.toLowerCase().includes(v); }).slice(0, 8);
+  var matches = ordenarPorModelo(EQUIPOS_APPLE).filter(function(e) { return e.toLowerCase().includes(v); }).slice(0, 8);
   if (!matches.length) { ac.style.display = 'none'; return; }
   ac.innerHTML = '';
   matches.forEach(function(e) {

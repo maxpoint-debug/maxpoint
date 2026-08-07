@@ -44,6 +44,16 @@ function sesionActiva() {
   return !!(SESION && SESION.usuario && SESION.perfil && SESION.perfil.activo !== false);
 }
 
+function usuarioActualRegistro() {
+  if (!sesionActiva()) return null;
+  return {
+    uid: SESION.usuario.uid,
+    nombre: SESION.perfil.nombre || SESION.usuario.email || 'Usuario',
+    email: SESION.perfil.email || SESION.usuario.email || '',
+    rol: SESION.perfil.rol || ''
+  };
+}
+
 function puede(permiso) {
   var roles = PERMISOS_BASE[permiso] || [];
   return sesionActiva() && roles.indexOf(SESION.perfil.rol) !== -1;
