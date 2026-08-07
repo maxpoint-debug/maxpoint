@@ -26,6 +26,7 @@ var CATALOGO   = [];   // productos del proveedor (desde Firebase)
 var USADOS     = [];   // equipos usados para cotizar
 var VENTAS     = [];   // registro de ventas
 var STOCK      = [];   // stock de equipos
+var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 
 // ===================== SESION Y PERMISOS =====================
@@ -39,7 +40,8 @@ var PERMISOS_BASE = {
   editar_reparacion: ['administrador', 'tecnico', 'recepcionista'],
   crear_usuario: ['administrador'],
   actualizar_cotizador: ['administrador'],
-  editar_tipo_cambio: ['administrador']
+  editar_tipo_cambio: ['administrador'],
+  gestionar_comisiones: ['administrador']
 };
 
 function sesionActiva() {
@@ -75,6 +77,8 @@ window.FB = {
   delR:     function(id, cb)     { cb('Firebase no conectado todavía'); },
   setCat:   function(items, cb)  { cb('Firebase no conectado todavía'); },
   setConfig:function(d, cb)      { cb('Firebase no conectado todavía'); },
+  crearLiquidacionComision:function(d, cb) { cb('Firebase no conectado todavía'); },
+  actualizarLiquidacionComision:function(id, d, cb) { cb('Firebase no conectado todavía'); },
   getConfig:function(cb)         { cb(null, {}); },
 };
 

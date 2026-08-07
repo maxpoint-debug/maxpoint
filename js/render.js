@@ -583,6 +583,8 @@ function renderCentroControl() {
   if (listaTec.length) { var tabla = document.createElement('div'); tabla.className = 'tw'; tabla.style.marginTop = '12px'; tabla.innerHTML = '<table><thead><tr><th>Técnico</th><th>Abiertas</th><th>Finalizadas</th><th>Facturación ARS período</th></tr></thead><tbody>' + listaTec.map(function(t) { return '<tr><td>' + esc(t.nombre) + '</td><td>' + t.datos.abiertas + '</td><td>' + t.datos.finalizadas + '</td><td class="mono">' + pesos(t.datos.facturacion) + '</td></tr>'; }).join('') + '</tbody></table>'; oper.appendChild(tabla); }
   cnt.appendChild(oper);
 
+  if (typeof comRenderControl === 'function') cnt.appendChild(comRenderControl());
+
   // Rentabilidad: sólo ventas que tienen costo informado.
   var ventasConCosto = ventasPeriodo.filter(function(v) { return Number(v.costo || 0) > 0; });
   var ticketPromedio = ventasPeriodo.length ? ingresoVentas / ventasPeriodo.length : 0;

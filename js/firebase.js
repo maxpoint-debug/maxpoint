@@ -50,6 +50,7 @@ const cMov = collection(db, 'movimientos');
 const cUsr = collection(db, 'usuarios');
 const cAud = collection(db, 'auditoria');
 const cFx  = collection(db, 'tiposCambio');
+const cLiq = collection(db, 'liquidacionesComisiones');
 const dMon = doc(db, 'config', 'moneda');
 
 let authModo = 'login', bootstrapDisponible = false;
@@ -440,6 +441,10 @@ onSnapshot(cFx, (snap) => {
     _ordenFx: d.data().createdAt && d.data().createdAt.toMillis ? d.data().createdAt.toMillis() : 0
   }));
 }, () => {});
+onSnapshot(cLiq, (snap) => {
+  window.COM_LIQUIDACIONES = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  if (window.VIEW === 'bal' && typeof renderBal === 'function') renderBal();
+}, () => {});
 
 // ── Config comisiones ──
 window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message));
@@ -456,6 +461,15 @@ window.FB.setMoneda = async (d, cb) => {
       cambios: cambiosAuditables(previo.exists() ? previo.data() : {}, d), fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
     await batch.commit(); cb(null);
   } catch (e) { cb(e.message); }
+};
+
+window.FB.crearLiquidacionComision = (d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar comisiones'); return; }
+  agregarAuditable('liquidacionesComisiones', 'liquidacion_comision', d).then(id => cb(null, id)).catch(e => cb(e.message));
+};
+window.FB.actualizarLiquidacionComision = (id, d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar comisiones'); return; }
+  actualizarAuditable('liquidacionesComisiones', 'liquidacion_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
 };
 
 // ── CRUD ventas ──
