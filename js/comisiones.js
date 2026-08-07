@@ -71,13 +71,14 @@ function comCalcularElegibles(mesKey) {
     var p = persona(v.vendedor), clave = 'venta:' + v.id;
     var precio = Number(v.precio || 0), costo = Number(v.costo || 0), ganancia = precio - costo;
     var decision = v.comisionExcepcion || {};
+    if ((v.estadoVenta || 'Cobrada') !== 'Cobrada') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Venta ' + (v.estadoVenta || 'pendiente')); return; }
     if (decision.estado === 'No comisiona') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Resuelta: no comisiona', 'No comisiona'); return; }
     if (decision.estado === 'Incluida') {
       if (!bloqueadas[clave]) p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:Number(decision.montoArs || 0), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Excepción aprobada por administración' });
       return;
     }
     if (v.parte_pago === 'Si') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Parte de pago pendiente de valuación'); return; }
-    if (!costo || costo <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin costo confirmado'); return; }
+    if (!costo || costo <= 0 || v.costoConfirmado === false) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin costo confirmado'); return; }
     if (ganancia <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin ganancia positiva'); return; }
     if (bloqueadas[clave]) return;
     p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:comMontoVenta(ganancia), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Venta con costo confirmado' });
