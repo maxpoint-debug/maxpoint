@@ -134,7 +134,7 @@ function actualizarReparacion(id, datos, done) {
   if (prev.controlComisionV1 && estadoFinal === 'Entregado' && (!resultadoFinal || resultadoFinal === 'Pendiente de cierre' || !String(fisicoFinal || '').trim())) {
     done('Completá resultado y estado físico final antes de entregar la reparación'); return;
   }
-  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && pagoFinal !== 'Pagado') {
+  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && pagoFinal !== 'Pagado' && !(prev.entregaExcepcion && prev.entregaExcepcion.autorizada)) {
     done('La reparación debe estar pagada antes de entregar'); return;
   }
   if (Object.prototype.hasOwnProperty.call(cambios, 'estado') && prev.estado !== cambios.estado) {
@@ -143,6 +143,15 @@ function actualizarReparacion(id, datos, done) {
     cambios.timeline = tl;
   }
   FB.upd(id, cambios, done);
+}
+
+function autorizarEntregaSaldo(id) {
+  if (!puede('gestionar_comisiones')) { toast('Solo administración puede autorizar una entrega con saldo', 'var(--rd)'); return; }
+  var r = REPS.find(function(x) { return x.id === id; }); if (!r) return;
+  var motivo = prompt('Motivo de la entrega con saldo pendiente:'); if (!motivo || !motivo.trim()) return;
+  FB.upd(id, { entregaExcepcion:{ autorizada:true, motivo:motivo.trim(), autorizadaPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() } }, function(err) {
+    if (err) { toast('Error: ' + err, 'var(--rd)'); return; } toast('Entrega con saldo autorizada');
+  });
 }
 
 function crearGarantiaVinculada(id) {
@@ -405,6 +414,7 @@ if (!r) return;
       return function() { closeM('mDet'); openPago(id); };
     })(r.id)));
   }
+  if (r.pago !== 'Pagado' && puede('gestionar_comisiones')) fa.appendChild(mkBtn('btn-g btn-sm', 'Autorizar entrega con saldo', (function(id) { return function() { autorizarEntregaSaldo(id); }; })(r.id)));
   if (r.modelo) {
     fa.appendChild(mkBtn('btn-g btn-sm', 'Copiar IMEI / Serie', (function(serie) { return function() { copiarTexto(serie, 'IMEI / Serie copiado'); }; })(r.modelo)));
   }

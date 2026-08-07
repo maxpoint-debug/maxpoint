@@ -8,6 +8,7 @@ function openNewVenta(prefillCosto) {
     setVal(id, '');
   });
   el('vPago').value = 'Efectivo';
+  el('vEstadoVenta').value = 'Cobrada';
   el('vPartePago').checked = false;
   el('vPartePagoWrap').style.display = 'none';
   ['vPpMod','vPpImei','vPpValor'].forEach(function(id) { setVal(id, ''); });
@@ -38,6 +39,9 @@ function saveVenta() {
   btn.disabled = true; btn.textContent = 'Guardando...';
 
   var partePago = el('vPartePago').checked;
+  var anterior = _ventaId ? VENTAS.find(function(x) { return x.id === _ventaId; }) : null;
+  var puedeCosto = puede('editar_costos');
+  var costo = puedeCosto ? (val('vCosto') || '0') : ((anterior && anterior.costo) || '0');
   var d = {
     nombre:      nom,
     telefono:    tel,
@@ -49,7 +53,10 @@ function saveVenta() {
     color:       val('vCol'),
     imei:        imei,
     precio:      precio,
-    costo:       val('vCosto') || '0',
+    costo:       costo,
+    costoConfirmado: puedeCosto ? Number(costo) > 0 : !!(anterior && anterior.costoConfirmado),
+    estadoVenta: el('vEstadoVenta').value,
+    cotizacionBlue: typeof cotizacionBlueVenta === 'function' ? cotizacionBlueVenta() : 0,
     vendedor:    el('vVendedor') ? el('vVendedor').value : '',
     canal:       el('vCanal') ? el('vCanal').value : '',
     pago:        el('vPago').value,
@@ -58,7 +65,7 @@ function saveVenta() {
     pp_modelo:   partePago ? val('vPpMod') : '',
     pp_imei:     partePago ? val('vPpImei') : '',
     pp_valor:    partePago ? val('vPpValor') : '',
-    fecha:       _ventaId ? (VENTAS.find(function(x){return x.id===_ventaId;})||{}).fecha || hoy() : hoy(),
+    fecha:       _ventaId ? (anterior||{}).fecha || hoy() : hoy(),
     garantia:    '6 meses',
     seguimiento: 'pendiente',
   };
@@ -98,6 +105,7 @@ function openEditVenta(id) {
   if (!v) return;
   _ventaId = id;
   el('mVenT').textContent = 'Editar venta';
+  el('vEstadoVenta').value = v.estadoVenta || 'Cobrada';
   setVal('vNom',    v.nombre    || '');
   setVal('vTel',    v.telefono  || '');
   setVal('vDni',    v.dni       || '');
