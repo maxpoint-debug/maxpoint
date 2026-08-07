@@ -188,8 +188,8 @@ if (!r) return;
       var rpNom = document.createElement('span'); rpNom.textContent = rp.nombre || '';
       var rpEst = document.createElement('span'); rpEst.innerHTML = badgeRpu(rp.estado);
       var rpCosto = document.createElement('span'); rpCosto.className = 'mono co'; rpCosto.style.fontSize = '12px';
-      if (rp.costo && rp.costo !== '0') rpCosto.textContent = pesos(rp.costo);
-      row.appendChild(rpNom); row.appendChild(rpCosto); row.appendChild(rpEst);
+      if (puede('ver_costos') && rp.costo && rp.costo !== '0') rpCosto.textContent = pesos(rp.costo);
+      row.appendChild(rpNom); if (puede('ver_costos')) row.appendChild(rpCosto); row.appendChild(rpEst);
       dsRpu.appendChild(row);
     });
     col1.appendChild(dsRpu);
@@ -576,6 +576,8 @@ function openNewRepuesto() {
   ['rpNom','rpMod','rpCli','rpOrd','rpNot'].forEach(function(id) { setVal(id, ''); });
   setVal('rpCos', ''); setVal('rpPrecio', ''); setVal('rpCant', '1');
   el('rpEst').value = 'Esperando';
+  var verCostos = puede('ver_costos');
+  ['wRpCos','catCostoUsd','catCostoArs'].forEach(function(id) { var campo = el(id); if (campo) campo.style.display = verCostos ? '' : 'none'; });
   setVal('rpPro', '');
   _afterRpu = null;
   openM('mRpu');
@@ -780,6 +782,7 @@ function importarHist() {
 }
 
 function openLock()  {
+  if (!puede('ver_balance')) { toast('Sin permiso para ver el balance', 'var(--rd)'); return; }
   setVal('pinIn', '');
   el('pinErr').textContent = '';
   el('lockSc').style.display = 'flex';
@@ -787,6 +790,7 @@ function openLock()  {
 }
 function closeLock() { el('lockSc').style.display = 'none'; }
 function chkPin() {
+  if (!puede('ver_balance')) { closeLock(); return; }
   var v = val('pinIn');
   if (v.length < 4) return;
   if (v === PIN) {

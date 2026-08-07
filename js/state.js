@@ -33,6 +33,8 @@ var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 var SESION = { usuario: null, perfil: null, cargando: true };
 var PERMISOS_BASE = {
   ver_balance: ['administrador'],
+  ver_costos: ['administrador'],
+  editar_costos: ['administrador'],
   editar_reparacion: ['administrador', 'tecnico', 'recepcionista'],
   crear_usuario: ['administrador']
 };

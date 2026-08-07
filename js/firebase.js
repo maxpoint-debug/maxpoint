@@ -3,7 +3,7 @@
 // Sobreescribe los metodos de window.FB con las funciones reales de Firestore.
 
 import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   getFirestore,
   collection,
@@ -54,6 +54,8 @@ function authError(msg) { const e = document.getElementById('authErr'); if (e) e
 function authUiSesion() {
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'none';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = puede('crear_usuario') ? '' : 'none';
+  const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = puede('ver_balance') ? '' : 'none';
+  const resumen = document.getElementById('financeSummary'); if (resumen) resumen.style.display = puede('ver_balance') ? '' : 'none';
   const info = document.getElementById('sesionInfo');
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
 }
@@ -71,6 +73,7 @@ window.authMostrarLogin = function() {
   document.getElementById('authTitle').textContent = 'Ingresar al sistema';
   document.getElementById('authNombreWrap').style.display = 'none';
   document.getElementById('authSubmit').textContent = 'Ingresar';
+  document.getElementById('authRecuperar').style.display = '';
   document.getElementById('authVolver').style.display = 'none'; verificarBootstrap();
 };
 window.authMostrarBootstrap = function() {
@@ -79,6 +82,7 @@ window.authMostrarBootstrap = function() {
   document.getElementById('authTitle').textContent = 'Crear primer administrador';
   document.getElementById('authNombreWrap').style.display = '';
   document.getElementById('authSubmit').textContent = 'Crear administrador';
+  document.getElementById('authRecuperar').style.display = 'none';
   document.getElementById('authBootstrap').style.display = 'none';
   document.getElementById('authVolver').style.display = '';
 };
@@ -97,6 +101,28 @@ window.authEnviar = async function() {
   } catch (e) { authError(e.message || 'No se pudo iniciar sesión.'); }
 };
 window.authSalir = function() { signOut(auth); };
+window.authRecuperarClave = async function() {
+  const email = document.getElementById('authEmail').value.trim();
+  if (!email) { authError('Ingresá tu email para recibir el enlace.'); return; }
+  try { await sendPasswordResetEmail(auth, email); authError(''); toast('Enviamos un enlace de recuperación a tu email.'); }
+  catch (e) { authError(e.message || 'No se pudo enviar el enlace.'); }
+};
+window.openPerfil = function() {
+  if (!SESION.usuario || !SESION.perfil) return;
+  setVal('pfNombre', SESION.perfil.nombre || ''); setVal('pfEmail', SESION.perfil.email || SESION.usuario.email || '');
+  ['pfActual','pfNueva','pfNueva2'].forEach(function(id) { setVal(id, ''); }); openM('mPerfil');
+};
+window.authCambiarClave = async function() {
+  const actual = val('pfActual'), nueva = val('pfNueva'), repetir = val('pfNueva2');
+  if (!actual || !nueva || !repetir) { toast('Completá los tres campos de contraseña', 'var(--rd)'); return; }
+  if (nueva !== repetir) { toast('Las nuevas contraseñas no coinciden', 'var(--rd)'); return; }
+  if (nueva.length < 6) { toast('La nueva contraseña debe tener al menos 6 caracteres', 'var(--rd)'); return; }
+  try {
+    await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, actual));
+    await updatePassword(auth.currentUser, nueva);
+    closeM('mPerfil'); toast('Contraseña actualizada');
+  } catch (e) { toast('No se pudo cambiar la contraseña: ' + e.message, 'var(--rd)'); }
+};
 
 window.renderUsuarios = async function() {
   if (!puede('crear_usuario')) { toast('Sin permiso para administrar usuarios', 'var(--rd)'); return; }

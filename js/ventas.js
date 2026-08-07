@@ -12,6 +12,7 @@ function openNewVenta(prefillCosto) {
   el('vPartePagoWrap').style.display = 'none';
   ['vPpMod','vPpImei','vPpValor'].forEach(function(id) { setVal(id, ''); });
   if (prefillCosto) setVal('vCosto', prefillCosto);
+  var costoWrap = el('wVCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('btnSaveVenta').disabled = false;
   el('btnSaveVenta').textContent = 'Guardar venta';
   _ventaId = null;
@@ -108,6 +109,7 @@ function openEditVenta(id) {
   setVal('vImei',   v.imei      || '');
   setVal('vPrecio', v.precio    || '');
   setVal('vCosto',  v.costo     || '');
+  var costoWrap = el('wVCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   // Actualizar opciones del select antes de setear el valor
   var selVed = el('vVendedor');
   if (selVed && typeof comOpcionesTecnicos === 'function') selVed.innerHTML = comOpcionesTecnicos(v.vendedor || '');

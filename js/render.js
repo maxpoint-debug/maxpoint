@@ -199,7 +199,7 @@ function renderRpus() {
     + '<div class="sc"><div class="scl">Encargado</div><div class="scv co">' + enc.length + '</div></div>'
     + '<div class="sc"><div class="scl">Disponibles</div><div class="scv cg">' + lle.length + '</div></div>'
     + '<div class="sc"><div class="scl">Usados</div><div class="scv cy">' + usa.length + '</div></div>'
-    + '<div class="sc"><div class="scl">Costo pendiente</div><div class="scv co">' + pesos(cE) + '</div></div>';
+    + (puede('ver_costos') ? '<div class="sc"><div class="scl">Costo pendiente</div><div class="scv co">' + pesos(cE) + '</div></div>' : '');
   // Boton copiar lista (solo si hay Esperando)
   if (esp.length) {
     var btnCopy = document.createElement('button');
@@ -265,7 +265,7 @@ function renderRpus() {
     var meta = document.createElement('div'); meta.className = 'rcm';
     if (r.orden)     meta.innerHTML += '<span>🔧 <span class="on">' + esc(r.orden) + '</span></span>';
     if (r.cliente)   meta.innerHTML += '<span>👤 ' + esc(r.cliente) + '</span>';
-    if (r.costo && r.costo !== '0') meta.innerHTML += '<span>💰 <span class="mono">' + pesos(r.costo) + '</span></span>';
+    if (puede('ver_costos') && r.costo && r.costo !== '0') meta.innerHTML += '<span>💰 <span class="mono">' + pesos(r.costo) + '</span></span>';
     if (r.proveedor) meta.innerHTML += '<span>🏪 ' + esc(r.proveedor) + '</span>';
     if (r.fecha)     meta.innerHTML += '<span class="mono mu" style="font-size:11px">' + esc(r.fecha) + '</span>';
     card.appendChild(meta);
@@ -459,6 +459,7 @@ function renderPag() {
 // BALANCE
 // ============================================================
 function renderBal() {
+  if (!puede('ver_balance')) { toast('Sin permiso para ver el balance', 'var(--rd)'); showView('reps'); return; }
   var cnt = el('cnt'); cnt.innerHTML = '';
   var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
@@ -840,7 +841,7 @@ function renderVen() {
       card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
       var modelo = [v.modelo, v.capacidad, v.color].filter(Boolean).join(' ');
       var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
-      var gan = (v.precio && v.costo && Number(v.costo)) ? Number(v.precio) - Number(v.costo) : null;
+      var gan = puede('ver_costos') && v.precio && v.costo && Number(v.costo) ? Number(v.precio) - Number(v.costo) : null;
       card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
         + '<div style="flex:1">'
         + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
@@ -850,7 +851,7 @@ function renderVen() {
         + '</div>'
         + '<div style="text-align:right;flex-shrink:0">'
         + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
-        + (v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(v.costo) + '</div>' : '')
+        + (puede('ver_costos') && v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(v.costo) + '</div>' : '')
         + (gan !== null ? '<div style="font-size:11px;font-weight:700;color:' + (gan>=0?'var(--gr)':'var(--rd)') + '">Gan: ' + pesos(gan) + '</div>' : '')
         + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
         + '</div></div>'
@@ -891,7 +892,7 @@ function renderStock() {
       var card = document.createElement('div');
       card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
       var label = [s.modelo, s.capacidad, s.color].filter(Boolean).join(' ');
-      var margen = (s.precio_venta && s.precio_costo) ? Number(s.precio_venta)-Number(s.precio_costo) : null;
+    var margen = puede('ver_costos') && s.precio_venta && s.precio_costo ? Number(s.precio_venta)-Number(s.precio_costo) : null;
       card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
         + '<div style="flex:1"><div style="font-size:13px;font-weight:800">' + esc(label) + '</div>'
         + (s.detalles ? '<div style="font-size:11px;color:var(--mu);margin-top:2px">' + esc(s.detalles) + '</div>' : '')
@@ -899,7 +900,7 @@ function renderStock() {
         + '</div>'
         + '<div style="text-align:right;flex-shrink:0">'
         + (s.precio_venta ? '<div style="font-size:15px;font-weight:900;color:var(--gr)">' + pesos(s.precio_venta) + '</div>' : '')
-        + (s.precio_costo ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(s.precio_costo) + '</div>' : '')
+        + (puede('ver_costos') && s.precio_costo ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(s.precio_costo) + '</div>' : '')
         + (margen !== null ? '<div style="font-size:10px;font-weight:700;color:' + (margen>=0?'var(--gr)':'var(--rd)') + '">Margen: ' + pesos(margen) + '</div>' : '')
         + '</div></div>'
         + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
