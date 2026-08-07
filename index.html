@@ -9,6 +9,21 @@
 </head>
 <body>
 
+<!-- Acceso obligatorio. Firebase Auth conserva la sesión en este dispositivo. -->
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <div class="logo-t">MaxPoint</div>
+    <div class="auth-sub" id="authTitle">Ingresar al sistema</div>
+    <div class="f full" id="authNombreWrap" style="display:none"><label>Nombre</label><input id="authNombre" autocomplete="name"/></div>
+    <div class="f full"><label>Email</label><input id="authEmail" type="email" autocomplete="email"/></div>
+    <div class="f full"><label>Contraseña</label><input id="authPass" type="password" autocomplete="current-password"/></div>
+    <div id="authErr" class="auth-err"></div>
+    <button class="btn btn-p" id="authSubmit" style="width:100%" onclick="authEnviar()">Ingresar</button>
+    <button class="btn btn-g" id="authBootstrap" style="width:100%;margin-top:8px;display:none" onclick="authMostrarBootstrap()">Crear primer administrador</button>
+    <button class="btn btn-g" id="authVolver" style="width:100%;margin-top:8px;display:none" onclick="authMostrarLogin()">Volver al login</button>
+  </div>
+</div>
+
 <!-- ==================== PIN LOCK ==================== -->
 <div class="locksc" id="lockSc" style="display:none">
   <div class="lockbox">
@@ -53,11 +68,14 @@
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
       <div class="ns">Admin</div>
       <div class="ni" onclick="openLock()"><span class="ico">📊</span>Balance</div>
+      <div class="ni" id="nav-users" style="display:none" onclick="showView('users',this)"><span class="ico">👥</span>Usuarios</div>
     </nav>
     <div class="sb">
       <div class="sbr"><span class="sbrl">Total</span><span class="sbrv" id="sb1">—</span></div>
       <div class="sbr"><span class="sbrl">Para retirar</span><span class="sbrv cg" id="sb2">—</span></div>
       <div class="sbr"><span class="sbrl">Repuestos pend.</span><span class="sbrv cp" id="sb3">—</span></div>
+      <div id="sesionInfo" style="margin-top:12px;font-size:11px;color:var(--mu)"></div>
+      <button class="btn btn-g btn-sm" style="width:100%;margin-top:6px" onclick="authSalir()">Cerrar sesión</button>
     </div>
   </aside>
 
@@ -516,18 +534,18 @@ document.addEventListener('DOMContentLoaded', function() {
 -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="js/data.js?v=22"></script>
-<script src="js/state.js?v=22"></script>
+<script src="js/state.js?v=23"></script>
 <script src="js/helpers.js?v=22"></script>
-<script src="js/render.js?v=22"></script>
-<script src="js/modals.js?v=22"></script>
+<script src="js/render.js?v=23"></script>
+<script src="js/modals.js?v=23"></script>
 <script src="js/catalogo.js?v=22"></script>
 <script src="js/comisiones.js?v=22"></script>
 <script src="js/seguimientos.js?v=22"></script>
 <script src="js/cotizador.js?v=22"></script>
 <script src="js/ventas.js?v=22"></script>
 <script src="js/stock.js?v=22"></script>
-<script src="js/app.js?v=22"></script>
-<script type="module" src="js/firebase.js?v=22"></script>
+<script src="js/app.js?v=23"></script>
+<script type="module" src="js/firebase.js?v=23"></script>
 
 </body>
 </html>
