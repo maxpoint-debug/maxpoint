@@ -234,8 +234,8 @@ if (!r) return;
   if (actividad.length) {
     var dsActividad = document.createElement('div'); dsActividad.className = 'ds';
     dsActividad.innerHTML = '<div class="dst">Actividad</div>';
-    actividad.forEach(function(a) {
-      var fila = document.createElement('div'); fila.style.cssText = 'font-size:11px;padding:5px 0;border-bottom:1px solid var(--bd)';
+    actividad.forEach(function(a, indice) {
+      var fila = document.createElement('div'); fila.style.cssText = 'font-size:11px;padding:5px 0;border-bottom:1px solid var(--bd)' + (indice === 0 ? ';font-weight:700;color:var(--tx)' : '');
       var actor = a.actor && a.actor.nombre ? a.actor.nombre : 'Usuario no registrado';
       var detalle = (a.cambios || []).map(function(c) { return c.campo + ': ' + c.antes + ' → ' + c.despues; }).join(' · ');
       fila.textContent = actor + ' · ' + (a.accion || 'actualizado') + (detalle ? ' · ' + detalle : '') + ' · ' + (a.fecha || '') + (a.hora ? ' ' + a.hora : '');
