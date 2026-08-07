@@ -105,6 +105,20 @@ window.authEnviar = async function() {
     } else await signInWithEmailAndPassword(auth, email, pass);
   } catch (e) { authError(e.message || 'No se pudo iniciar sesión.'); }
 };
+window.authTecla = function(e, input) {
+  var visibles = ['authNombre', 'authEmail', 'authPass'].map(function(id) { return document.getElementById(id); })
+    .filter(function(campo) { return campo && campo.offsetParent !== null; });
+  var indice = visibles.indexOf(input);
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (indice < visibles.length - 1) visibles[indice + 1].focus();
+    else window.authEnviar();
+  } else if (e.key === 'ArrowDown' && indice < visibles.length - 1) {
+    e.preventDefault(); visibles[indice + 1].focus();
+  } else if (e.key === 'ArrowUp' && indice > 0) {
+    e.preventDefault(); visibles[indice - 1].focus();
+  }
+};
 window.authSalir = function() { signOut(auth); };
 window.authRecuperarClave = async function() {
   const email = document.getElementById('authEmail').value.trim();
@@ -271,7 +285,7 @@ function valorAuditable(valor) {
 }
 function cambiosAuditables(antes, despues) {
   return Object.keys(despues || {}).filter(function(campo) {
-    return campo.charAt(0) !== '_' && CAMPOS_PRIVADOS.indexOf(campo.toLowerCase()) === -1
+    return campo.charAt(0) !== '_' && campo !== 'timeline' && CAMPOS_PRIVADOS.indexOf(campo.toLowerCase()) === -1
       && JSON.stringify((antes || {})[campo]) !== JSON.stringify(despues[campo]);
   }).map(function(campo) {
     return { campo: campo, antes: valorAuditable((antes || {})[campo]), despues: valorAuditable(despues[campo]) };

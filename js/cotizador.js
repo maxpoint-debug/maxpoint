@@ -1,7 +1,7 @@
 // ===================== COTIZADOR DE USADOS =====================
 var USADOS = [];
 
-function cotLoadUsados(docs) { USADOS = docs || []; }
+function cotLoadUsados(docs) { USADOS = ordenarPorModelo(docs || [], 'modelo'); }
 
 var _cotRes = [], _cotIdx = -1, _cotSel = null;
 
@@ -31,9 +31,9 @@ function cotBuscar(q) {
   q = (q || '').trim();
   if (q.length < 2 || !USADOS.length) { drop.classList.remove('open'); return; }
   var words = q.toLowerCase().split(/\s+/);
-  _cotRes = USADOS.filter(function(u) {
+  _cotRes = ordenarPorModelo(USADOS.filter(function(u) {
     return words.every(function(w) { return u.modelo.toLowerCase().includes(w); });
-  }).slice(0, 10);
+  }), 'modelo').slice(0, 10);
   if (!_cotRes.length) {
     drop.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--mu);text-align:center">Sin resultados</div>';
     drop.classList.add('open'); return;
@@ -246,7 +246,47 @@ function openListaParser() {
   el('listaPreview').style.display = 'none';
   el('listaPreviewContent').innerHTML = '';
   el('btnSubirLista').disabled = true;
+  cotManualCargar();
   openM('mLista');
+}
+
+function cotManualCargar() {
+  var sel = el('cotManualSel'); if (!sel) return;
+  sel.innerHTML = '<option value="">Nuevo modelo</option>' + ordenarPorModelo(USADOS, 'modelo').map(function(u) {
+    return '<option value="' + String(u.modelo).replace(/"/g, '&quot;') + '">' + esc(u.modelo) + '</option>';
+  }).join('');
+  cotManualNuevo();
+}
+
+function cotManualElegir() {
+  var modelo = val('cotManualSel');
+  var equipo = USADOS.find(function(u) { return u.modelo === modelo; });
+  setVal('cotManualModelo', equipo ? equipo.modelo : '');
+  setVal('cotManualPrecio', equipo ? equipo.precio_usd : '');
+}
+
+function cotManualNuevo() {
+  var sel = el('cotManualSel'); if (sel) sel.value = '';
+  setVal('cotManualModelo', ''); setVal('cotManualPrecio', '');
+  var modelo = el('cotManualModelo'); if (modelo) modelo.focus();
+}
+
+function cotGuardarManual() {
+  if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede actualizar la base del cotizador', 'var(--rd)'); return; }
+  var modelo = val('cotManualModelo').trim().replace(/\s+/g, ' ');
+  var precio = Number(val('cotManualPrecio'));
+  if (!modelo || !Number.isFinite(precio) || precio < 0) { toast('Completá modelo y valor USD válido', 'var(--rd)'); return; }
+  var modeloOriginal = val('cotManualSel');
+  var base = USADOS.slice(), indice = base.findIndex(function(u) { return u.modelo === (modeloOriginal || modelo); });
+  if (indice === -1) base.push({ modelo: modelo, precio_usd: precio });
+  else base[indice] = Object.assign({}, base[indice], { modelo: modelo, precio_usd: precio });
+  var btn = el('btnCotManual'); btn.disabled = true; btn.textContent = 'Guardando...';
+  FB.setUsados(base, function(err) {
+    btn.disabled = false; btn.textContent = 'Guardar modelo';
+    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    USADOS = ordenarPorModelo(base, 'modelo'); cotManualCargar();
+    toast(indice === -1 ? 'Modelo agregado' : 'Valor actualizado');
+  });
 }
 
 var _listaItems = [];
@@ -296,7 +336,7 @@ function parsearLista() {
     return;
   }
 
-  el('listaPreviewContent').innerHTML = _listaItems.map(function(u) {
+  el('listaPreviewContent').innerHTML = ordenarPorModelo(_listaItems, 'modelo').map(function(u) {
     var existe = USADOS.find(function(x) { return x.modelo === u.modelo; });
     var tag = !existe
       ? '<span style="color:var(--gr);font-size:10px;font-weight:700"> NUEVO</span>'
@@ -328,7 +368,7 @@ function subirLista() {
   FB.setUsados(base, function(err) {
     btn.disabled = false; btn.textContent = 'Actualizar base';
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    USADOS = base;
+    USADOS = ordenarPorModelo(base, 'modelo');
     closeM('mLista');
     toast('Base actualizada — ' + nuevos + ' nuevos, ' + actualizados + ' actualizados');
   });
