@@ -2,7 +2,8 @@
 // ES module — corre despues de que los scripts regulares definieron window.FB.
 // Sobreescribe los metodos de window.FB con las funciones reales de Firestore.
 
-import { initializeApp }    from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   getFirestore,
   collection,
@@ -17,17 +18,20 @@ import {
   onSnapshot,
   query,
   orderBy,
+  limit,
   serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const app = initializeApp({
+const firebaseConfig = {
   apiKey:            'AIzaSyCw76jqobNfGKt4aH7ygv4iVz9ZAHxTiko',
   authDomain:        'maxpoint-taller.firebaseapp.com',
   projectId:         'maxpoint-taller',
   storageBucket:     'maxpoint-taller.firebasestorage.app',
   messagingSenderId: '591043101786',
   appId:             '1:591043101786:web:b18f78627738a22d008463',
-});
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 const db  = getFirestore(app);
 const cR   = collection(db, 'reparaciones');
@@ -43,6 +47,90 @@ const dCom  = doc(db, 'config', 'comisiones');
 const cCli = collection(db, 'clientes');
 const cEq  = collection(db, 'equipos');
 const cMov = collection(db, 'movimientos');
+const cUsr = collection(db, 'usuarios');
+
+let authModo = 'login', bootstrapDisponible = false;
+function authError(msg) { const e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
+function authUiSesion() {
+  const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'none';
+  const nav = document.getElementById('nav-users'); if (nav) nav.style.display = puede('crear_usuario') ? '' : 'none';
+  const info = document.getElementById('sesionInfo');
+  if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
+}
+function authUiLogin() {
+  const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'flex';
+  const nav = document.getElementById('nav-users'); if (nav) nav.style.display = 'none';
+}
+async function verificarBootstrap() {
+  try { bootstrapDisponible = (await getDocs(query(cUsr, limit(1)))).empty; }
+  catch (e) { bootstrapDisponible = false; }
+  const b = document.getElementById('authBootstrap'); if (b) b.style.display = bootstrapDisponible ? '' : 'none';
+}
+window.authMostrarLogin = function() {
+  authModo = 'login'; authError('');
+  document.getElementById('authTitle').textContent = 'Ingresar al sistema';
+  document.getElementById('authNombreWrap').style.display = 'none';
+  document.getElementById('authSubmit').textContent = 'Ingresar';
+  document.getElementById('authVolver').style.display = 'none'; verificarBootstrap();
+};
+window.authMostrarBootstrap = function() {
+  if (!bootstrapDisponible) return;
+  authModo = 'bootstrap'; authError('');
+  document.getElementById('authTitle').textContent = 'Crear primer administrador';
+  document.getElementById('authNombreWrap').style.display = '';
+  document.getElementById('authSubmit').textContent = 'Crear administrador';
+  document.getElementById('authBootstrap').style.display = 'none';
+  document.getElementById('authVolver').style.display = '';
+};
+window.authEnviar = async function() {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass = document.getElementById('authPass').value;
+  const nombre = document.getElementById('authNombre').value.trim();
+  if (!email || !pass || (authModo === 'bootstrap' && !nombre)) { authError('Completá los datos requeridos.'); return; }
+  authError('');
+  try {
+    if (authModo === 'bootstrap') {
+      if (!bootstrapDisponible) throw new Error('El administrador inicial ya fue creado.');
+      const cred = await createUserWithEmailAndPassword(auth, email, pass);
+      await setDoc(doc(cUsr, cred.user.uid), { uid: cred.user.uid, nombre: nombre, email: email, rol: 'administrador', activo: true, createdAt: serverTimestamp() });
+    } else await signInWithEmailAndPassword(auth, email, pass);
+  } catch (e) { authError(e.message || 'No se pudo iniciar sesión.'); }
+};
+window.authSalir = function() { signOut(auth); };
+
+window.renderUsuarios = async function() {
+  if (!puede('crear_usuario')) { toast('Sin permiso para administrar usuarios', 'var(--rd)'); return; }
+  const cnt = document.getElementById('cnt');
+  cnt.innerHTML = '<div class="card" style="max-width:760px"><div class="ct">Usuarios</div><div class="mu" style="margin-bottom:16px">Alta de cuentas y roles del sistema.</div><div class="fgrid"><div class="f"><label>Nombre</label><input id="usrNom"/></div><div class="f"><label>Email</label><input id="usrEmail" type="email"/></div><div class="f"><label>Contraseña temporal</label><input id="usrPass" type="password"/></div><div class="f"><label>Rol</label><select id="usrRol"><option value="tecnico">Técnico</option><option value="recepcionista">Recepcionista</option><option value="administrador">Administrador</option></select></div></div><div class="fa"><button class="btn btn-p" onclick="authCrearUsuario()">Crear usuario</button></div><div id="usrLista" style="margin-top:18px"></div></div>';
+  try {
+    const snap = await getDocs(cUsr);
+    const lista = snap.docs.map(d => d.data()).sort((a,b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
+    document.getElementById('usrLista').innerHTML = lista.length ? lista.map(u => '<div style="padding:9px 0;border-top:1px solid var(--bd)"><b>' + esc(u.nombre || '') + '</b><span class="mu"> · ' + esc(u.email || '') + ' · ' + esc(u.rol || '') + (u.activo === false ? ' · inactivo' : '') + '</span></div>').join('') : '<div class="mu">Todavía no hay usuarios.</div>';
+  } catch (e) { document.getElementById('usrLista').textContent = 'No se pudieron cargar los usuarios: ' + e.message; }
+};
+window.authCrearUsuario = async function() {
+  if (!puede('crear_usuario')) { toast('Sin permiso para crear usuarios', 'var(--rd)'); return; }
+  const nombre = document.getElementById('usrNom').value.trim(), email = document.getElementById('usrEmail').value.trim(), pass = document.getElementById('usrPass').value, rol = document.getElementById('usrRol').value;
+  if (!nombre || !email || !pass) { toast('Completá nombre, email y contraseña', 'var(--rd)'); return; }
+  const provision = initializeApp(firebaseConfig, 'provision_' + Date.now());
+  try {
+    const cred = await createUserWithEmailAndPassword(getAuth(provision), email, pass);
+    await setDoc(doc(cUsr, cred.user.uid), { uid: cred.user.uid, nombre: nombre, email: email, rol: rol, activo: true, createdAt: serverTimestamp() });
+    await signOut(getAuth(provision)); await deleteApp(provision);
+    toast('Usuario creado'); window.renderUsuarios();
+  } catch (e) { await deleteApp(provision); toast('Error creando usuario: ' + e.message, 'var(--rd)'); }
+};
+
+setPersistence(auth, browserLocalPersistence).catch(function() {});
+onAuthStateChanged(auth, async function(user) {
+  SESION.usuario = user || null; SESION.perfil = null; SESION.cargando = false;
+  if (!user) { authUiLogin(); authMostrarLogin(); return; }
+  try {
+    const perfil = (await getDoc(doc(cUsr, user.uid))).data();
+    if (!perfil || perfil.activo === false) throw new Error(!perfil ? 'Tu cuenta no tiene un perfil habilitado.' : 'Tu usuario está inactivo.');
+    SESION.perfil = perfil; authUiSesion();
+  } catch (e) { authError(e.message || 'No se pudo validar la sesión.'); await signOut(auth); }
+});
 
 function normKey(v) {
   return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
