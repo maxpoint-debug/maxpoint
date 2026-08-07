@@ -36,7 +36,8 @@ var PERMISOS_BASE = {
   ver_costos: ['administrador'],
   editar_costos: ['administrador'],
   editar_reparacion: ['administrador', 'tecnico', 'recepcionista'],
-  crear_usuario: ['administrador']
+  crear_usuario: ['administrador'],
+  actualizar_cotizador: ['administrador']
 };
 
 function sesionActiva() {

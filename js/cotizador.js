@@ -239,6 +239,7 @@ function cotCalcular() {
 
 // ── PARSER LISTA WHATSAPP ────────────────────────────────────
 function openListaParser() {
+  if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede actualizar la base del cotizador', 'var(--rd)'); return; }
   var pin = prompt('PIN:');
   if (pin !== PIN) { toast('PIN incorrecto', 'var(--rd)'); return; }
   setVal('listaInput', '');
@@ -313,6 +314,7 @@ function parsearLista() {
 }
 
 function subirLista() {
+  if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede actualizar la base del cotizador', 'var(--rd)'); return; }
   if (!_listaItems.length) return;
   var base = USADOS.slice();
   var nuevos = 0, actualizados = 0;

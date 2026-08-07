@@ -50,7 +50,8 @@ const cMov = collection(db, 'movimientos');
 const cUsr = collection(db, 'usuarios');
 
 let authModo = 'login', bootstrapDisponible = false;
-function authError(msg) { const e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
+function authMensaje(msg, color) { const e = document.getElementById('authErr'); if (e) { e.textContent = msg || ''; e.style.color = color || 'var(--rd)'; } }
+function authError(msg) { authMensaje(msg, 'var(--rd)'); }
 function authUiSesion() {
   if (!sesionActiva()) { authUiLogin(); return; }
   const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'flex';
@@ -107,8 +108,11 @@ window.authSalir = function() { signOut(auth); };
 window.authRecuperarClave = async function() {
   const email = document.getElementById('authEmail').value.trim();
   if (!email) { authError('Ingresá tu email para recibir el enlace.'); return; }
-  try { await sendPasswordResetEmail(auth, email); authError(''); toast('Enviamos un enlace de recuperación a tu email.'); }
+  const boton = document.getElementById('authRecuperar');
+  if (boton) { boton.disabled = true; boton.textContent = 'Enviando…'; }
+  try { await sendPasswordResetEmail(auth, email); authMensaje('Si existe una cuenta para este email, enviamos el enlace de recuperación.', 'var(--gr)'); }
   catch (e) { authError(e.message || 'No se pudo enviar el enlace.'); }
+  finally { if (boton) { boton.disabled = false; boton.textContent = 'Olvidé mi contraseña'; } }
 };
 window.openPerfil = function() {
   if (!SESION.usuario || !SESION.perfil) return;
@@ -376,6 +380,7 @@ window.FB.delSt = (id, cb)     => deleteDoc(doc(cSt,id)).then(()=>cb(null)).catc
 
 // ── setUsados ──
 window.FB.setUsados = async (items, cb) => {
+  if (!puede('actualizar_cotizador')) { cb('Sin permiso para actualizar la base del cotizador'); return; }
   try {
     const old = await getDocs(cUsa);
     const b1 = writeBatch(db); old.docs.forEach(d => b1.delete(d.ref)); await b1.commit();
