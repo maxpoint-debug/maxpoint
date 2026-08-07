@@ -28,6 +28,20 @@ var VENTAS     = [];   // registro de ventas
 var STOCK      = [];   // stock de equipos
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 
+// ===================== SESION Y PERMISOS =====================
+// El perfil se completa desde Firebase Authentication + usuarios/{uid}.
+var SESION = { usuario: null, perfil: null, cargando: true };
+var PERMISOS_BASE = {
+  ver_balance: ['administrador'],
+  editar_reparacion: ['administrador', 'tecnico', 'recepcionista'],
+  crear_usuario: ['administrador']
+};
+
+function puede(permiso) {
+  var roles = PERMISOS_BASE[permiso] || [];
+  return !!(SESION.perfil && SESION.perfil.activo !== false && roles.indexOf(SESION.perfil.rol) !== -1);
+}
+
 // ===================== FIREBASE OBJECT =====================
 // Este objeto es sobreescrito por js/firebase.js una vez que
 // el módulo ES carga. Así el código regular puede llamar FB.add()

@@ -45,6 +45,7 @@ function openEditRep(id) {
 }
 
 function saveRep() {
+  if (!puede('editar_reparacion')) { toast('Sin permiso para guardar reparaciones', 'var(--rd)'); return; }
   var nom = val('fNom');
   var eq  = val('fEq');
   if (!nom || !eq) { alert('Nombre y equipo son obligatorios.'); return; }
@@ -69,6 +70,9 @@ function saveRep() {
     notas:        val('fNot'),
     gremio:       el('fGremio') && el('fGremio').checked ? 'si' : 'no',
   };
+  if (!_eid && SESION.usuario && SESION.perfil) {
+    d.creadoPor = { uid: SESION.usuario.uid, nombre: SESION.perfil.nombre, email: SESION.perfil.email };
+  }
 
   function done(err) {
     btn.disabled = false; btn.textContent = 'Guardar';

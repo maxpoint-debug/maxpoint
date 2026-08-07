@@ -13,6 +13,7 @@ function render() {
   else if (VIEW === 'cli')  renderCli();
   else if (VIEW === 'pag')  renderPag();
   else if (VIEW === 'bal')  renderBal();
+  else if (VIEW === 'users' && typeof window.renderUsuarios === 'function') window.renderUsuarios();
 }
 
 // ---- Filtrado ----
