@@ -54,6 +54,8 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .logo { padding: 24px 20px 18px; border-bottom: 1px solid var(--bd); }
 .logo-t {
@@ -66,7 +68,7 @@ body {
 .logo-s { font-size: 12px; color: var(--tx); font-weight: 500; margin-top: 1px; }
 .logo-m { font-size: 11px; color: var(--mu); margin-top: 2px; letter-spacing: 0.2px; }
 
-nav { padding: 14px 10px; flex: 1; }
+nav { padding: 14px 10px; flex: 1; min-height: 0; overflow-y: auto; }
 .ns {
   font-size: 9px;
   color: var(--mu);
@@ -91,7 +93,7 @@ nav { padding: 14px 10px; flex: 1; }
 .nb.r { background: var(--rd); color: #fff; }
 .nb.g { background: var(--gr); color: #fff; }
 
-.sb { padding: 14px 18px; border-top: 1px solid var(--bd); }
+.sb { padding: 14px 18px; border-top: 1px solid var(--bd); flex-shrink: 0; }
 .sbr {
   display: flex; justify-content: space-between;
   font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--bd);
