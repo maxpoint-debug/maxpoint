@@ -6,8 +6,9 @@
 // ============================================================
 function openNewRep() {
   _eid = null;
+  window._garantiaOrigen = null;
   el('mFormT').textContent = 'Nuevo ingreso';
-  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot','fEstadoFisico'].forEach(function(id) { setVal(id, ''); });
+  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot','fEstadoFisico','fEstadoFisicoFinal'].forEach(function(id) { setVal(id, ''); });
   setVal('fFal', ''); setVal('fPres', ''); setVal('fSen', '');
   el('fEst').value  = 'Ingresado';
   el('fPag').value  = 'Pendiente';
@@ -25,6 +26,7 @@ function openNewRep() {
 function openEditRep(id) {
   var r = REPS.find(function(x) { return x.id === id; });
   if (!r) { toast('Orden no encontrada', 'var(--rd)'); return; }
+  window._garantiaOrigen = null;
   _eid = id;
   el('mFormT').textContent = 'Editar ' + r.orden;
   setVal('fNom',  r.nombre       || '');
@@ -41,6 +43,7 @@ function openEditRep(id) {
   el('fTec').value = r.tecnico   || '';
   setVal('fGar',  r.garantia_ref || '');
   setVal('fEstadoFisico', r.estadoFisicoRecepcion || '');
+  setVal('fEstadoFisicoFinal', r.estadoFisicoEntrega || '');
   setVal('fNot',  r.notas        || '');
   var fGremio = el('fGremio'); if (fGremio) fGremio.checked = r.gremio === 'si';
   el('suggBanner').style.display = 'none';
@@ -58,8 +61,11 @@ function saveRep() {
 
   var est = el('fEst').value;
   var resultadoServicio = el('fResultadoServicio').value;
-  if (est === 'Entregado' && resultadoServicio === 'Pendiente de cierre') {
-    toast('Elegí el resultado del servicio antes de entregar la reparación', 'var(--rd)'); return;
+  if (est === 'Entregado' && (resultadoServicio === 'Pendiente de cierre' || !val('fEstadoFisicoFinal').trim())) {
+    btn.disabled = false; btn.textContent = 'Guardar'; toast('Completá resultado y estado físico final antes de entregar la reparación', 'var(--rd)'); return;
+  }
+  if (est === 'Entregado' && el('fPag').value !== 'Pagado') {
+    btn.disabled = false; btn.textContent = 'Guardar'; toast('La reparación debe estar pagada antes de entregar', 'var(--rd)'); return;
   }
   var anterior = _eid ? REPS.find(function(x) { return x.id === _eid; }) : null;
   var presupuestoNumero = Number(val('fPres') || 0);
@@ -77,11 +83,15 @@ function saveRep() {
     tecnico:      el('fTec').value,
     garantia_ref: val('fGar'),
     estadoFisicoRecepcion: val('fEstadoFisico'),
+    estadoFisicoEntrega: val('fEstadoFisicoFinal'),
     notas:        val('fNot'),
     gremio:       el('fGremio') && el('fGremio').checked ? 'si' : 'no',
     resultadoServicio: resultadoServicio,
     controlComisionV1: true,
   };
+  if (window._garantiaOrigen) {
+    d.es_garantia = 'si'; d.garantiaOrigenId = window._garantiaOrigen.id; d.garantia_ref = window._garantiaOrigen.orden || '';
+  }
   // Las reparaciones chicas requieren una validación individual de administración.
   // Un cambio de resultado vuelve a exigir esa revisión.
   if (presupuestoNumero < 100000 && (!anterior || anterior.resultadoServicio !== resultadoServicio || Number(anterior.presupuesto || 0) !== presupuestoNumero || !anterior.comisionVerificada)) {
@@ -119,8 +129,13 @@ function actualizarReparacion(id, datos, done) {
   var cambios = Object.assign({}, datos);
   var estadoFinal = cambios.estado || prev.estado;
   var resultadoFinal = Object.prototype.hasOwnProperty.call(cambios, 'resultadoServicio') ? cambios.resultadoServicio : prev.resultadoServicio;
-  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && (!resultadoFinal || resultadoFinal === 'Pendiente de cierre')) {
-    done('Elegí el resultado del servicio antes de entregar la reparación'); return;
+  var fisicoFinal = Object.prototype.hasOwnProperty.call(cambios, 'estadoFisicoEntrega') ? cambios.estadoFisicoEntrega : prev.estadoFisicoEntrega;
+  var pagoFinal = cambios.pago || prev.pago;
+  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && (!resultadoFinal || resultadoFinal === 'Pendiente de cierre' || !String(fisicoFinal || '').trim())) {
+    done('Completá resultado y estado físico final antes de entregar la reparación'); return;
+  }
+  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && pagoFinal !== 'Pagado') {
+    done('La reparación debe estar pagada antes de entregar'); return;
   }
   if (Object.prototype.hasOwnProperty.call(cambios, 'estado') && prev.estado !== cambios.estado) {
     var tl = (prev.timeline || []).slice();
@@ -128,6 +143,16 @@ function actualizarReparacion(id, datos, done) {
     cambios.timeline = tl;
   }
   FB.upd(id, cambios, done);
+}
+
+function crearGarantiaVinculada(id) {
+  var r = REPS.find(function(x) { return x.id === id; }); if (!r) return;
+  closeM('mDet'); openNewRep(); window._garantiaOrigen = r;
+  el('mFormT').textContent = 'Garantía vinculada a ' + (r.orden || 'orden original');
+  setVal('fNom', r.nombre || ''); setVal('fTel', r.telefono || ''); setVal('fEq', r.equipo || ''); setVal('fMod', r.modelo || '');
+  setVal('fGar', r.orden || ''); setVal('fEstadoFisico', r.estadoFisicoEntrega || r.estadoFisicoRecepcion || '');
+  el('fTec').value = r.tecnico || ''; el('fEst').value = 'Garantia'; el('fResultadoServicio').value = 'Garantía / retrabajo';
+  setVal('fFal', 'Garantía vinculada a ' + (r.orden || 'orden original') + ': ');
 }
 
 var _incidenciaRepId = null;
@@ -388,6 +413,7 @@ if (!r) return;
   var garLabel = r.es_garantia === 'si' ? '✓ Garantia' : 'Garantia';
   var garStyle = r.es_garantia === 'si' ? 'background:rgba(242,95,92,.12);color:var(--rd);border-color:rgba(242,95,92,.3)' : '';
   fa.appendChild(mkBtn('btn-g btn-sm', garLabel, (function(id) { return function() { marcarGarantia(id); }; })(r.id), garStyle));
+  fa.appendChild(mkBtn('btn-g btn-sm', 'Crear garantía vinculada', (function(id) { return function() { crearGarantiaVinculada(id); }; })(r.id)));
   fa.appendChild(mkBtn('btn-g btn-sm', r.incidencia && r.incidencia.estado !== 'Resuelta' ? 'Incidencia abierta' : 'Registrar incidencia', (function(id) { return function() { abrirIncidencia(id); }; })(r.id)));
   fa.appendChild(mkBtn('btn-p', '✏️ Editar', (function(id) {
     return function() { closeM('mDet'); openEditRep(id); };
