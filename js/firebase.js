@@ -52,6 +52,8 @@ const cUsr = collection(db, 'usuarios');
 let authModo = 'login', bootstrapDisponible = false;
 function authError(msg) { const e = document.getElementById('authErr'); if (e) e.textContent = msg || ''; }
 function authUiSesion() {
+  if (!sesionActiva()) { authUiLogin(); return; }
+  const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'flex';
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'none';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = puede('crear_usuario') ? '' : 'none';
   const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = puede('ver_balance') ? '' : 'none';
@@ -60,6 +62,7 @@ function authUiSesion() {
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
 }
 function authUiLogin() {
+  const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'none';
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'flex';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = 'none';
 }
@@ -148,14 +151,20 @@ window.authCrearUsuario = async function() {
 };
 
 setPersistence(auth, browserLocalPersistence).catch(function() {});
+let revisionSesion = 0;
 onAuthStateChanged(auth, async function(user) {
-  SESION.usuario = user || null; SESION.perfil = null; SESION.cargando = false;
-  if (!user) { authUiLogin(); authMostrarLogin(); return; }
+  const revisionActual = ++revisionSesion;
+  SESION.usuario = user || null; SESION.perfil = null; SESION.cargando = true;
+  if (!user) { SESION.cargando = false; authUiLogin(); authMostrarLogin(); return; }
   try {
     const perfil = (await getDoc(doc(cUsr, user.uid))).data();
+    if (revisionActual !== revisionSesion || !auth.currentUser || auth.currentUser.uid !== user.uid) return;
     if (!perfil || perfil.activo === false) throw new Error(!perfil ? 'Tu cuenta no tiene un perfil habilitado.' : 'Tu usuario está inactivo.');
-    SESION.perfil = perfil; authUiSesion();
-  } catch (e) { authError(e.message || 'No se pudo validar la sesión.'); await signOut(auth); }
+    SESION.perfil = perfil; SESION.cargando = false; authUiSesion();
+  } catch (e) {
+    if (revisionActual !== revisionSesion) return;
+    SESION.cargando = false; authUiLogin(); authError(e.message || 'No se pudo validar la sesión.'); await signOut(auth);
+  }
 });
 
 function normKey(v) {
