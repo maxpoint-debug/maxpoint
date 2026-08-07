@@ -19,6 +19,7 @@
     <div class="f full"><label>Contraseña</label><input id="authPass" type="password" autocomplete="current-password"/></div>
     <div id="authErr" class="auth-err"></div>
     <button class="btn btn-p" id="authSubmit" style="width:100%" onclick="authEnviar()">Ingresar</button>
+    <button class="btn btn-g btn-sm" id="authRecuperar" style="width:100%;margin-top:8px" onclick="authRecuperarClave()">Olvidé mi contraseña</button>
     <button class="btn btn-g" id="authBootstrap" style="width:100%;margin-top:8px;display:none" onclick="authMostrarBootstrap()">Crear primer administrador</button>
     <button class="btn btn-g" id="authVolver" style="width:100%;margin-top:8px;display:none" onclick="authMostrarLogin()">Volver al login</button>
   </div>
@@ -67,14 +68,15 @@
       <div class="ni" onclick="showView('cli',this)"><span class="ico">👤</span>Clientes</div>
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
       <div class="ns">Admin</div>
-      <div class="ni" onclick="openLock()"><span class="ico">📊</span>Balance</div>
+      <div class="ni" id="nav-balance" onclick="openLock()"><span class="ico">📊</span>Balance</div>
       <div class="ni" id="nav-users" style="display:none" onclick="showView('users',this)"><span class="ico">👥</span>Usuarios</div>
     </nav>
-    <div class="sb">
+    <div class="sb" id="financeSummary">
       <div class="sbr"><span class="sbrl">Total</span><span class="sbrv" id="sb1">—</span></div>
       <div class="sbr"><span class="sbrl">Para retirar</span><span class="sbrv cg" id="sb2">—</span></div>
       <div class="sbr"><span class="sbrl">Repuestos pend.</span><span class="sbrv cp" id="sb3">—</span></div>
       <div id="sesionInfo" style="margin-top:12px;font-size:11px;color:var(--mu)"></div>
+      <button class="btn btn-g btn-sm" style="width:100%;margin-top:6px" onclick="openPerfil()">Mi perfil</button>
       <button class="btn btn-g btn-sm" style="width:100%;margin-top:6px" onclick="authSalir()">Cerrar sesión</button>
     </div>
   </aside>
@@ -161,6 +163,18 @@
     <button class="btn btn-p" id="btnSave" onclick="saveRep()">Guardar</button>
   </div>
 </div></div>
+<!-- Mi perfil -->
+<div class="ov" id="mPerfil"><div class="modal" style="max-width:400px">
+  <div class="mh"><div class="mt">Mi perfil</div><button class="mc" onclick="closeM('mPerfil')">✕</button></div>
+  <div class="fgrid">
+    <div class="f full"><label>Nombre</label><input id="pfNombre" disabled/></div>
+    <div class="f full"><label>Email</label><input id="pfEmail" disabled/></div>
+    <div class="f full"><label>Contraseña actual</label><input id="pfActual" type="password" autocomplete="current-password"/></div>
+    <div class="f"><label>Nueva contraseña</label><input id="pfNueva" type="password" autocomplete="new-password"/></div>
+    <div class="f"><label>Repetir contraseña</label><input id="pfNueva2" type="password" autocomplete="new-password"/></div>
+  </div>
+  <div class="mf"><button class="btn btn-g" onclick="closeM('mPerfil')">Cancelar</button><button class="btn btn-p" onclick="authCambiarClave()">Cambiar contraseña</button></div>
+</div></div>
 
 <!-- Detalle -->
 <div class="ov" id="mDet"><div class="modal modal-wide" id="mDetC"></div></div>
@@ -217,8 +231,8 @@
           <button class="cat-ph-clear" onclick="catLimpiar()">✕ limpiar</button>
         </div>
         <div class="cat-grid">
-          <div class="cat-ci"><div class="cat-cl">Costo USD</div><div class="cat-cv usd" id="catUSD">-</div></div>
-          <div class="cat-ci"><div class="cat-cl">Costo ARS</div><div class="cat-cv co" id="catARS">-</div></div>
+          <div class="cat-ci" id="catCostoUsd"><div class="cat-cl">Costo USD</div><div class="cat-cv usd" id="catUSD">-</div></div>
+          <div class="cat-ci" id="catCostoArs"><div class="cat-cl">Costo ARS</div><div class="cat-cv co" id="catARS">-</div></div>
           <div class="cat-ci"><div class="cat-cl">Precio cliente</div><div class="cat-cv cg" id="catVenta">-</div></div>
         </div>
       </div>
@@ -226,7 +240,7 @@
     <!-- Campos del formulario -->
     <div class="f full"><label>Nombre repuesto *</label><input id="rpNom"/></div>
     <div class="f"><label>Modelo equipo</label><input id="rpMod"/></div>
-    <div class="f"><label>Costo interno ($)</label><input id="rpCos" type="number"/></div>
+    <div class="f" id="wRpCos"><label>Costo interno ($)</label><input id="rpCos" type="number"/></div>
     <div class="f"><label>Cantidad</label><input id="rpCant" type="number" value="1" min="1" max="50" placeholder="1"/></div>
     <div class="f"><label>Precio al cliente ($)</label><input id="rpPrecio" type="number" placeholder="Sugerido por catalogo"/></div>
     <div class="f"><label>Estado</label>
@@ -306,7 +320,7 @@
     </div>
     <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
       <div class="f"><label>Precio de venta *</label><input id="vPrecio" type="number" placeholder="0"/></div>
-      <div class="f"><label>Costo del equipo ($)</label><input id="vCosto" type="number" placeholder="0"/></div>
+      <div class="f" id="wVCosto"><label>Costo del equipo ($)</label><input id="vCosto" type="number" placeholder="0"/></div>
       <div class="f"><label>Vendedor</label><select id="vVendedor"><option value="">Sin asignar</option></select></div>
       <div class="f"><label>Canal de venta</label>
         <select id="vCanal"><option value="">—</option><option>Mostrador</option><option>Instagram</option><option>WhatsApp</option><option>Otro</option></select>
@@ -354,7 +368,7 @@
     <div class="f full"><label>Detalles / Estado estetico</label>
       <input id="sDet" placeholder="Ej: rayita en marco, 94% bateria..."/></div>
     <div class="f"><label>Precio de venta ($)</label><input id="sPrecioVenta" type="number" placeholder="0"/></div>
-    <div class="f"><label>Costo de compra ($)</label><input id="sPrecioCosto" type="number" placeholder="0"/></div>
+    <div class="f" id="wSCosto"><label>Costo de compra ($)</label><input id="sPrecioCosto" type="number" placeholder="0"/></div>
     <div class="f full"><label>Estado</label>
       <select id="sEst">
         <option>A revisar</option>
@@ -534,18 +548,18 @@ document.addEventListener('DOMContentLoaded', function() {
 -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="js/data.js?v=22"></script>
-<script src="js/state.js?v=23"></script>
+<script src="js/state.js?v=24"></script>
 <script src="js/helpers.js?v=22"></script>
-<script src="js/render.js?v=23"></script>
-<script src="js/modals.js?v=23"></script>
+<script src="js/render.js?v=24"></script>
+<script src="js/modals.js?v=24"></script>
 <script src="js/catalogo.js?v=22"></script>
 <script src="js/comisiones.js?v=22"></script>
 <script src="js/seguimientos.js?v=22"></script>
 <script src="js/cotizador.js?v=22"></script>
-<script src="js/ventas.js?v=22"></script>
-<script src="js/stock.js?v=22"></script>
-<script src="js/app.js?v=23"></script>
-<script type="module" src="js/firebase.js?v=23"></script>
+<script src="js/ventas.js?v=24"></script>
+<script src="js/stock.js?v=24"></script>
+<script src="js/app.js?v=24"></script>
+<script type="module" src="js/firebase.js?v=25"></script>
 
 </body>
 </html>
