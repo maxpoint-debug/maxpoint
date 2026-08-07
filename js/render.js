@@ -458,8 +458,129 @@ function renderPag() {
 // ============================================================
 // BALANCE
 // ============================================================
+var CC_PERIODO = 'mes';
+
+function ccFecha(valor) {
+  if (!valor) return null;
+  if (valor instanceof Date) return valor;
+  var p = String(valor).split('/');
+  if (p.length === 3) return new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
+  var d = new Date(valor);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function ccMismoDia(a, b) {
+  return a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function ccEnPeriodo(fecha) {
+  var d = ccFecha(fecha), ahora = new Date(); if (!d) return false;
+  if (CC_PERIODO === 'hoy') return ccMismoDia(d, ahora);
+  if (CC_PERIODO === '30d') return d >= new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - 29);
+  return d.getFullYear() === ahora.getFullYear() && d.getMonth() === ahora.getMonth();
+}
+
+function ccSetPeriodo(periodo) { CC_PERIODO = periodo; renderBal(); }
+
+function ccCard(etiqueta, valor, detalle, color) {
+  return '<div class="sc" style="min-width:145px"><div class="scl">' + esc(etiqueta) + '</div><div class="scv" style="color:' + (color || 'var(--tx)') + '">' + valor + '</div>'
+    + (detalle ? '<div style="font-size:10px;color:var(--mu);margin-top:4px">' + esc(detalle) + '</div>' : '') + '</div>';
+}
+
+function renderCentroControl() {
+  var cnt = el('cnt'); cnt.innerHTML = '';
+  var reps = window.REPS || [], ventas = window.VENTAS || [], stock = window.STOCK || [], rpus = window.RPUS || [];
+  var ahora = new Date(); ahora.setHours(0, 0, 0, 0);
+  var ventasPeriodo = ventas.filter(function(v) { return ccEnPeriodo(v.fecha); });
+  var cobrosRep = [];
+  reps.forEach(function(r) {
+    (r.pagos || []).forEach(function(p) { if (ccEnPeriodo(p.fecha)) cobrosRep.push({ monto: Number(p.monto || 0), medio: p.medio || 'Sin especificar', fecha: p.fecha, rep: r }); });
+  });
+  var ingresoVentas = ventasPeriodo.reduce(function(s, v) { return s + Number(v.precio || 0); }, 0);
+  var ingresoReps = cobrosRep.reduce(function(s, p) { return s + p.monto; }, 0);
+  var ingresos = ingresoVentas + ingresoReps;
+  var pendientes = reps.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado'; })
+    .reduce(function(s, r) { return s + Math.max(0, Number(r.presupuesto || 0) - Number(r.sena || 0)); }, 0);
+  var abiertas = reps.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado'; });
+  var listas = reps.filter(function(r) { return r.estado === 'Listo'; });
+  var costoVentas = ventasPeriodo.reduce(function(s, v) { return s + Number(v.costo || 0); }, 0);
+  var margenVentas = ingresoVentas - costoVentas;
+  var margenPct = ingresoVentas ? Math.round(margenVentas / ingresoVentas * 100) : null;
+  var stockActivo = stock.filter(function(s) { return s.estado !== 'Vendido'; });
+  var stockCosto = stockActivo.reduce(function(s, i) { return s + Number(i.precio_costo || 0); }, 0);
+  var stockVenta = stockActivo.reduce(function(s, i) { return s + Number(i.precio_venta || 0); }, 0);
+
+  var cab = document.createElement('div'); cab.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px';
+  cab.innerHTML = '<div><div style="font-size:20px;font-weight:800">Centro de Control</div><div class="mu" style="font-size:12px;margin-top:3px">Estado operativo y financiero con datos registrados</div></div>'
+    + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
+    + ['hoy','mes','30d'].map(function(p) { var t = p === 'hoy' ? 'Hoy' : (p === 'mes' ? 'Este mes' : '30 días'); return '<button class="btn btn-sm ' + (CC_PERIODO === p ? 'btn-p' : 'btn-g') + '" onclick="ccSetPeriodo(\'' + p + '\')">' + t + '</button>'; }).join('') + '</div>';
+  cnt.appendChild(cab);
+
+  var kpis = document.createElement('div'); kpis.className = 'sc-row';
+  kpis.innerHTML = ccCard('Ingresos del período', pesos(ingresos), pesos(ingresoVentas) + ' ventas · ' + pesos(ingresoReps) + ' cobros', 'var(--gr)')
+    + ccCard('Saldo pendiente', pesos(pendientes), abiertas.length + ' órdenes abiertas', 'var(--or)')
+    + ccCard('Listos para entregar', listas.length, listas.length ? 'Requieren contacto o entrega' : 'Sin entregas pendientes', listas.length ? 'var(--acc)' : 'var(--gr)')
+    + ccCard('Margen de ventas', pesos(margenVentas), margenPct === null ? 'Sin costos suficientes' : margenPct + '% de margen bruto', margenVentas >= 0 ? 'var(--gr)' : 'var(--rd)')
+    + ccCard('Capital en stock', pesos(stockCosto), 'Venta potencial ' + pesos(stockVenta), 'var(--pu)');
+  cnt.appendChild(kpis);
+
+  var alertas = [];
+  if (listas.length) alertas.push({ color:'var(--acc)', texto:'Hay ' + listas.length + ' equipo(s) listo(s) para entregar.' });
+  var repsCobro = reps.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado' && Number(r.presupuesto || 0) > Number(r.sena || 0); });
+  if (repsCobro.length) alertas.push({ color:'var(--or)', texto:'Hay ' + repsCobro.length + ' reparación(es) con saldo pendiente.' });
+  var antiguas = abiertas.filter(function(r) { var d = ccFecha(r.fecha); return d && Math.floor((ahora - d) / 86400000) > 30; });
+  if (antiguas.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + antiguas.length + ' orden(es) abierta(s) hace más de 30 días.' });
+  var rpuPend = rpus.filter(function(r) { return r.estado === 'Esperando' || r.estado === 'Encargado'; });
+  if (rpuPend.length) alertas.push({ color:'var(--pu)', texto:'Hay ' + rpuPend.length + ' repuesto(s) pendiente(s) de resolución.' });
+  var garantias = reps.filter(function(r) { return r.es_garantia === 'si' || r.estado === 'Garantia'; });
+  if (garantias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + garantias.length + ' garantía(s) marcada(s) para revisar.' });
+  var sinTecnico = abiertas.filter(function(r) { return !r.tecnico; });
+  if (sinTecnico.length) alertas.push({ color:'var(--mu)', texto:'Hay ' + sinTecnico.length + ' orden(es) abierta(s) sin técnico asignado.' });
+  var secAt = document.createElement('div'); secAt.style.marginTop = '22px';
+  secAt.innerHTML = '<div class="ct" style="margin-bottom:8px">ATENCIÓN</div>';
+  if (alertas.length) alertas.slice(0, 6).forEach(function(a) { var x = document.createElement('div'); x.style.cssText = 'border-left:3px solid ' + a.color + ';background:var(--s1);padding:10px 12px;margin-bottom:6px;border-radius:0 7px 7px 0;font-size:12px'; x.textContent = '⚠ ' + a.texto; secAt.appendChild(x); });
+  else secAt.innerHTML += '<div class="empty" style="padding:18px">Sin alertas operativas relevantes.</div>';
+  cnt.appendChild(secAt);
+
+  var pulso = document.createElement('div'); pulso.style.marginTop = '22px'; pulso.innerHTML = '<div class="ct" style="margin-bottom:8px">PULSO DEL NEGOCIO</div>';
+  var ultimos = []; for (var i = 6; i >= 0; i--) ultimos.push(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - i));
+  var porDia = ultimos.map(function(d) {
+    var v = ventas.filter(function(x) { return ccMismoDia(ccFecha(x.fecha), d); }).reduce(function(s, x) { return s + Number(x.precio || 0); }, 0);
+    var p = cobrosRep.filter(function(x) { return ccMismoDia(ccFecha(x.fecha), d); }).reduce(function(s, x) { return s + x.monto; }, 0);
+    return { d:d, total:v+p };
+  });
+  var maxDia = Math.max.apply(null, porDia.map(function(x) { return x.total; }).concat([1]));
+  var barras = document.createElement('div'); barras.style.cssText = 'display:flex;gap:7px;align-items:flex-end;height:120px;background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px';
+  porDia.forEach(function(x) { var col = document.createElement('div'); col.style.cssText = 'flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0'; col.innerHTML = '<div title="' + pesos(x.total) + '" style="width:100%;max-width:42px;height:' + Math.max(4, Math.round(x.total / maxDia * 82)) + 'px;background:var(--gr);border-radius:4px 4px 0 0"></div><div style="font-size:9px;color:var(--mu);margin-top:5px">' + x.d.getDate() + '/' + (x.d.getMonth()+1) + '</div>'; barras.appendChild(col); });
+  pulso.appendChild(barras); cnt.appendChild(pulso);
+
+  var oper = document.createElement('div'); oper.style.marginTop = '22px'; oper.innerHTML = '<div class="ct" style="margin-bottom:8px">OPERACIÓN</div>';
+  var estados = ['Ingresado','En proceso','Listo','Entregado','No aprobado','Garantia'];
+  var estadoBox = document.createElement('div'); estadoBox.className = 'sc-row'; estadoBox.innerHTML = estados.map(function(e) { return ccCard(e, reps.filter(function(r) { return r.estado === e; }).length, '', colorEst(e)); }).join(''); oper.appendChild(estadoBox);
+  var tecnicos = {};
+  reps.forEach(function(r) { if (!r.tecnico) return; if (!tecnicos[r.tecnico]) tecnicos[r.tecnico] = { abiertas:0, finalizadas:0, facturacion:0 }; if (r.estado === 'Entregado' || r.estado === 'No aprobado') tecnicos[r.tecnico].finalizadas++; else tecnicos[r.tecnico].abiertas++; if (ccEnPeriodo(r.fecha) && r.pago === 'Pagado') tecnicos[r.tecnico].facturacion += Number(r.presupuesto || 0); });
+  var listaTec = Object.keys(tecnicos).map(function(n) { return { nombre:n, datos:tecnicos[n] }; }).sort(function(a,b) { return b.datos.finalizadas - a.datos.finalizadas; }).slice(0, 5);
+  if (listaTec.length) { var tabla = document.createElement('div'); tabla.className = 'tw'; tabla.style.marginTop = '12px'; tabla.innerHTML = '<table><thead><tr><th>Técnico</th><th>Abiertas</th><th>Finalizadas</th><th>Facturación período</th></tr></thead><tbody>' + listaTec.map(function(t) { return '<tr><td>' + esc(t.nombre) + '</td><td>' + t.datos.abiertas + '</td><td>' + t.datos.finalizadas + '</td><td class="mono">' + pesos(t.datos.facturacion) + '</td></tr>'; }).join('') + '</tbody></table>'; oper.appendChild(tabla); }
+  cnt.appendChild(oper);
+
+  var oportunidades = [];
+  var inmovilizados = stockActivo.filter(function(s) { var d = ccFecha(s.fecha); return d && Math.floor((ahora - d) / 86400000) > 60; });
+  if (inmovilizados.length) oportunidades.push('Hay ' + inmovilizados.length + ' equipo(s) en stock hace más de 60 días; revisá precio o publicación.');
+  var sinPrecio = stockActivo.filter(function(s) { return !Number(s.precio_venta); });
+  if (sinPrecio.length) oportunidades.push('Hay ' + sinPrecio.length + ' equipo(s) de stock sin precio de venta.');
+  var uso = {}; rpus.filter(function(r) { return r.estado === 'Usado'; }).forEach(function(r) { var n = r.nombre || 'Sin nombre'; uso[n] = (uso[n] || 0) + 1; });
+  var masUsado = Object.keys(uso).sort(function(a,b) { return uso[b] - uso[a]; })[0];
+  if (masUsado) oportunidades.push('El repuesto más usado registrado es ' + masUsado + ' (' + uso[masUsado] + ' uso(s)).');
+  var secOp = document.createElement('div'); secOp.style.marginTop = '22px'; secOp.innerHTML = '<div class="ct" style="margin-bottom:8px">OPORTUNIDADES</div>';
+  if (oportunidades.length) oportunidades.forEach(function(t) { var x = document.createElement('div'); x.style.cssText = 'background:rgba(45,206,137,.06);border:1px solid rgba(45,206,137,.2);padding:10px 12px;margin-bottom:6px;border-radius:7px;font-size:12px'; x.textContent = '↗ ' + t; secOp.appendChild(x); });
+  else secOp.innerHTML += '<div class="empty" style="padding:18px">Aún no hay datos suficientes para oportunidades accionables.</div>';
+  cnt.appendChild(secOp);
+}
+
 function renderBal() {
   if (!puede('ver_balance')) { toast('Sin permiso para ver el balance', 'var(--rd)'); showView('reps'); return; }
+  renderCentroControl();
+  return;
   var cnt = el('cnt'); cnt.innerHTML = '';
   var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
@@ -930,7 +1051,7 @@ function renderCot() {
     + '<div class="sc"><div class="scl">Hasta</div><div class="scv cb">USD ' + Math.max.apply(null,precios) + '</div></div>';
   cnt.appendChild(sc);
   var lista = document.createElement('div'); lista.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
-  USADOS.slice().sort(function(a,b){return b.precio_usd-a.precio_usd;}).forEach(function(u) {
+  ordenarPorModelo(USADOS, 'modelo').forEach(function(u) {
     var row = document.createElement('div');
     row.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;display:flex;align-items:center;cursor:pointer';
     row.innerHTML = '<span style="flex:1;font-size:13px;font-weight:600">' + esc(u.modelo) + '</span>'
