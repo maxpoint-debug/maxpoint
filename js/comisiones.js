@@ -49,6 +49,8 @@ function comCalcularElegibles(mesKey) {
     var p = persona(r.tecnico), clave = 'reparacion:' + r.id;
     if (r.estado !== 'Entregado') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': no entregada'); return; }
     if (r.pago !== 'Pagado') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': saldo pendiente'); return; }
+    if (r.controlComisionV1 && r.resultadoServicio !== 'Reparación realizada') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': resultado sin comisión (' + (r.resultadoServicio || 'pendiente') + ')'); return; }
+    if (r.controlComisionV1 && Number(r.presupuesto || 0) < 100000 && !r.comisionVerificada) { p.excluidas.push('Orden ' + (r.orden || r.id) + ': pendiente de verificación administrativa'); return; }
     if (r.es_garantia === 'si') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': garantía'); return; }
     if (r.gremio === 'si') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': excluida por gremio'); return; }
     if (bloqueadas[clave]) return;
@@ -67,6 +69,18 @@ function comCalcularElegibles(mesKey) {
   return Object.keys(personas).map(function(nombre) {
     var p = personas[nombre]; p.totalArs = p.lineas.reduce(function(s, x) { return s + Number(x.montoArs || 0); }, 0); return p;
   }).filter(function(p) { return p.lineas.length || p.excluidas.length; }).sort(function(a,b) { return a.nombre.localeCompare(b.nombre); });
+}
+
+function comVerificarReparacion(id) {
+  if (!puede('gestionar_comisiones')) { toast('Solo administrador puede verificar comisiones', 'var(--rd)'); return; }
+  var r = (window.REPS || []).find(function(x) { return x.id === id; });
+  if (!r || !r.controlComisionV1 || Number(r.presupuesto || 0) >= 100000) return;
+  if (r.resultadoServicio !== 'Reparación realizada') { toast('Solo una reparación realizada puede verificarse para comisión', 'var(--or)'); return; }
+  if (!confirm('Verificar esta reparación menor a ' + pesos(100000) + ' para que pueda liquidarse cuando esté entregada y cobrada?')) return;
+  FB.upd(id, { comisionVerificada:true, comisionVerificadaPor:usuarioActualRegistro(), fechaVerificacionComision:hoy() }, function(err) {
+    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    toast('Reparación verificada para comisión');
+  });
 }
 
 function comMesActual() {

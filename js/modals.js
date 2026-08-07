@@ -11,6 +11,7 @@ function openNewRep() {
   setVal('fFal', ''); setVal('fPres', ''); setVal('fSen', '');
   el('fEst').value  = 'Ingresado';
   el('fPag').value  = 'Pendiente';
+  el('fResultadoServicio').value = 'Pendiente de cierre';
   // Actualizar opciones de tecnico
   var selT = el('fTec');
   if (selT && typeof comOpcionesTecnicos === 'function') {
@@ -36,6 +37,7 @@ function openEditRep(id) {
   setVal('fSen',  r.sena         || '');
   el('fEst').value = r.estado    || 'Ingresado';
   el('fPag').value = r.pago      || 'Pendiente';
+  el('fResultadoServicio').value = r.resultadoServicio || 'Pendiente de cierre';
   el('fTec').value = r.tecnico   || '';
   setVal('fGar',  r.garantia_ref || '');
   setVal('fNot',  r.notas        || '');
@@ -54,6 +56,9 @@ function saveRep() {
   btn.disabled = true; btn.textContent = 'Guardando...';
 
   var est = el('fEst').value;
+  var resultadoServicio = el('fResultadoServicio').value;
+  var anterior = _eid ? REPS.find(function(x) { return x.id === _eid; }) : null;
+  var presupuestoNumero = Number(val('fPres') || 0);
   var d = {
     nombre:       nom,
     equipo:       eq,
@@ -69,7 +74,16 @@ function saveRep() {
     garantia_ref: val('fGar'),
     notas:        val('fNot'),
     gremio:       el('fGremio') && el('fGremio').checked ? 'si' : 'no',
+    resultadoServicio: resultadoServicio,
+    controlComisionV1: true,
   };
+  // Las reparaciones chicas requieren una validación individual de administración.
+  // Un cambio de resultado vuelve a exigir esa revisión.
+  if (presupuestoNumero < 100000 && (!anterior || anterior.resultadoServicio !== resultadoServicio || Number(anterior.presupuesto || 0) !== presupuestoNumero || !anterior.comisionVerificada)) {
+    d.comisionVerificada = false;
+  } else if (anterior && anterior.comisionVerificada) {
+    d.comisionVerificada = true;
+  }
   if (!_eid && SESION.usuario && SESION.perfil) {
     d.creadoPor = { uid: SESION.usuario.uid, nombre: SESION.perfil.nombre, email: SESION.perfil.email };
   }
@@ -214,6 +228,18 @@ if (!r) return;
   if (Number(r.presupuesto || 0)) {
     var salColor = sal > 0 ? 'var(--or)' : 'var(--gr)';
     ds3.innerHTML += '<div class="dr"><span class="dl">Saldo</span><span class="mono" style="color:' + salColor + '">' + pesos(sal) + '</span></div>';
+  }
+  if (r.controlComisionV1) {
+    var resultadoCom = r.resultadoServicio || 'Pendiente de cierre';
+    ds3.innerHTML += '<div class="dr"><span class="dl">Resultado</span><span>' + esc(resultadoCom) + '</span></div>';
+    if (Number(r.presupuesto || 0) < 100000) {
+      var verificado = !!r.comisionVerificada;
+      ds3.innerHTML += '<div class="dr"><span class="dl">Comisión</span><span style="color:' + (verificado ? 'var(--gr)' : 'var(--or)') + '">' + (verificado ? 'Verificada' : 'Pendiente de verificar') + '</span></div>';
+      if (!verificado && resultadoCom === 'Reparación realizada' && puede('gestionar_comisiones')) {
+        var verificarBtn = mkBtn('btn-g btn-sm', 'Verificar comisión', (function(id) { return function() { comVerificarReparacion(id); }; })(r.id));
+        verificarBtn.style.marginTop = '7px'; ds3.appendChild(verificarBtn);
+      }
+    }
   }
   // Historial de pagos registrados
   if ((r.pagos || []).length) {
