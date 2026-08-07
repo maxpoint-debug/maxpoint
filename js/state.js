@@ -39,9 +39,13 @@ var PERMISOS_BASE = {
   crear_usuario: ['administrador']
 };
 
+function sesionActiva() {
+  return !!(SESION && SESION.usuario && SESION.perfil && SESION.perfil.activo !== false);
+}
+
 function puede(permiso) {
   var roles = PERMISOS_BASE[permiso] || [];
-  return !!(SESION.perfil && SESION.perfil.activo !== false && roles.indexOf(SESION.perfil.rol) !== -1);
+  return sesionActiva() && roles.indexOf(SESION.perfil.rol) !== -1;
 }
 
 // ===================== FIREBASE OBJECT =====================

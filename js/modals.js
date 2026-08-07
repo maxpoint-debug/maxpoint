@@ -45,7 +45,7 @@ function openEditRep(id) {
 }
 
 function saveRep() {
-  if (!puede('editar_reparacion')) { toast('Sin permiso para guardar reparaciones', 'var(--rd)'); return; }
+  if (!sesionActiva() || !puede('editar_reparacion')) { toast('Necesitás una sesión activa para guardar reparaciones', 'var(--rd)'); return; }
   var nom = val('fNom');
   var eq  = val('fEq');
   if (!nom || !eq) { alert('Nombre y equipo son obligatorios.'); return; }
