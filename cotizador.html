@@ -714,17 +714,14 @@ window.calcularResultado = function() {
 
   // Pantalla
   if (pantalla === 'rota') {
-    descuentos.push({ lbl: 'Pantalla dañada: requiere revisión presencial', usd: 0, consultar: true });
-  } else if (pantalla === 'rota') {
-    const mNum = equipoSel.modelo.toLowerCase().match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
-    const mStr = mNum ? mNum[0].trim() : null;
-    let modCat = mStr ? CATALOGO.find(p => {
-      const lbl = p.label.toLowerCase();
-      return (lbl.includes('modulo')||lbl.includes('pantalla')) && lbl.includes('iphone') && lbl.includes(mStr);
-    }) : null;
-    const descPan = modCat ? Math.round(modCat.costo_usd) : 50;
-    const lblPan  = modCat ? 'Pantalla (' + modCat.label + ')' : 'Pantalla (estimado)';
-    descuentos.push({ lbl: lblPan, usd: descPan });
+    const m = equipoSel.modelo.toLowerCase();
+    const n = Number((m.match(/iphone\s+(\d+)/) || [])[1]);
+    let descPan = 0;
+    if (/pro\s*max/.test(m) && n <= 16) descPan = 150;
+    else if (/\bpro\b/.test(m) && n <= 16) descPan = 120;
+    else if (!/\bpro\b/.test(m) && n <= 15) descPan = 70;
+    if (descPan) descuentos.push({ lbl: 'Pantalla dañada (estimado)', usd: descPan });
+    else descuentos.push({ lbl: 'Pantalla dañada: requiere revisión presencial', usd: 0, consultar: true });
   }
 
   // Problemas predefinidos
