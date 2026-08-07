@@ -15,6 +15,28 @@ function arsAUsd(montoArs, cotizacion) {
   return valor ? Number(montoArs || 0) / valor : 0;
 }
 
+function monedaConsultarBlue() {
+  var estado = el('fxConsulta');
+  if (estado) estado.textContent = 'Consultando Blue Venta...';
+  fetch('https://dolarapi.com/v1/dolares/blue', { headers: { 'Accept': 'application/json' } })
+    .then(function(res) {
+      if (!res.ok) throw new Error('La consulta devolvio ' + res.status);
+      return res.json();
+    })
+    .then(function(data) {
+      var venta = Number(data && data.venta);
+      if (!Number.isFinite(venta) || venta <= 0) throw new Error('La fuente no devolvio una venta valida');
+      setVal('fxBlueVenta', venta);
+      el('fxFuente').value = 'Blue Venta';
+      setVal('fxNota', 'Referencia online DolarApi · ' + new Date().toLocaleString('es-AR'));
+      if (estado) estado.textContent = 'Referencia online cargada. Revisala y guardala para dejarla vigente.';
+    })
+    .catch(function(err) {
+      if (estado) estado.textContent = 'No se pudo consultar online. Podes ingresar la cotizacion manualmente.';
+      toast('No se pudo consultar Blue Venta: ' + err.message, 'var(--or)');
+    });
+}
+
 function openMoneda() {
   if (!puede('editar_tipo_cambio')) { toast('Solo un administrador puede actualizar la cotización', 'var(--rd)'); return; }
   setVal('fxBlueVenta', MONEDA_CFG.blueVenta || '');

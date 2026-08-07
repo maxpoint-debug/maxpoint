@@ -487,6 +487,26 @@ function ccCard(etiqueta, valor, detalle, color) {
     + (detalle ? '<div style="font-size:10px;color:var(--mu);margin-top:4px">' + esc(detalle) + '</div>' : '') + '</div>';
 }
 
+function ccUsd(n) {
+  return 'USD US$ ' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function ccArsReferenciaUsd(monto) {
+  var blue = typeof cotizacionBlueVenta === 'function' ? cotizacionBlueVenta() : 0;
+  return blue ? 'Equiv. ref. ' + ccUsd(arsAUsd(monto, blue)) + ' al Blue vigente' : 'Sin Blue vigente para equivalencia';
+}
+
+function ccBarrasPorDia(datos, color, unidad) {
+  var maximo = Math.max.apply(null, datos.map(function(x) { return x.total; }).concat([1]));
+  var barras = document.createElement('div'); barras.style.cssText = 'display:flex;gap:7px;align-items:flex-end;height:120px;background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px';
+  datos.forEach(function(x) {
+    var col = document.createElement('div'); col.style.cssText = 'flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0';
+    col.innerHTML = '<div title="' + (unidad === 'USD' ? ccUsd(x.total) : pesos(x.total)) + '" style="width:100%;max-width:42px;height:' + Math.max(4, Math.round(x.total / maximo * 82)) + 'px;background:' + color + ';border-radius:4px 4px 0 0"></div><div style="font-size:9px;color:var(--mu);margin-top:5px">' + x.d.getDate() + '/' + (x.d.getMonth()+1) + '</div>';
+    barras.appendChild(col);
+  });
+  return barras;
+}
+
 function renderCentroControl() {
   var cnt = el('cnt'); cnt.innerHTML = '';
   var reps = window.REPS || [], ventas = window.VENTAS || [], stock = window.STOCK || [], rpus = window.RPUS || [];
@@ -498,7 +518,6 @@ function renderCentroControl() {
   });
   var ingresoVentas = ventasPeriodo.reduce(function(s, v) { return s + Number(v.precio || 0); }, 0);
   var ingresoReps = cobrosRep.reduce(function(s, p) { return s + p.monto; }, 0);
-  var ingresos = ingresoVentas + ingresoReps;
   var pendientes = reps.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado'; })
     .reduce(function(s, r) { return s + Math.max(0, Number(r.presupuesto || 0) - Number(r.sena || 0)); }, 0);
   var abiertas = reps.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado'; });
@@ -517,11 +536,12 @@ function renderCentroControl() {
   cnt.appendChild(cab);
 
   var kpis = document.createElement('div'); kpis.className = 'sc-row';
-  kpis.innerHTML = ccCard('Ingresos del período', pesos(ingresos), pesos(ingresoVentas) + ' ventas · ' + pesos(ingresoReps) + ' cobros', 'var(--gr)')
-    + ccCard('Saldo pendiente', pesos(pendientes), abiertas.length + ' órdenes abiertas', 'var(--or)')
+  kpis.innerHTML = ccCard('Cobros de reparaciones', pesos(ingresoReps), ccArsReferenciaUsd(ingresoReps), 'var(--gr)')
+    + ccCard('Ventas de equipos', ccUsd(ingresoVentas), ventasPeriodo.length + ' venta(s) del período', 'var(--bl)')
+    + ccCard('Saldo pendiente', pesos(pendientes), abiertas.length + ' órdenes abiertas · ' + ccArsReferenciaUsd(pendientes), 'var(--or)')
     + ccCard('Listos para entregar', listas.length, listas.length ? 'Requieren contacto o entrega' : 'Sin entregas pendientes', listas.length ? 'var(--acc)' : 'var(--gr)')
-    + ccCard('Margen de ventas', pesos(margenVentas), margenPct === null ? 'Sin costos suficientes' : margenPct + '% de margen bruto', margenVentas >= 0 ? 'var(--gr)' : 'var(--rd)')
-    + ccCard('Capital en stock', pesos(stockCosto), 'Venta potencial ' + pesos(stockVenta), 'var(--pu)');
+    + ccCard('Margen de equipos', ccUsd(margenVentas), margenPct === null ? 'Sin costos suficientes' : margenPct + '% de margen bruto', margenVentas >= 0 ? 'var(--gr)' : 'var(--rd)')
+    + ccCard('Capital en stock', ccUsd(stockCosto), 'Venta potencial ' + ccUsd(stockVenta), 'var(--pu)');
   cnt.appendChild(kpis);
 
   var alertas = [];
@@ -544,15 +564,15 @@ function renderCentroControl() {
 
   var pulso = document.createElement('div'); pulso.style.marginTop = '22px'; pulso.innerHTML = '<div class="ct" style="margin-bottom:8px">PULSO DEL NEGOCIO</div>';
   var ultimos = []; for (var i = 6; i >= 0; i--) ultimos.push(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - i));
-  var porDia = ultimos.map(function(d) {
-    var v = ventas.filter(function(x) { return ccMismoDia(ccFecha(x.fecha), d); }).reduce(function(s, x) { return s + Number(x.precio || 0); }, 0);
+  var porDiaReps = ultimos.map(function(d) {
     var p = cobrosRep.filter(function(x) { return ccMismoDia(ccFecha(x.fecha), d); }).reduce(function(s, x) { return s + x.monto; }, 0);
-    return { d:d, total:v+p };
+    return { d:d, total:p };
   });
-  var maxDia = Math.max.apply(null, porDia.map(function(x) { return x.total; }).concat([1]));
-  var barras = document.createElement('div'); barras.style.cssText = 'display:flex;gap:7px;align-items:flex-end;height:120px;background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px';
-  porDia.forEach(function(x) { var col = document.createElement('div'); col.style.cssText = 'flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0'; col.innerHTML = '<div title="' + pesos(x.total) + '" style="width:100%;max-width:42px;height:' + Math.max(4, Math.round(x.total / maxDia * 82)) + 'px;background:var(--gr);border-radius:4px 4px 0 0"></div><div style="font-size:9px;color:var(--mu);margin-top:5px">' + x.d.getDate() + '/' + (x.d.getMonth()+1) + '</div>'; barras.appendChild(col); });
-  pulso.appendChild(barras); cnt.appendChild(pulso);
+  var porDiaVentas = ultimos.map(function(d) { return { d:d, total:ventas.filter(function(x) { return ccMismoDia(ccFecha(x.fecha), d); }).reduce(function(s, x) { return s + Number(x.precio || 0); }, 0) }; });
+  var pulsoGrid = document.createElement('div'); pulsoGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px';
+  var pulsoReps = document.createElement('div'); pulsoReps.innerHTML = '<div class="mu" style="font-size:11px;margin:0 0 6px">Cobros de reparaciones · ARS</div>'; pulsoReps.appendChild(ccBarrasPorDia(porDiaReps, 'var(--gr)', 'ARS'));
+  var pulsoVentas = document.createElement('div'); pulsoVentas.innerHTML = '<div class="mu" style="font-size:11px;margin:0 0 6px">Ventas de equipos · USD</div>'; pulsoVentas.appendChild(ccBarrasPorDia(porDiaVentas, 'var(--bl)', 'USD'));
+  pulsoGrid.appendChild(pulsoReps); pulsoGrid.appendChild(pulsoVentas); pulso.appendChild(pulsoGrid); cnt.appendChild(pulso);
 
   var oper = document.createElement('div'); oper.style.marginTop = '22px'; oper.innerHTML = '<div class="ct" style="margin-bottom:8px">OPERACIÓN</div>';
   var estados = ['Ingresado','En proceso','Listo','Entregado','No aprobado','Garantia'];
@@ -560,7 +580,7 @@ function renderCentroControl() {
   var tecnicos = {};
   reps.forEach(function(r) { if (!r.tecnico) return; if (!tecnicos[r.tecnico]) tecnicos[r.tecnico] = { abiertas:0, finalizadas:0, facturacion:0 }; if (r.estado === 'Entregado' || r.estado === 'No aprobado') tecnicos[r.tecnico].finalizadas++; else tecnicos[r.tecnico].abiertas++; if (ccEnPeriodo(r.fecha) && r.pago === 'Pagado') tecnicos[r.tecnico].facturacion += Number(r.presupuesto || 0); });
   var listaTec = Object.keys(tecnicos).map(function(n) { return { nombre:n, datos:tecnicos[n] }; }).sort(function(a,b) { return b.datos.finalizadas - a.datos.finalizadas; }).slice(0, 5);
-  if (listaTec.length) { var tabla = document.createElement('div'); tabla.className = 'tw'; tabla.style.marginTop = '12px'; tabla.innerHTML = '<table><thead><tr><th>Técnico</th><th>Abiertas</th><th>Finalizadas</th><th>Facturación período</th></tr></thead><tbody>' + listaTec.map(function(t) { return '<tr><td>' + esc(t.nombre) + '</td><td>' + t.datos.abiertas + '</td><td>' + t.datos.finalizadas + '</td><td class="mono">' + pesos(t.datos.facturacion) + '</td></tr>'; }).join('') + '</tbody></table>'; oper.appendChild(tabla); }
+  if (listaTec.length) { var tabla = document.createElement('div'); tabla.className = 'tw'; tabla.style.marginTop = '12px'; tabla.innerHTML = '<table><thead><tr><th>Técnico</th><th>Abiertas</th><th>Finalizadas</th><th>Facturación ARS período</th></tr></thead><tbody>' + listaTec.map(function(t) { return '<tr><td>' + esc(t.nombre) + '</td><td>' + t.datos.abiertas + '</td><td>' + t.datos.finalizadas + '</td><td class="mono">' + pesos(t.datos.facturacion) + '</td></tr>'; }).join('') + '</tbody></table>'; oper.appendChild(tabla); }
   cnt.appendChild(oper);
 
   // Rentabilidad: sólo ventas que tienen costo informado.
@@ -578,17 +598,17 @@ function renderCentroControl() {
   var bajoMargen = ventasConCosto.filter(function(v) { return Number(v.precio || 0) - Number(v.costo || 0) <= 0; });
   var secRent = document.createElement('div'); secRent.style.marginTop = '22px'; secRent.innerHTML = '<div class="ct" style="margin-bottom:8px">RENTABILIDAD Y CAPITAL</div>';
   var rentCards = document.createElement('div'); rentCards.className = 'sc-row';
-  rentCards.innerHTML = ccCard('Ticket promedio', pesos(ticketPromedio), ventasPeriodo.length + ' venta(s) del período', 'var(--bl)')
-    + ccCard('Margen promedio', pesos(margenPromedio), ventasConCosto.length + ' venta(s) con costo', margenPromedio >= 0 ? 'var(--gr)' : 'var(--rd)')
-    + ccCard('Margen potencial stock', pesos(stockVenta - stockCosto), stockActivo.length + ' equipo(s) no vendidos', 'var(--gr)')
+  rentCards.innerHTML = ccCard('Ticket promedio', ccUsd(ticketPromedio), ventasPeriodo.length + ' venta(s) del período', 'var(--bl)')
+    + ccCard('Margen promedio', ccUsd(margenPromedio), ventasConCosto.length + ' venta(s) con costo', margenPromedio >= 0 ? 'var(--gr)' : 'var(--rd)')
+    + ccCard('Margen potencial stock', ccUsd(stockVenta - stockCosto), stockActivo.length + ' equipo(s) no vendidos', 'var(--gr)')
     + ccCard('Stock sin precio', stockActivo.filter(function(s) { return !Number(s.precio_venta); }).length, 'Requiere definir precio de venta', 'var(--or)');
   secRent.appendChild(rentCards);
   if (topModelos.length || bajoMargen.length) {
     var rentGrid = document.createElement('div'); rentGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:12px';
     var topBox = document.createElement('div'); topBox.className = 'card'; topBox.innerHTML = '<div class="ct">Modelos más vendidos</div>';
-    topBox.innerHTML += topModelos.length ? topModelos.map(function(m, i) { return '<div class="dr"><span class="dl">#' + (i+1) + ' ' + esc(m.nombre) + '</span><span class="mono">' + m.datos.cantidad + ' · ' + pesos(m.datos.facturacion) + '</span></div>'; }).join('') : '<div class="mu" style="font-size:12px">Sin ventas en el período.</div>';
+    topBox.innerHTML += topModelos.length ? topModelos.map(function(m, i) { return '<div class="dr"><span class="dl">#' + (i+1) + ' ' + esc(m.nombre) + '</span><span class="mono">' + m.datos.cantidad + ' · ' + ccUsd(m.datos.facturacion) + '</span></div>'; }).join('') : '<div class="mu" style="font-size:12px">Sin ventas en el período.</div>';
     var margenBox = document.createElement('div'); margenBox.className = 'card'; margenBox.innerHTML = '<div class="ct">Margen a revisar</div>';
-    margenBox.innerHTML += bajoMargen.length ? bajoMargen.slice(0,5).map(function(v) { return '<div class="dr"><span class="dl">' + esc(v.modelo || 'Sin modelo') + '</span><span class="mono cr">' + pesos(Number(v.precio || 0) - Number(v.costo || 0)) + '</span></div>'; }).join('') : '<div class="mu" style="font-size:12px">No hay ventas sin margen o con pérdida.</div>';
+    margenBox.innerHTML += bajoMargen.length ? bajoMargen.slice(0,5).map(function(v) { return '<div class="dr"><span class="dl">' + esc(v.modelo || 'Sin modelo') + '</span><span class="mono cr">' + ccUsd(Number(v.precio || 0) - Number(v.costo || 0)) + '</span></div>'; }).join('') : '<div class="mu" style="font-size:12px">No hay ventas sin margen o con pérdida.</div>';
     rentGrid.appendChild(topBox); rentGrid.appendChild(margenBox); secRent.appendChild(rentGrid);
   }
   cnt.appendChild(secRent);
@@ -601,7 +621,7 @@ function renderCentroControl() {
   var rpuAbiertos = rpuActivos.filter(function(rp) { return rp.orden && reps.some(function(r) { return r.orden === rp.orden && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; }); });
   var secRpu = document.createElement('div'); secRpu.style.marginTop = '22px'; secRpu.innerHTML = '<div class="ct" style="margin-bottom:8px">REPUESTOS</div>';
   var rpuCards = document.createElement('div'); rpuCards.className = 'sc-row';
-  rpuCards.innerHTML = ccCard('Capital inmovilizado', pesos(capitalRpu), rpuActivos.length + ' repuesto(s) no usados', 'var(--pu)')
+  rpuCards.innerHTML = ccCard('Capital inmovilizado', ccUsd(capitalRpu), rpuActivos.length + ' repuesto(s) no usados', 'var(--pu)')
     + ccCard('Pendientes de llegada', rpus.filter(function(r) { return r.estado === 'Esperando' || r.estado === 'Encargado'; }).length, 'Esperando o encargados', 'var(--or)')
     + ccCard('Vinculados a órdenes abiertas', rpuAbiertos.length, 'Requieren seguimiento operativo', 'var(--rd)')
     + ccCard('Repuestos usados', rpus.filter(function(r) { return r.estado === 'Usado'; }).length, 'Histórico registrado', 'var(--gr)');
