@@ -21,16 +21,17 @@ PRINCIPIOS
 REPARACIONES - RECEPCION
 1. Una reparacion se crea con cliente, equipo, falla declarada, tecnico
    asignado cuando corresponda y estado Ingresado.
-2. Se registra el estado inicial del equipo: pantalla, tapa, marco, camaras,
-   encendido, humedad y observaciones. Las fotos son recomendadas y deben
-   quedar vinculadas a la orden cuando se incorporen.
+2. Se registra el estado inicial del equipo: pantalla, tapa, marco, cámaras,
+   encendido, humedad y observaciones. El sistema conserva un campo de estado
+   físico de recepción; las fotos son recomendadas y se incorporarán cuando
+   exista almacenamiento de archivos.
 3. El equipo puede cambiar de tecnico, pero el cambio debe quedar auditado.
 4. El presupuesto, la seña y cada pago se registran por separado en ARS.
 
 REPARACIONES - CIERRE Y ENTREGA
 1. Para entregar, la orden debe estar cobrada por completo o tener una
    excepcion aprobada por administrador.
-2. Antes de Entregado se debe confirmar una sola condicion de cierre:
+2. Antes de Entregado se debe confirmar una sola condición de cierre:
    - Trabajo terminado sin incidencia.
    - Garantia o retrabajo.
    - Incidencia/rotura declarada.
