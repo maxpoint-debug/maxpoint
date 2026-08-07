@@ -821,11 +821,7 @@ function chkPin() {
   if (v.length < 4) return;
   if (v === PIN) {
     closeLock();
-    VIEW = 'bal';
-    document.querySelectorAll('.ni').forEach(function(n) { n.classList.remove('active'); });
-    el('topT').textContent = 'Balance';
-    el('topA').innerHTML = '';
-    renderBal();
+    showView('bal', el('nav-balance'));
   } else {
     el('pinErr').textContent = 'PIN incorrecto';
     setVal('pinIn', '');
