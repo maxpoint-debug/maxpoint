@@ -240,8 +240,6 @@ function cotCalcular() {
 // ── PARSER LISTA WHATSAPP ────────────────────────────────────
 function openListaParser() {
   if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede actualizar la base del cotizador', 'var(--rd)'); return; }
-  var pin = prompt('PIN:');
-  if (pin !== PIN) { toast('PIN incorrecto', 'var(--rd)'); return; }
   setVal('listaInput', '');
   el('listaPreview').style.display = 'none';
   el('listaPreviewContent').innerHTML = '';
@@ -252,7 +250,7 @@ function openListaParser() {
 
 function cotManualCargar() {
   var sel = el('cotManualSel'); if (!sel) return;
-  sel.innerHTML = '<option value="">Nuevo modelo</option>' + ordenarPorModelo(USADOS, 'modelo').map(function(u) {
+  sel.innerHTML = '<option value="">' + (USADOS.length ? 'Nuevo modelo' : 'No hay modelos cargados: agregá el primero') + '</option>' + ordenarPorModelo(USADOS, 'modelo').map(function(u) {
     return '<option value="' + String(u.modelo).replace(/"/g, '&quot;') + '">' + esc(u.modelo) + '</option>';
   }).join('');
   cotManualNuevo();
