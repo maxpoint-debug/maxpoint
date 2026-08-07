@@ -6,6 +6,11 @@ var COM_CFG = {
   tecnicos:      [],       // [{ id, nombre, activo }]
   com_rep:       5000,     // $ por reparacion
   com_ven:       10000,    // $ por venta
+  com_ven_tramos: [
+    { minimoUsd: 0, montoArs: 5000 },
+    { minimoUsd: 100, montoArs: 10000 },
+    { minimoUsd: 200, montoArs: 15000 }
+  ],
 };
 
 function comLoadCfg(data) {
@@ -13,6 +18,142 @@ function comLoadCfg(data) {
   if (data.tecnicos)  COM_CFG.tecnicos  = data.tecnicos;
   if (data.com_rep)   COM_CFG.com_rep   = data.com_rep;
   if (data.com_ven)   COM_CFG.com_ven   = data.com_ven;
+  if (Array.isArray(data.com_ven_tramos) && data.com_ven_tramos.length) COM_CFG.com_ven_tramos = data.com_ven_tramos;
+}
+
+function comMontoVenta(gananciaUsd) {
+  var tramos = (COM_CFG.com_ven_tramos || []).slice().sort(function(a, b) { return Number(a.minimoUsd || 0) - Number(b.minimoUsd || 0); });
+  var monto = 0;
+  tramos.forEach(function(t) { if (Number(gananciaUsd) >= Number(t.minimoUsd || 0)) monto = Number(t.montoArs || 0); });
+  return monto;
+}
+
+function comLiquidacionesBloqueadas() {
+  var claves = {};
+  (window.COM_LIQUIDACIONES || []).forEach(function(l) {
+    if (l.estado !== 'Aprobada' && l.estado !== 'Pagada') return;
+    (l.lineas || []).forEach(function(x) { if (x.clave) claves[x.clave] = l.id; });
+  });
+  return claves;
+}
+
+function comCalcularElegibles(mesKey) {
+  var bloqueadas = comLiquidacionesBloqueadas();
+  var personas = {};
+  function persona(nombre) {
+    if (!personas[nombre]) personas[nombre] = { nombre:nombre, lineas:[], excluidas:[] };
+    return personas[nombre];
+  }
+  (window.REPS || []).forEach(function(r) {
+    if (!r.tecnico || fechaAMesKey(r.fecha) !== mesKey) return;
+    var p = persona(r.tecnico), clave = 'reparacion:' + r.id;
+    if (r.estado !== 'Entregado') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': no entregada'); return; }
+    if (r.pago !== 'Pagado') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': saldo pendiente'); return; }
+    if (r.es_garantia === 'si') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': garantía'); return; }
+    if (r.gremio === 'si') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': excluida por gremio'); return; }
+    if (bloqueadas[clave]) return;
+    p.lineas.push({ clave:clave, tipo:'reparacion', origenId:r.id, referencia:r.orden || r.id, fecha:r.fecha, montoArs:Number(COM_CFG.com_rep || 0), detalle:'Reparación entregada y cobrada' });
+  });
+  (window.VENTAS || []).forEach(function(v) {
+    if (!v.vendedor || fechaAMesKey(v.fecha) !== mesKey) return;
+    var p = persona(v.vendedor), clave = 'venta:' + v.id;
+    var precio = Number(v.precio || 0), costo = Number(v.costo || 0), ganancia = precio - costo;
+    if (v.parte_pago === 'Si') { p.excluidas.push('Venta ' + (v.modelo || v.id) + ': parte de pago pendiente de valuación'); return; }
+    if (!costo || costo <= 0) { p.excluidas.push('Venta ' + (v.modelo || v.id) + ': sin costo confirmado'); return; }
+    if (ganancia <= 0) { p.excluidas.push('Venta ' + (v.modelo || v.id) + ': sin ganancia positiva'); return; }
+    if (bloqueadas[clave]) return;
+    p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:comMontoVenta(ganancia), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Venta con costo confirmado' });
+  });
+  return Object.keys(personas).map(function(nombre) {
+    var p = personas[nombre]; p.totalArs = p.lineas.reduce(function(s, x) { return s + Number(x.montoArs || 0); }, 0); return p;
+  }).filter(function(p) { return p.lineas.length || p.excluidas.length; }).sort(function(a,b) { return a.nombre.localeCompare(b.nombre); });
+}
+
+function comMesActual() {
+  var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function comNombreMes(mes) {
+  var nombres = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var p = String(mes || '').split('-'); return (nombres[Number(p[1])] || mes) + ' ' + (p[0] || '');
+}
+
+var COM_MES_SEL = null;
+function comMesSeleccionado() {
+  if (COM_MES_SEL) return COM_MES_SEL;
+  var d = new Date(); d.setMonth(d.getMonth() - 1);
+  COM_MES_SEL = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  return COM_MES_SEL;
+}
+function comCambiarMes(mes) { COM_MES_SEL = mes; if (typeof renderBal === 'function') renderBal(); }
+
+function comRenderControl() {
+  var sec = document.createElement('div'); sec.style.marginTop = '22px';
+  sec.innerHTML = '<div class="ct" style="margin-bottom:8px">COMISIONES</div>';
+  if (!puede('gestionar_comisiones')) { sec.innerHTML += '<div class="mu" style="font-size:12px">Las liquidaciones de comisiones son visibles solo para administración.</div>'; return sec; }
+  var disponibles = typeof calcMesesDisponibles === 'function' ? calcMesesDisponibles() : [];
+  var seleccionado = comMesSeleccionado();
+  if (disponibles.indexOf(seleccionado) === -1) disponibles.push(seleccionado);
+  disponibles = disponibles.filter(Boolean).sort().reverse();
+  var selector = document.createElement('div'); selector.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap';
+  selector.innerHTML = '<span class="mu" style="font-size:11px">Período</span><select class="btn btn-g btn-sm" onchange="comCambiarMes(this.value)">' + disponibles.map(function(m) { return '<option value="' + m + '"' + (m === seleccionado ? ' selected' : '') + '>' + esc(comNombreMes(m)) + '</option>'; }).join('') + '</select><span class="mu" style="font-size:11px">Se liquidan operaciones del período seleccionado.</span>';
+  sec.appendChild(selector);
+  var personas = comCalcularElegibles(seleccionado);
+  var activas = (window.COM_LIQUIDACIONES || []).filter(function(l) { return l.periodo === seleccionado && l.estado !== 'Anulada'; });
+  if (!personas.length && !activas.length) { sec.innerHTML += '<div class="empty" style="padding:18px">Sin operaciones comisionables o liquidaciones para este período.</div>'; return sec; }
+  personas.forEach(function(p) {
+    var existente = comLiquidacionExistente(seleccionado, p.nombre);
+    var card = document.createElement('div'); card.className = 'card'; card.style.marginBottom = '8px';
+    var reps = p.lineas.filter(function(x) { return x.tipo === 'reparacion'; });
+    var ventas = p.lineas.filter(function(x) { return x.tipo === 'venta'; });
+    card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><b>' + esc(p.nombre) + '</b><div class="mu" style="font-size:11px;margin-top:3px">' + reps.length + ' reparación(es) · ' + ventas.length + ' venta(s)' + (p.excluidas.length ? ' · ' + p.excluidas.length + ' excluida(s)' : '') + '</div></div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr)">' + pesos(p.totalArs) + '</div></div>';
+    var detalle = document.createElement('div'); detalle.style.cssText = 'font-size:11px;color:var(--mu);margin-top:8px';
+    detalle.innerHTML = p.lineas.map(function(x) { return '<div>' + esc(x.referencia) + ' · ' + esc(x.tipo) + ' · ' + pesos(x.montoArs) + (x.gananciaUsd !== undefined ? ' · ganancia ' + x.gananciaUsd + ' USD' : '') + '</div>'; }).join('');
+    if (p.excluidas.length) detalle.innerHTML += '<div style="margin-top:5px;color:var(--or)">Excluidas: ' + esc(p.excluidas.slice(0, 3).join(' · ')) + (p.excluidas.length > 3 ? '…' : '') + '</div>';
+    card.appendChild(detalle);
+    var acciones = document.createElement('div'); acciones.className = 'fa'; acciones.style.marginTop = '10px';
+    if (existente) {
+      acciones.innerHTML = '<span class="mu" style="font-size:11px">' + esc(existente.estado) + (existente.fechaPago ? ' · ' + esc(existente.fechaPago) : '') + '</span>';
+      if (existente.estado === 'Aprobada') acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(existente.id)));
+    } else if (p.lineas.length) acciones.appendChild(mkBtn('btn-g btn-sm', 'Aprobar liquidación', (function(m, n) { return function() { comAprobarLiquidacion(m, n); }; })(seleccionado, p.nombre)));
+    card.appendChild(acciones); sec.appendChild(card);
+  });
+  activas.filter(function(l) { return !personas.some(function(p) { return p.nombre === l.persona; }); }).forEach(function(l) {
+    var card = document.createElement('div'); card.className = 'card'; card.style.marginBottom = '8px';
+    card.innerHTML = '<b>' + esc(l.persona) + '</b><div class="mu" style="font-size:11px;margin-top:4px">' + esc(l.estado) + ' · ' + (l.lineas || []).length + ' operación(es)</div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr);margin-top:5px">' + pesos(l.totalArs) + '</div>';
+    if (l.estado === 'Aprobada') card.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(l.id)));
+    sec.appendChild(card);
+  });
+  return sec;
+}
+
+function comLiquidacionExistente(mes, nombre) {
+  return (window.COM_LIQUIDACIONES || []).find(function(x) { return x.periodo === mes && x.persona === nombre && x.estado !== 'Anulada'; });
+}
+
+function comAprobarLiquidacion(mes, nombre) {
+  if (!puede('gestionar_comisiones')) { toast('Solo administrador puede liquidar comisiones', 'var(--rd)'); return; }
+  if (comLiquidacionExistente(mes, nombre)) { toast('Ya existe una liquidación activa para esta persona y período', 'var(--or)'); return; }
+  var persona = comCalcularElegibles(mes).find(function(x) { return x.nombre === nombre; });
+  if (!persona || !persona.lineas.length) { toast('No hay comisiones elegibles para liquidar', 'var(--or)'); return; }
+  if (!confirm('Aprobar ' + pesos(persona.totalArs) + ' para ' + nombre + ' (' + comNombreMes(mes) + ')? Las operaciones quedarán bloqueadas para este período.')) return;
+  var actor = usuarioActualRegistro();
+  FB.crearLiquidacionComision({ periodo:mes, persona:nombre, estado:'Aprobada', lineas:persona.lineas, ajustes:[], totalArs:persona.totalArs, creadoPor:actor, aprobadoPor:actor, fechaAprobacion:hoy(), reglasVersion:1 }, function(err) {
+    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    toast('Liquidación aprobada');
+  });
+}
+
+function comMarcarPagada(id) {
+  if (!puede('gestionar_comisiones')) return;
+  var l = (window.COM_LIQUIDACIONES || []).find(function(x) { return x.id === id; });
+  if (!l || l.estado !== 'Aprobada') return;
+  var medio = prompt('Medio de pago de la comisión:', 'Efectivo');
+  if (medio === null) return;
+  FB.actualizarLiquidacionComision(id, { estado:'Pagada', medioPago:medio || 'Sin especificar', pagadoPor:usuarioActualRegistro(), fechaPago:hoy(), horaPago:horaActual() }, function(err) {
+    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    toast('Comisión marcada como pagada');
+  });
 }
 
 // ── Guardar config ────────────────────────────────────
