@@ -48,6 +48,7 @@ const cCli = collection(db, 'clientes');
 const cEq  = collection(db, 'equipos');
 const cMov = collection(db, 'movimientos');
 const cUsr = collection(db, 'usuarios');
+const cAud = collection(db, 'auditoria');
 
 let authModo = 'login', bootstrapDisponible = false;
 function authMensaje(msg, color) { const e = document.getElementById('authErr'); if (e) { e.textContent = msg || ''; e.style.color = color || 'var(--rd)'; } }
@@ -149,6 +150,7 @@ window.authCrearUsuario = async function() {
   try {
     const cred = await createUserWithEmailAndPassword(getAuth(provision), email, pass);
     await setDoc(doc(cUsr, cred.user.uid), { uid: cred.user.uid, nombre: nombre, email: email, rol: rol, activo: true, createdAt: serverTimestamp() });
+    await registrarAuditoria('usuario', cred.user.uid, 'creado', {}, { nombre: nombre, email: email, rol: rol, activo: true });
     await signOut(getAuth(provision)); await deleteApp(provision);
     toast('Usuario creado'); window.renderUsuarios();
   } catch (e) { await deleteApp(provision); toast('Error creando usuario: ' + e.message, 'var(--rd)'); }
@@ -259,23 +261,70 @@ async function v21Sync(origen, origenId, data, tipo, extra) {
 }
 
 
+// --- Auditoría centralizada de operaciones con datos ---
+const CAMPOS_PRIVADOS = ['clave', 'pin', 'password', 'contrasena', 'contraseña'];
+function valorAuditable(valor) {
+  if (valor === undefined || valor === null || valor === '') return '—';
+  if (Array.isArray(valor)) return valor.length + ' elemento(s)';
+  if (typeof valor === 'object') return 'Actualizado';
+  return String(valor).slice(0, 180);
+}
+function cambiosAuditables(antes, despues) {
+  return Object.keys(despues || {}).filter(function(campo) {
+    return campo.charAt(0) !== '_' && CAMPOS_PRIVADOS.indexOf(campo.toLowerCase()) === -1
+      && JSON.stringify((antes || {})[campo]) !== JSON.stringify(despues[campo]);
+  }).map(function(campo) {
+    return { campo: campo, antes: valorAuditable((antes || {})[campo]), despues: valorAuditable(despues[campo]) };
+  });
+}
+async function registrarAuditoria(entidad, entidadId, accion, antes, despues) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para registrar cambios');
+  await addDoc(cAud, {
+    entidad: entidad, entidadId: entidadId, accion: accion, actor: actor,
+    cambios: cambiosAuditables(antes, despues), fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp()
+  });
+}
+async function agregarAuditable(coleccion, entidad, datos, id) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para guardar');
+  var ref = id ? doc(db, coleccion, id) : doc(coleccion);
+  var batch = writeBatch(db);
+  batch.set(ref, Object.assign({}, datos, { _ts: serverTimestamp() }));
+  batch.set(doc(cAud), { entidad: entidad, entidadId: ref.id, accion: 'creado', actor: actor, cambios: [], fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+  await batch.commit(); return ref.id;
+}
+async function actualizarAuditable(coleccion, entidad, id, datos) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para guardar');
+  var ref = doc(db, coleccion, id), previo = await getDoc(ref);
+  var batch = writeBatch(db);
+  var existe = previo.exists(), anteriores = existe ? previo.data() : {};
+  if (existe) batch.update(ref, Object.assign({}, datos, { _upd: serverTimestamp() }));
+  else batch.set(ref, Object.assign({}, datos, { _ts: serverTimestamp() }));
+  batch.set(doc(cAud), { entidad: entidad, entidadId: id, accion: existe ? 'actualizado' : 'creado', actor: actor, cambios: cambiosAuditables(anteriores, datos), fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+  await batch.commit();
+}
+async function eliminarAuditable(coleccion, entidad, id) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para eliminar');
+  var ref = doc(db, coleccion, id), previo = await getDoc(ref);
+  var batch = writeBatch(db); batch.delete(ref);
+  batch.set(doc(cAud), { entidad: entidad, entidadId: id, accion: 'eliminado', actor: actor, cambios: [], fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+  await batch.commit();
+}
+
 // --- Sobreescribir FB con funciones reales ---
-window.FB.add = (d, cb) => addDoc(cR, { ...d, _ts: serverTimestamp() })
-  .then(ref => { cb(null); v21Sync('reparacion', ref.id, d, 'reparacion_creada'); })
-  .catch(e => cb(e.message));
-// Importacion historica queda intacta: no migra masivamente datos a V2.1.
-window.FB.addId = (id, d, cb) => setDoc(doc(db, 'reparaciones', id), { ...d, _ts: serverTimestamp() })
-  .then(() => cb(null)).catch(e => cb(e.message));
-window.FB.upd = (id, d, cb) => updateDoc(doc(db, 'reparaciones', id), { ...d, _upd: serverTimestamp() })
-  .then(() => { cb(null); v21Sync('reparacion', id, d, 'reparacion_actualizada'); })
-  .catch(e => cb(e.message));
-window.FB.del   = (id, cb)     => deleteDoc(doc(db, 'reparaciones', id)).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.addR  = (d, cb)      => addDoc(cRp, { ...d, _ts: serverTimestamp() }).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.updR  = (id, d, cb)  => updateDoc(doc(db, 'repuestos', id), { ...d, _upd: serverTimestamp() }).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.delR    = (id, cb)     => deleteDoc(doc(db, 'repuestos', id)).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.add = (d, cb) => agregarAuditable('reparaciones', 'reparacion', d).then(id => { cb(null); v21Sync('reparacion', id, d, 'reparacion_creada'); }).catch(e => cb(e.message));
+window.FB.addId = (id, d, cb) => agregarAuditable('reparaciones', 'reparacion', d, id).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.upd = (id, d, cb) => actualizarAuditable('reparaciones', 'reparacion', id, d).then(() => { cb(null); v21Sync('reparacion', id, d, 'reparacion_actualizada'); }).catch(e => cb(e.message));
+window.FB.del = (id, cb) => eliminarAuditable('reparaciones', 'reparacion', id).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.addR = (d, cb) => agregarAuditable('repuestos', 'repuesto', d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.updR = (id, d, cb) => actualizarAuditable('repuestos', 'repuesto', id, d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.delR = (id, cb) => eliminarAuditable('repuestos', 'repuesto', id).then(() => cb(null)).catch(e => cb(e.message));
 
 // --- Catalogo y config ---
-window.FB.setConfig = (d, cb) => setDoc(dCfg, d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.setConfig = (d, cb) => actualizarAuditable('config', 'config_catalogo', 'catalogo', d).then(() => cb(null)).catch(e => cb(e.message));
 
 window.FB.setCat = async (items, cb) => {
   try {
@@ -296,6 +345,7 @@ window.FB.setCat = async (items, cb) => {
       });
       await batch2.commit();
     }
+    await registrarAuditoria('catalogo', 'catalogo', 'base_reemplazada', {}, { productos: items.length });
     cb(null);
   } catch(e) { cb(e.message); }
 };
@@ -315,6 +365,14 @@ onSnapshot(
   },
   (err) => syncErr('Firestore error: ' + err.message)
 );
+
+// Registro de auditoría: se mantiene separado de los documentos operativos.
+onSnapshot(cAud, (snap) => {
+  window.AUDITORIA = snap.docs.map(d => Object.assign({ id: d.id }, d.data(), {
+    _ordenAuditoria: d.data().creadoEn && d.data().creadoEn.toMillis ? d.data().creadoEn.toMillis() : 0
+  }));
+  if (window._detId && document.getElementById('mDet').classList.contains('open')) _renderDet();
+}, () => {});
 
 // --- Listener repuestos ---
 onSnapshot(query(cRp, orderBy('_ts','asc')), (snap) => {
@@ -358,25 +416,17 @@ onSnapshot(dCfg, (snap) => {
 }, () => {});
 
 // ── Config comisiones ──
-window.FB.setComCfg = (d, cb) => setDoc(dCom, d).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message));
 
 // ── CRUD ventas ──
-window.FB.addV = (d, cb) => addDoc(cVen, { ...d, _ts: serverTimestamp() })
-  .then(ref => { cb(null); v21Sync('venta', ref.id, d, 'venta_creada'); })
-  .catch(e => cb(e.message));
-window.FB.updV = (id, d, cb) => updateDoc(doc(cVen,id), { ...d, _upd: serverTimestamp() })
-  .then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); })
-  .catch(e => cb(e.message));
-window.FB.delV  = (id, cb)     => deleteDoc(doc(cVen,id)).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.addV = (d, cb) => agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message));
+window.FB.updV = (id, d, cb) => actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message));
+window.FB.delV = (id, cb) => eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message));
 
 // ── CRUD stock ──
-window.FB.addSt = (d, cb) => addDoc(cSt, { ...d, _ts: serverTimestamp() })
-  .then(ref => { cb(null); v21Sync('stock', ref.id, d, 'stock_creado'); })
-  .catch(e => cb(e.message));
-window.FB.updSt = (id, d, cb) => updateDoc(doc(cSt,id), { ...d, _upd: serverTimestamp() })
-  .then(() => { cb(null); v21Sync('stock', id, d, 'stock_actualizado'); })
-  .catch(e => cb(e.message));
-window.FB.delSt = (id, cb)     => deleteDoc(doc(cSt,id)).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.addSt = (d, cb) => agregarAuditable('stock', 'stock', d).then(id => { cb(null); v21Sync('stock', id, d, 'stock_creado'); }).catch(e => cb(e.message));
+window.FB.updSt = (id, d, cb) => actualizarAuditable('stock', 'stock', id, d).then(() => { cb(null); v21Sync('stock', id, d, 'stock_actualizado'); }).catch(e => cb(e.message));
+window.FB.delSt = (id, cb) => eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message));
 
 // ── setUsados ──
 window.FB.setUsados = async (items, cb) => {
@@ -386,7 +436,7 @@ window.FB.setUsados = async (items, cb) => {
     const b1 = writeBatch(db); old.docs.forEach(d => b1.delete(d.ref)); await b1.commit();
     const b2 = writeBatch(db);
     items.forEach(u => { const r = doc(cUsa, u.modelo.replace(/[^a-zA-Z0-9]/g,'_')); b2.set(r, u); });
-    await b2.commit(); cb(null);
+    await b2.commit(); await registrarAuditoria('cotizador', 'usados', 'base_reemplazada', {}, { modelos: items.length }); cb(null);
   } catch(e) { cb(e.message); }
 };
 
