@@ -201,6 +201,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
       </div>
       <button onclick="limpiarEquipo()" style="background:none;border:none;color:var(--mu);cursor:pointer;font-size:13px">✕ Cambiar</button>
     </div>
+    <div class="field" style="margin:16px 0 0"><label>Capacidad</label><select id="capacidadSel" onchange="elegirCapacidad(this.value)"></select></div>
   </div>
   <button class="btn btn-acc" id="btnSiguiente1" onclick="irPaso2()" disabled>
     Continuar →
@@ -521,9 +522,12 @@ window.buscarEquipo = function(q) {
   q = q.trim();
   if (q.length < 2) { drop.classList.remove('open'); return; }
   const words = q.toLowerCase().split(/\s+/);
-  acResults = USADOS.filter(u =>
+  const encontrados = USADOS.filter(u =>
     words.every(w => u.modelo.toLowerCase().includes(w))
-  ).slice(0, 10);
+  );
+  const grupos = {};
+  encontrados.forEach(u => { const base = u.modelo.replace(/\s+\d+(?:GB|TB)\s*$/i,'').trim(); (grupos[base] || (grupos[base]=[])).push(u); });
+  acResults = Object.keys(grupos).sort().map(modelo => ({ modelo:modelo, opciones:grupos[modelo] })).slice(0, 10);
   if (!acResults.length) {
     drop.innerHTML = '<div class="ac-empty">No encontramos ese modelo</div>';
     drop.classList.add('open'); return;
@@ -535,7 +539,7 @@ window.buscarEquipo = function(q) {
     });
     return `<div class="ac-item" onmousedown="elegirEquipo(${i})">
       <span style="flex:1;font-size:14px">${lbl}</span>
-      <span style="font-size:12px;color:var(--acc);font-weight:700">USD ${u.precio_usd}</span>
+      <span style="font-size:12px;color:var(--acc);font-weight:700">Elegir capacidad</span>
     </div>`;
   }).join('');
   acIdx = -1;
@@ -555,15 +559,18 @@ window.equipoKeyDown = function(e) {
 
 window.elegirEquipo = function(i) {
   const u = acResults[i];
-  equipoSel = u;
+  equipoSel = u.opciones[0];
   document.getElementById('equipoQ').value = u.modelo;
   document.getElementById('equipoQ').classList.add('sel');
   document.getElementById('equipoDrop').classList.remove('open');
   document.getElementById('equipoSelNombre').textContent = u.modelo;
-  document.getElementById('equipoSelPrecio').textContent = 'USD ' + u.precio_usd;
+  const cap = document.getElementById('capacidadSel');
+  cap.innerHTML = u.opciones.map(x => `<option value="${x.modelo}">${x.modelo.replace(u.modelo,'').trim()}</option>`).join('');
+  document.getElementById('equipoSelPrecio').textContent = 'Valor según capacidad seleccionada';
   document.getElementById('equipoSelCard').style.display = '';
   document.getElementById('btnSiguiente1').disabled = false;
 };
+window.elegirCapacidad = function(modelo) { const u = USADOS.find(x => x.modelo === modelo); if (u) equipoSel = u; };
 
 window.limpiarEquipo = function() {
   equipoSel = null;
@@ -624,6 +631,7 @@ function buscarEnCatalogo(keywords) {
 }
 
 function getDescuentoProblema(grupo, val, modelo) {
+  if (val !== 'ok') return { lbl: 'Requiere revisión presencial', usd: 0, consultar: true };
   const mNum = modelo.toLowerCase().match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
   const mStr = mNum ? mNum[0].trim() : null;
   const isPro = esPro(modelo);
@@ -706,6 +714,8 @@ window.calcularResultado = function() {
 
   // Pantalla
   if (pantalla === 'rota') {
+    descuentos.push({ lbl: 'Pantalla dañada: requiere revisión presencial', usd: 0, consultar: true });
+  } else if (pantalla === 'rota') {
     const mNum = equipoSel.modelo.toLowerCase().match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
     const mStr = mNum ? mNum[0].trim() : null;
     let modCat = mStr ? CATALOGO.find(p => {
@@ -723,7 +733,7 @@ window.calcularResultado = function() {
     if (d) descuentos.push(d);
   });
 
-  const totalDesc = descuentos.reduce((s, d) => s + d.usd, 0);
+  const totalDesc = descuentos.reduce((s, d) => s + (d.consultar ? 0 : d.usd), 0);
   const total     = Math.max(0, base - totalDesc);
 
   // Mostrar resultado
