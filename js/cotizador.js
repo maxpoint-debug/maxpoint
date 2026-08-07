@@ -304,26 +304,28 @@ function parsearLista() {
     linea = linea.trim();
     if (!linea) return;
 
-    // Detectar modelo: tiene numero de iphone + capacidad
-    var mMod = linea.match(/(?:i?phone\s*)?(\d{1,2}\s*(?:pro\s*max|pro|plus|air|mini)?\s*\d{3}\s*(?:gb|tb))/i);
+    // Detectar modelo: las listas pueden escribir la capacidad con o sin GB.
+    var mMod = linea.match(/(?:i?phone\s*)?(\d{1,2}\s*(?:pro\s*max|pro|plus|air|mini)?\s*\d{3}\s*(?:gb|tb)?)/i);
     if (mMod) {
       var mod = mMod[1].trim().replace(/\s+/g,' ')
         .replace(/(\d+)\s*(gb|tb)/i, '$1$2')
         .replace(/gb/i,'GB').replace(/tb/i,'TB')
         .replace(/pro\s*max/i,'Pro Max').replace(/\bpro\b/i,'Pro')
         .replace(/\bplus\b/i,'Plus').replace(/\bair\b/i,'Air').replace(/\bmini\b/i,'Mini');
+      if (!/(GB|TB)$/i.test(mod)) mod += 'GB';
       if (!/^iphone/i.test(mod)) mod = 'iPhone ' + mod;
       modeloActual = mod.trim();
     }
 
-    // Detectar precio x1
-    var mPrecio = linea.match(/(\d{3,4})x1\s*[\uD83D\uDCAB\uD83D\uDCB5💵]/)
-      || linea.match(/^(\d{3,4})\s*[\uD83D\uDCAB\uD83D\uDCB5💵]/)
-      || linea.match(/(\d{3,4})💵/);
-
-    if (mPrecio && modeloActual) {
-      var precio = parseInt(mPrecio[1]);
-      if (precio >= 100 && precio <= 5000) {
+    // El proveedor alterna "680", "520x1", "495us", "275 USD" y "1,130 USD".
+    // Normalizamos miles y descartamos valores menores a USD 200: son capacidad,
+    // batería o cantidad de unidades, no precios de equipos.
+    var lineaPrecio = linea.replace(/(\d),(\d{3})/g, '$1$2');
+    var importes = (lineaPrecio.match(/\d{3,4}/g) || []).map(function(n) { return parseInt(n, 10); })
+      .filter(function(n) { return n >= 200 && n <= 5000; });
+    var precio = importes.length ? importes[importes.length - 1] : 0;
+    if (precio && modeloActual) {
+      if (precio >= 200 && precio <= 5000) {
         var existe = _listaItems.find(function(x) { return x.modelo === modeloActual; });
         if (existe) { if (precio < existe.precio_usd) existe.precio_usd = precio; }
         else _listaItems.push({ modelo: modeloActual, precio_usd: precio });
