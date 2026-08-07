@@ -228,8 +228,24 @@ if (!r) return;
   }
   col2.appendChild(ds3);
 
+  // Actividad auditada: operaciones nuevas con un usuario identificado.
+  var actividad = (window.AUDITORIA || []).filter(function(a) { return a.entidad === 'reparacion' && a.entidadId === r.id; })
+    .sort(function(a, b) { return (b._ordenAuditoria || 0) - (a._ordenAuditoria || 0); });
+  if (actividad.length) {
+    var dsActividad = document.createElement('div'); dsActividad.className = 'ds';
+    dsActividad.innerHTML = '<div class="dst">Actividad</div>';
+    actividad.forEach(function(a) {
+      var fila = document.createElement('div'); fila.style.cssText = 'font-size:11px;padding:5px 0;border-bottom:1px solid var(--bd)';
+      var actor = a.actor && a.actor.nombre ? a.actor.nombre : 'Usuario no registrado';
+      var detalle = (a.cambios || []).map(function(c) { return c.campo + ': ' + c.antes + ' → ' + c.despues; }).join(' · ');
+      fila.textContent = actor + ' · ' + (a.accion || 'actualizado') + (detalle ? ' · ' + detalle : '') + ' · ' + (a.fecha || '') + (a.hora ? ' ' + a.hora : '');
+      dsActividad.appendChild(fila);
+    });
+    col2.appendChild(dsActividad);
+  }
+
   // Timeline
-  if (tl.length) {
+  if (false && tl.length) {
     var ds4 = document.createElement('div'); ds4.className = 'ds';
     ds4.innerHTML = '<div class="dst">Historial de estados</div>';
     tl.forEach(function(t) {
