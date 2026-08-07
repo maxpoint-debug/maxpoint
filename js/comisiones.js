@@ -44,15 +44,18 @@ function comCalcularElegibles(mesKey) {
     if (!personas[nombre]) personas[nombre] = { nombre:nombre, lineas:[], excluidas:[] };
     return personas[nombre];
   }
+  function excluir(p, tipo, origenId, referencia, motivo) {
+    p.excluidas.push({ tipo:tipo, origenId:origenId, referencia:referencia, motivo:motivo });
+  }
   (window.REPS || []).forEach(function(r) {
     if (!r.tecnico || fechaAMesKey(r.fecha) !== mesKey) return;
     var p = persona(r.tecnico), clave = 'reparacion:' + r.id;
-    if (r.estado !== 'Entregado') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': no entregada'); return; }
-    if (r.pago !== 'Pagado') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': saldo pendiente'); return; }
-    if (r.controlComisionV1 && r.resultadoServicio !== 'Reparación realizada') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': resultado sin comisión (' + (r.resultadoServicio || 'pendiente') + ')'); return; }
-    if (r.controlComisionV1 && Number(r.presupuesto || 0) < 100000 && !r.comisionVerificada) { p.excluidas.push('Orden ' + (r.orden || r.id) + ': pendiente de verificación administrativa'); return; }
-    if (r.es_garantia === 'si') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': garantía'); return; }
-    if (r.gremio === 'si') { p.excluidas.push('Orden ' + (r.orden || r.id) + ': excluida por gremio'); return; }
+    if (r.estado !== 'Entregado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'No entregada'); return; }
+    if (r.pago !== 'Pagado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Saldo pendiente'); return; }
+    if (r.controlComisionV1 && r.resultadoServicio !== 'Reparación realizada') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Resultado sin comisión: ' + (r.resultadoServicio || 'pendiente')); return; }
+    if (r.controlComisionV1 && Number(r.presupuesto || 0) < 100000 && !r.comisionVerificada) { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Pendiente de verificación administrativa'); return; }
+    if (r.es_garantia === 'si') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Garantía'); return; }
+    if (r.gremio === 'si') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Excluida por gremio'); return; }
     if (bloqueadas[clave]) return;
     p.lineas.push({ clave:clave, tipo:'reparacion', origenId:r.id, referencia:r.orden || r.id, fecha:r.fecha, montoArs:Number(COM_CFG.com_rep || 0), detalle:'Reparación entregada y cobrada' });
   });
@@ -60,9 +63,9 @@ function comCalcularElegibles(mesKey) {
     if (!v.vendedor || fechaAMesKey(v.fecha) !== mesKey) return;
     var p = persona(v.vendedor), clave = 'venta:' + v.id;
     var precio = Number(v.precio || 0), costo = Number(v.costo || 0), ganancia = precio - costo;
-    if (v.parte_pago === 'Si') { p.excluidas.push('Venta ' + (v.modelo || v.id) + ': parte de pago pendiente de valuación'); return; }
-    if (!costo || costo <= 0) { p.excluidas.push('Venta ' + (v.modelo || v.id) + ': sin costo confirmado'); return; }
-    if (ganancia <= 0) { p.excluidas.push('Venta ' + (v.modelo || v.id) + ': sin ganancia positiva'); return; }
+    if (v.parte_pago === 'Si') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Parte de pago pendiente de valuación'); return; }
+    if (!costo || costo <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin costo confirmado'); return; }
+    if (ganancia <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin ganancia positiva'); return; }
     if (bloqueadas[clave]) return;
     p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:comMontoVenta(ganancia), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Venta con costo confirmado' });
   });
@@ -81,6 +84,11 @@ function comVerificarReparacion(id) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
     toast('Reparación verificada para comisión');
   });
+}
+
+function comAbrirExcepcion(tipo, id) {
+  if (tipo === 'reparacion') { openDet(id); return; }
+  if (tipo === 'venta' && typeof openEditVenta === 'function') openEditVenta(id);
 }
 
 function comMesActual() {
@@ -128,7 +136,7 @@ function comRenderControl() {
     card.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><b>' + esc(p.nombre) + '</b><div class="mu" style="font-size:11px;margin-top:3px">' + subtitulo + '</div></div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr)">' + pesos(totalMostrar) + '</div></div>';
     var detalle = document.createElement('div'); detalle.style.cssText = 'font-size:11px;color:var(--mu);margin-top:8px';
     detalle.innerHTML = lineasMostrar.map(function(x) { return '<div>' + esc(x.referencia) + ' · ' + esc(x.tipo) + ' · ' + pesos(x.montoArs) + (x.gananciaUsd !== undefined ? ' · ganancia ' + x.gananciaUsd + ' USD' : '') + '</div>'; }).join('');
-    if (!existente && p.excluidas.length) detalle.innerHTML += '<div style="margin-top:5px;color:var(--or)">Excluidas: ' + esc(p.excluidas.slice(0, 3).join(' · ')) + (p.excluidas.length > 3 ? '…' : '') + '</div>';
+    if (!existente && p.excluidas.length) detalle.innerHTML += '<div style="margin-top:5px;color:var(--or)">Excluidas: ' + esc(p.excluidas.slice(0, 3).map(function(x) { return x.referencia + ': ' + x.motivo; }).join(' · ')) + (p.excluidas.length > 3 ? '…' : '') + '</div>';
     card.appendChild(detalle);
     var acciones = document.createElement('div'); acciones.className = 'fa'; acciones.style.marginTop = '10px';
     if (existente) {
@@ -143,6 +151,19 @@ function comRenderControl() {
     if (l.estado === 'Aprobada') card.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(l.id)));
     sec.appendChild(card);
   });
+  var excepciones = [];
+  personas.forEach(function(p) { (p.excluidas || []).forEach(function(x) { excepciones.push({ persona:p.nombre, dato:x }); }); });
+  var secEx = document.createElement('div'); secEx.style.marginTop = '16px'; secEx.innerHTML = '<div class="ct" style="margin-bottom:8px">EXCEPCIONES DE COMISIONES</div>';
+  if (!excepciones.length) secEx.innerHTML += '<div class="mu" style="font-size:12px">No hay excepciones para revisar en este período.</div>';
+  else {
+    var tabla = document.createElement('div'); tabla.className = 'tw';
+    tabla.innerHTML = '<table><thead><tr><th>Persona</th><th>Operación</th><th>Motivo</th><th></th></tr></thead><tbody>' + excepciones.map(function(x) {
+      var d = x.dato;
+      return '<tr><td>' + esc(x.persona) + '</td><td>' + esc(d.referencia) + '<div class="mu" style="font-size:10px">' + esc(d.tipo) + '</div></td><td style="color:var(--or)">' + esc(d.motivo) + '</td><td><button class="btn btn-g btn-sm" onclick="comAbrirExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\')">Revisar</button></td></tr>';
+    }).join('') + '</tbody></table>';
+    secEx.appendChild(tabla);
+  }
+  sec.appendChild(secEx);
   return sec;
 }
 
