@@ -1,0 +1,127 @@
+MAXPOINT - REGLAS OPERATIVAS, GARANTIAS, INCIDENCIAS Y COMISIONES
+Version de trabajo: 2026-08-07
+
+OBJETIVO
+El sistema debe registrar cada etapa importante de una reparacion o venta,
+reducir omisiones y dejar trazabilidad. No reemplaza el control humano: hace
+visibles las excepciones y evita cierres sin datos minimos.
+
+PRINCIPIOS
+1. Cada accion relevante tiene usuario, fecha y hora.
+2. CreadoPor (quien registro) y tecnicoAsignado (quien ejecuta) son campos
+   distintos. No se asume que sean la misma persona.
+3. Un registro cerrado no se modifica silenciosamente. Las correcciones se
+   registran como ajustes auditables.
+4. Los costos y margenes son informacion de administrador. Tecnicos,
+   recepcionistas y vendedores no los ven ni los editan.
+5. ARS y USD nunca se suman sin una conversion identificada. Toda equivalencia
+   usa una cotizacion Blue Venta guardada y se marca como referencial si no
+   pertenece a la operacion original.
+
+REPARACIONES - RECEPCION
+1. Una reparacion se crea con cliente, equipo, falla declarada, tecnico
+   asignado cuando corresponda y estado Ingresado.
+2. Se registra el estado inicial del equipo: pantalla, tapa, marco, camaras,
+   encendido, humedad y observaciones. Las fotos son recomendadas y deben
+   quedar vinculadas a la orden cuando se incorporen.
+3. El equipo puede cambiar de tecnico, pero el cambio debe quedar auditado.
+4. El presupuesto, la seña y cada pago se registran por separado en ARS.
+
+REPARACIONES - CIERRE Y ENTREGA
+1. Para entregar, la orden debe estar cobrada por completo o tener una
+   excepcion aprobada por administrador.
+2. Antes de Entregado se debe confirmar una sola condicion de cierre:
+   - Trabajo terminado sin incidencia.
+   - Garantia o retrabajo.
+   - Incidencia/rotura declarada.
+3. Quien entrega compara el estado final con el estado de recepcion y confirma
+   la entrega con el cliente.
+4. No aprobado, cancelado y entregado son cierres diferentes y deben conservar
+   su historial.
+
+GARANTIAS E INCIDENCIAS (ROTURAS, FALLAS Y RECLAMOS)
+1. Una garantia o reclamo se vincula a la orden original; no se crea como una
+   reparacion totalmente independiente.
+2. La incidencia se clasifica como: dano preexistente, dano durante el
+   servicio, falla posterior al arreglo, error de diagnostico, error de
+   repuesto/proveedor, perdida/robo u otra.
+3. Debe registrar descripcion, responsable informado, evidencia disponible,
+   costo estimado y resolucion.
+4. Solo administrador determina la resolucion: absorbida por el negocio,
+   reclamo a proveedor, garantia sin costo, acuerdo con cliente,
+   responsabilidad compartida o responsabilidad individual.
+5. El sistema no descuenta dinero automaticamente a una persona. Puede
+   suspender o ajustar la comision de la operacion y requiere resolucion
+   administrativa. Cualquier descuento laboral requiere revision y acuerdo
+   fuera de esta automatizacion.
+6. El administrador revisa semanalmente ordenes entregadas sin cierre completo,
+   garantias abiertas, incidencias abiertas, ordenes antiguas y cambios de
+   tecnico.
+
+COMISIONES DE REPARACIONES
+1. Monto base acordado: ARS 5.000 por reparacion.
+2. Beneficiario: tecnicoAsignado al momento del cierre comisionable.
+3. Es comisionable solo si esta Entregada, totalmente cobrada y sin garantia ni
+   incidencia pendiente de resolucion.
+4. No comisionan ordenes No aprobadas, canceladas, garantias, retrabajos ni
+   reparaciones con saldo pendiente.
+5. Si intervienen varios tecnicos, la division de comision es una accion
+   explicita de administrador; no se distribuye automaticamente.
+
+COMISIONES DE VENTAS DE EQUIPOS
+1. El vendedor asignado recibe comision solo por venta cobrada, con costo de
+   compra confirmado y ganancia bruta positiva.
+2. Tramos iniciales en base a ganancia bruta USD:
+   - Menor a USD 100: ARS 5.000.
+   - Desde USD 100 y menor a USD 200: ARS 10.000.
+   - Desde USD 200: ARS 15.000.
+3. La ganancia bruta es precio de venta USD menos costo USD confirmado. No se
+   usa un porcentaje del margen.
+4. Parte de pago no comisiona hasta que administrador confirme el valor/costo
+   de toma del equipo recibido.
+5. El vendedor no carga ni edita el costo de compra. Solo administrador o
+   personal autorizado de compras confirma costo y precio de venta habilitado.
+6. Al generar una comision se conserva una foto: venta, vendedor, precio USD,
+   costo USD, ganancia USD, tramo, importe ARS y cotizacion Blue aplicada.
+
+LIQUIDACION MENSUAL
+1. El administrador elige un mes cerrado y revisa un borrador por persona.
+2. El borrador muestra operaciones comisionables, excluidas, garantias,
+   devoluciones y ajustes.
+3. Las comisiones tienen estados: Pendiente, Aprobada, Pagada y Anulada.
+4. Al pagar se registra administrador, fecha, medio de pago, persona, monto y
+   operaciones incluidas. El lote queda bloqueado.
+5. Una devolucion, garantia o correccion posterior no reescribe un periodo ya
+   pagado: genera un ajuste positivo o negativo para el periodo siguiente.
+6. Solo administrador puede aprobar, pagar, anular o desbloquear mediante una
+   correccion auditada.
+
+CENTRO DE CONTROL
+1. Muestra alertas operativas: equipos listos, saldos pendientes, ordenes
+   antiguas, garantias, incidencias, repuestos pendientes y ordenes sin tecnico.
+2. Muestra comisiones pendientes y el acceso al cierre mensual solo a
+   administrador.
+3. Reparaciones/cobros/saldos se muestran en ARS. Equipos, stock, repuestos,
+   ventas y margenes se muestran en USD.
+4. Las conversiones ARS a USD se identifican como referenciales al Blue
+   vigente si no existe una cotizacion historica propia de esa operacion.
+
+ROLES
+1. Administrador: costos, precios habilitados, cotizacion, incidencias,
+   garantias, cierres y liquidaciones.
+2. Tecnico: sus reparaciones, diagnostico, cambios de estado y declaracion de
+   garantias/incidencias; no modifica costos, liquidaciones ni precios de compra.
+3. Recepcionista: recepcion, cliente, estado inicial, pagos y entrega; no ve
+   costos, margenes, balance ni liquidaciones.
+4. Vendedor: registra ventas y vendedor asignado; no ve ni modifica costos,
+   margenes o comisiones de terceros.
+
+IMPLEMENTACION POR ETAPAS
+1. Base de datos y reglas de elegibilidad: snapshots, estados de comision,
+   periodo de liquidacion y ajustes. Sin bloquear los flujos actuales.
+2. Reparaciones: cierre obligatorio, garantia/incidencia vinculada y alertas.
+3. Ventas: costo confirmado por administrador, snapshot de ganancia y
+   comision por tramo.
+4. Centro de Control: borrador, aprobacion/pago mensual y ajustes.
+5. Reglas de Firestore y pruebas de permisos para que la interfaz no sea la
+   unica barrera de seguridad.
