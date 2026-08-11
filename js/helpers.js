@@ -139,6 +139,29 @@ function toast(msg, color) {
   setTimeout(function() { t.classList.remove('show'); }, 2800);
 }
 
+// Orden visual natural para equipos: iPhone 11, 11 Pro, 11 Pro Max, 12...
+// No modifica los datos; se usa solo al presentar sugerencias y listados.
+function compararModelos(a, b) {
+  function partes(modelo) {
+    var texto = String(modelo || '').toLowerCase();
+    var generacion = (texto.match(/iphone\s*(\d{1,2})/) || texto.match(/\b(\d{1,2})\b/) || [0, 999])[1];
+    var variante = /pro\s*max/.test(texto) ? 4 : /\bpro\b/.test(texto) ? 3 : /\bplus\b/.test(texto) ? 2 : /\bmini\b/.test(texto) ? 1 : 0;
+    var capacidad = (texto.match(/(\d+)\s*(?:gb|tb)\b/) || [0, 0])[1];
+    return { generacion: Number(generacion), variante: variante, capacidad: Number(capacidad), texto: texto };
+  }
+  var x = partes(a), y = partes(b);
+  return x.generacion - y.generacion || x.variante - y.variante || x.capacidad - y.capacidad
+    || x.texto.localeCompare(y.texto, 'es', { numeric: true, sensitivity: 'base' });
+}
+
+function ordenarPorModelo(items, campo) {
+  return (items || []).slice().sort(function(a, b) {
+    var modeloA = campo ? a[campo] : a;
+    var modeloB = campo ? b[campo] : b;
+    return compararModelos(modeloA, modeloB);
+  });
+}
+
 // --- Modales ---
 function openM(id)  { el(id).classList.add('open'); }
 function closeM(id) { el(id).classList.remove('open'); }

@@ -4,7 +4,16 @@ var USADOS = [];
 // El cotizador conserva su propio orden para no depender de helpers externos.
 function cotOrdenarPorModelo(items) {
   return (items || []).slice().sort(function(a, b) {
-    return String(a.modelo || '').localeCompare(String(b.modelo || ''), 'es', { numeric: true, sensitivity: 'base' });
+    function partes(modelo) {
+      var texto = String(modelo || '').toLowerCase();
+      var generacion = (texto.match(/iphone\s*(\d{1,2})/) || texto.match(/\b(\d{1,2})\b/) || [0, 999])[1];
+      var variante = /pro\s*max/.test(texto) ? 4 : /\bpro\b/.test(texto) ? 3 : /\bplus\b/.test(texto) ? 2 : /\bmini\b/.test(texto) ? 1 : 0;
+      var capacidad = (texto.match(/(\d+)\s*(?:gb|tb)\b/) || [0, 0])[1];
+      return { generacion: Number(generacion), variante: variante, capacidad: Number(capacidad), texto: texto };
+    }
+    var x = partes(a.modelo), y = partes(b.modelo);
+    return x.generacion - y.generacion || x.variante - y.variante || x.capacidad - y.capacidad
+      || x.texto.localeCompare(y.texto, 'es', { numeric: true, sensitivity: 'base' });
   });
 }
 
