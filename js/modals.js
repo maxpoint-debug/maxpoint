@@ -209,7 +209,9 @@ function _renderDet() {
 
 if (!r) return;
 
-  var sal = Number(r.presupuesto || 0) - Number(r.sena || 0);
+  var cobrado = totalCobradoReparacion(r);
+  var sal = saldoReparacion(r);
+  var estadoPago = estadoPagoReparacion(r);
   var rpu = RPUS.filter(function(rp) { return rp.orden === r.orden; });
   // Las entradas históricas sin usuario se conservan en Firestore, pero no se
   // muestran: el historial visible comienza con los cambios auditables.
@@ -291,12 +293,12 @@ if (!r) return;
   var ds3 = document.createElement('div'); ds3.className = 'ds';
   ds3.innerHTML = '<div class="dst">Estado y pago</div>'
     + '<div class="dr"><span class="dl">Estado</span>' + badgeEst(r.estado) + '</div>'
-    + '<div class="dr"><span class="dl">Pago</span>'   + badgePag(r.pago)   + '</div>';
+    + '<div class="dr"><span class="dl">Pago</span>'   + badgePag(estadoPago)   + '</div>';
   if (Number(r.presupuesto || 0)) {
     ds3.innerHTML += '<div class="dr"><span class="dl">Presupuesto</span><span class="mono">' + pesos(r.presupuesto) + '</span></div>';
   }
-  if (Number(r.sena || 0)) {
-    ds3.innerHTML += '<div class="dr"><span class="dl">Sena</span><span class="mono cg">' + pesos(r.sena) + '</span></div>';
+  if (cobrado > 0) {
+    ds3.innerHTML += '<div class="dr"><span class="dl">Cobrado</span><span class="mono cg">' + pesos(cobrado) + '</span></div>';
   }
   if (Number(r.presupuesto || 0)) {
     var salColor = sal > 0 ? 'var(--or)' : 'var(--gr)';
@@ -412,12 +414,12 @@ if (!r) return;
     });
   });
   fa.appendChild(estadoSel);
-  if (r.pago !== 'Pagado') {
+  if (estadoPago !== 'Pagado') {
     fa.appendChild(mkBtn('btn-g', '💳 Registrar pago', (function(id) {
       return function() { closeM('mDet'); openPago(id); };
     })(r.id)));
   }
-  if (r.pago !== 'Pagado' && puede('gestionar_comisiones')) fa.appendChild(mkBtn('btn-g btn-sm', 'Autorizar entrega con saldo', (function(id) { return function() { autorizarEntregaSaldo(id); }; })(r.id)));
+  if (estadoPago !== 'Pagado' && puede('gestionar_comisiones')) fa.appendChild(mkBtn('btn-g btn-sm', 'Autorizar entrega con saldo', (function(id) { return function() { autorizarEntregaSaldo(id); }; })(r.id)));
   if (r.modelo) {
     fa.appendChild(mkBtn('btn-g btn-sm', 'Copiar IMEI / Serie', (function(serie) { return function() { copiarTexto(serie, 'IMEI / Serie copiado'); }; })(r.modelo)));
   }
@@ -456,7 +458,7 @@ function openPago(id) {
   _pagoId  = id;
   _pagoMedio = 'Efectivo';
 
-  var sal = Number(r.presupuesto || 0) - Number(r.sena || 0);
+  var sal = saldoReparacion(r);
   var c   = el('mPagoC'); c.innerHTML = '';
 
   // Info orden
@@ -502,18 +504,24 @@ function openPago(id) {
 function confPago() {
   var r = REPS.find(function(x) { return x.id === _pagoId; });
   if (!r) return;
-  var pagos = (r.pagos || []).concat([{
-    monto:  val('pgMonto'),
+  var monto = Number(val('pgMonto'));
+  if (!Number.isFinite(monto) || monto <= 0) { toast('Ingresá un monto de pago válido', 'var(--rd)'); return; }
+  // Si el registro es legacy, preservamos la seña previa como primer pago al
+  // registrar el siguiente. No hay migración masiva ni se reemplazan pagos.
+  var pagos = pagosReparacion(r).concat([{
+    monto:  monto,
     fecha:  val('pgFech'),
     medio:  _pagoMedio,
     notas:  val('pgNot'),
   }]);
-  // Actualizamos sena = presupuesto para que saldo quede en 0 en el detalle
-  var nuevoSena = Number(r.presupuesto || 0);
-  FB.upd(_pagoId, { pago: 'Pagado', pagos: pagos, sena: String(nuevoSena) }, function(err) {
+  var totalCobrado = pagos.reduce(function(total, pago) { return total + Number(pago.monto || 0); }, 0);
+  var presupuesto = Number(r.presupuesto || 0);
+  // Sin presupuesto no se infiere un estado financiero: se mantiene el actual.
+  var nuevoEstadoPago = presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente');
+  FB.upd(_pagoId, { pago: nuevoEstadoPago, pagos: pagos, sena: String(totalCobrado) }, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
     closeM('mPago');
-    toast('✓ Pago registrado — ' + _pagoMedio);
+    toast('✓ Pago registrado — saldo ' + pesos(Math.max(0, presupuesto - totalCobrado)));
   });
 }
 
@@ -521,9 +529,10 @@ function confPago() {
 // RECIBO — usa Blob URL, sin document.write (era el SyntaxError)
 // ============================================================
 function mkRecHTML(r) {
-  var sal = Number(r.presupuesto || 0) - Number(r.sena || 0);
+  var cobrado = totalCobradoReparacion(r);
+  var sal = saldoReparacion(r);
   var tienePres = Number(r.presupuesto || 0) > 0;
-  var tieneSena = Number(r.sena || 0) > 0;
+  var tieneSena = cobrado > 0;
   var fmt = function(n) { return '$\u202F' + Number(n).toLocaleString('es-AR'); };
 
   // Colores de estado
@@ -607,7 +616,7 @@ function mkRecHTML(r) {
   h.push('<span style="display:inline-block;background:' + ec + '22;color:' + ec + ';border:1px solid ' + ec + '55;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700">' + esc(r.estado || 'Ingresado') + '</span>');
   h.push('<div style="margin-top:8px">');
   h.push('<div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:4px">Pago</div>');
-  h.push('<span style="font-size:11px;font-weight:700;color:#333">' + esc(r.pago || 'Pendiente') + '</span>');
+  h.push('<span style="font-size:11px;font-weight:700;color:#333">' + esc(estadoPagoReparacion(r)) + '</span>');
   h.push('</div>');
   h.push('</td>');
 
@@ -618,7 +627,7 @@ function mkRecHTML(r) {
     h.push('<table style="width:100%;border-collapse:collapse;font-size:11px">');
     h.push('<tr><td style="color:#555;padding:2px 0">Total</td><td style="text-align:right;font-weight:700;color:#111">' + fmt(r.presupuesto) + '</td></tr>');
     if (tieneSena) {
-      h.push('<tr><td style="color:#555;padding:2px 0">Se&ntilde;a</td><td style="text-align:right;color:#2DCE89;font-weight:600">&minus; ' + fmt(r.sena) + '</td></tr>');
+      h.push('<tr><td style="color:#555;padding:2px 0">Cobrado</td><td style="text-align:right;color:#2DCE89;font-weight:600">&minus; ' + fmt(cobrado) + '</td></tr>');
       h.push('<tr style="border-top:1.5px solid #eee"><td style="font-weight:800;padding-top:4px">Saldo</td><td style="text-align:right;font-weight:900;font-size:14px;color:#111;padding-top:4px">' + fmt(sal) + '</td></tr>');
     }
     h.push('</table>');
@@ -820,10 +829,11 @@ function abrirWA2(id) {
   if (r.presupuesto && r.presupuesto !== '0') {
     lineas.push('');
     lineas.push('💰 Presupuesto: $' + Number(r.presupuesto).toLocaleString());
-    if (r.pago !== 'Pagado') {
-      var saldo = Number(r.presupuesto || 0) - Number(r.sena || 0);
-      if (Number(r.sena || 0) > 0) {
-        lineas.push('✅ Sena abonada: $' + Number(r.sena).toLocaleString());
+    if (estadoPagoReparacion(r) !== 'Pagado') {
+      var saldo = saldoReparacion(r);
+      var cobrado = totalCobradoReparacion(r);
+      if (cobrado > 0) {
+        lineas.push('✅ Cobrado: $' + cobrado.toLocaleString());
       }
       lineas.push('💳 Saldo pendiente: $' + saldo.toLocaleString());
     } else {
@@ -967,7 +977,8 @@ function prtOrdenTaller(id) {
       + '<td style="font-weight:700;color:' + color + ';font-size:10px">' + ci[1] + '</td></tr>';
   }).join('');
 
-  var sal = Number(r.presupuesto||0) - Number(r.sena||0);
+  var cobrado = totalCobradoReparacion(r);
+  var sal = saldoReparacion(r);
 
   var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Orden Taller ' + e2(r.orden||'') + '</title>'
     + '<style>@page{size:A5;margin:8mm}body{font-family:system-ui,sans-serif;font-size:12px;color:#111;background:white;margin:0}@media print{button{display:none}}</style>'
@@ -1011,7 +1022,7 @@ function prtOrdenTaller(id) {
     + '<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr>'
     + '<td style="font-size:10px;color:#555;padding:3px 0">Presupuesto</td>'
     + '<td style="text-align:right;font-weight:700;font-size:10px">' + (Number(r.presupuesto||0) ? fmt(r.presupuesto) : 'A confirmar') + '</td></tr>'
-    + (Number(r.sena||0) ? '<tr><td style="font-size:10px;color:#555;padding:3px 0">Sena</td><td style="text-align:right;font-size:10px;color:#2DCE89">- ' + fmt(r.sena) + '</td></tr>'
+    + (cobrado > 0 ? '<tr><td style="font-size:10px;color:#555;padding:3px 0">Cobrado</td><td style="text-align:right;font-size:10px;color:#2DCE89">- ' + fmt(cobrado) + '</td></tr>'
       + '<tr style="border-top:1px solid #eee"><td style="font-weight:800;font-size:10px;padding-top:3px">Saldo</td><td style="text-align:right;font-weight:900;font-size:12px;padding-top:3px">' + fmt(sal) + '</td></tr>' : '')
     + '</table>'
     + (chkItems.length ? '<div style="border-top:1px solid #eee;padding-top:8px;margin-bottom:10px">'
