@@ -162,6 +162,37 @@ function ordenarPorModelo(items, campo) {
   });
 }
 
+// --- Finanzas operativas ---
+// En reparaciones nuevas, pagos[] es la fuente de cobro. En registros legacy
+// sin pagos registrados, se conserva sena como importe ya cobrado.
+function pagosReparacion(r) {
+  var pagos = Array.isArray(r && r.pagos) ? r.pagos.filter(function(p) { return Number(p && p.monto || 0) > 0; }) : [];
+  if (pagos.length) return pagos.slice();
+  var senaLegacy = Number(r && r.sena || 0);
+  return senaLegacy > 0 ? [{ monto:senaLegacy, fecha:(r && r.fecha) || '', medio:'Registro previo', legacy:true }] : [];
+}
+
+function totalCobradoReparacion(r) {
+  return pagosReparacion(r).reduce(function(total, pago) { return total + Number(pago.monto || 0); }, 0);
+}
+
+function saldoReparacion(r) {
+  return Math.max(0, Number(r && r.presupuesto || 0) - totalCobradoReparacion(r));
+}
+
+function estadoPagoReparacion(r) {
+  var presupuesto = Number(r && r.presupuesto || 0);
+  // Sin presupuesto no se infiere un cierre financiero: se mantiene el dato existente.
+  if (presupuesto <= 0) return (r && r.pago) || 'Pendiente';
+  return totalCobradoReparacion(r) >= presupuesto ? 'Pagado' : 'Pendiente';
+}
+
+// Los estados existentes son Cobrada, Pendiente, Anulada y Devuelta. Los
+// históricos sin estado se tratan como Cobrada para mantener compatibilidad.
+function ventaValidaParaMetricas(venta) {
+  return (venta && venta.estadoVenta ? venta.estadoVenta : 'Cobrada') === 'Cobrada';
+}
+
 // --- Modales ---
 function openM(id)  { el(id).classList.add('open'); }
 function closeM(id) { el(id).classList.remove('open'); }
