@@ -295,7 +295,12 @@ var _listaItems = [];
 
 function parsearLista() {
   var txt = val('listaInput');
-  if (!txt.trim()) return;
+  if (!txt.trim()) {
+    el('listaPreviewContent').innerHTML = '<div style="color:var(--or);font-size:12px">Pegá una lista antes de interpretarla.</div>';
+    el('listaPreview').style.display = '';
+    el('btnSubirLista').disabled = true;
+    return;
+  }
   _listaItems = [];
   var lineas = txt.split('\n');
   var modeloActual = null;
@@ -357,7 +362,26 @@ function parsearLista() {
 
   el('listaPreview').style.display = '';
   el('btnSubirLista').disabled = false;
+  toast('Lista interpretada: ' + _listaItems.length + ' modelo(s) detectado(s)');
 }
+
+// El listener directo evita depender de atributos inline y no permite que el
+// botón falle silenciosamente en navegadores con políticas más estrictas.
+(function vincularInterpretarLista() {
+  var boton = el('btnInterpretarLista');
+  if (!boton) return;
+  boton.addEventListener('click', function() {
+    try {
+      parsearLista();
+    } catch (err) {
+      el('listaPreviewContent').innerHTML = '<div style="color:var(--rd);font-size:12px">No se pudo interpretar la lista: ' + esc(err.message) + '</div>';
+      el('listaPreview').style.display = '';
+      el('btnSubirLista').disabled = true;
+      toast('Error al interpretar la lista', 'var(--rd)');
+      console.error('Error al interpretar lista de usados:', err);
+    }
+  });
+})();
 
 function subirLista() {
   if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede actualizar la base del cotizador', 'var(--rd)'); return; }
