@@ -1089,7 +1089,9 @@ function renderStock() {
     return;
   }
   estados.forEach(function(est) {
-    var items = STOCK.filter(function(s) { return s.estado === est; });
+    var items = STOCK.filter(function(s) { return s.estado === est; }).slice().sort(function(a, b) {
+      return compararModelos([a.modelo, a.capacidad].filter(Boolean).join(' '), [b.modelo, b.capacidad].filter(Boolean).join(' '));
+    });
     if (!items.length) return;
     var sec = document.createElement('div'); sec.style.cssText = 'margin-top:16px';
     sec.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:' + (colorMap[est]||'var(--mu)') + ';margin-bottom:8px">' + est + ' (' + items.length + ')</div>';
