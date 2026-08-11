@@ -303,6 +303,7 @@ function parsearLista() {
   lineas.forEach(function(linea) {
     linea = linea.trim();
     if (!linea) return;
+    var textoPrecio = linea;
 
     // Detectar modelo: las listas pueden escribir la capacidad con o sin GB.
     var mMod = linea.match(/(?:i?phone\s*)?(\d{1,2}\s*(?:pro\s*max|pro|plus|air|mini)?\s*\d{3}\s*(?:gb|tb)?)/i);
@@ -315,12 +316,13 @@ function parsearLista() {
       if (!/(GB|TB)$/i.test(mod)) mod += 'GB';
       if (!/^iphone/i.test(mod)) mod = 'iPhone ' + mod;
       modeloActual = mod.trim();
+      // El modelo incluye la capacidad (ej. 256GB): nunca debe leerse como precio.
+      textoPrecio = linea.replace(mMod[0], ' ');
     }
 
     // El proveedor alterna "680", "520x1", "495us", "275 USD" y "1,130 USD".
-    // Normalizamos miles y descartamos valores menores a USD 200: son capacidad,
-    // batería o cantidad de unidades, no precios de equipos.
-    var lineaPrecio = linea.replace(/(\d),(\d{3})/g, '$1$2');
+    // Normalizamos miles y descartamos batería o cantidad de unidades.
+    var lineaPrecio = textoPrecio.replace(/(\d),(\d{3})/g, '$1$2');
     var importes = (lineaPrecio.match(/\d{3,4}/g) || []).map(function(n) { return parseInt(n, 10); })
       .filter(function(n) { return n >= 200 && n <= 5000; });
     var precio = importes.length ? importes[importes.length - 1] : 0;
