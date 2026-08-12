@@ -161,6 +161,21 @@ function comMesSeleccionado() {
 }
 function comCambiarMes(mes) { COM_MES_SEL = mes; if (typeof renderBal === 'function') renderBal(); }
 
+// Texto listo para pegar en un recibo o mensaje. Usa exactamente las líneas
+// que se muestran para la liquidación/periodo, sin alterar el cálculo.
+function comCopiarDetalle(mes, nombre, lineas, total, estado) {
+  var texto = 'MAXPOINT — COMISIONES\n'
+    + 'Período: ' + comNombreMes(mes) + '\n'
+    + 'Persona: ' + (nombre || 'Sin asignar') + '\n'
+    + (estado ? 'Estado: ' + estado + '\n' : '')
+    + '\nDetalle:\n'
+    + (lineas || []).map(function(x) {
+      return '- ' + (x.referencia || 'Sin referencia') + ' · ' + (x.tipo || 'operación') + ' · ' + pesos(x.montoArs || 0);
+    }).join('\n')
+    + '\n\nTotal comisiones: ' + pesos(total || 0);
+  copiarTexto(texto, 'Detalle de comisiones copiado');
+}
+
 function comRenderControl() {
   var sec = document.createElement('div'); sec.style.marginTop = '22px';
   sec.innerHTML = '<div class="ct" style="margin-bottom:8px">COMISIONES</div>';
@@ -191,8 +206,13 @@ function comRenderControl() {
     if (!existente && p.excluidas.length) detalle.innerHTML += '<div style="margin-top:5px;color:var(--or)">Excluidas: ' + esc(p.excluidas.slice(0, 3).map(function(x) { return x.referencia + ': ' + x.motivo; }).join(' · ')) + (p.excluidas.length > 3 ? '…' : '') + '</div>';
     card.appendChild(detalle);
     var acciones = document.createElement('div'); acciones.className = 'fa'; acciones.style.marginTop = '10px';
+    acciones.appendChild(mkBtn('btn-g btn-sm', 'Copiar detalle', (function(m, n, ls, total, est) {
+      return function() { comCopiarDetalle(m, n, ls, total, est); };
+    })(seleccionado, p.nombre, lineasMostrar, totalMostrar, existente ? existente.estado : 'Pendiente de aprobación')));
     if (existente) {
-      acciones.innerHTML = '<span class="mu" style="font-size:11px">' + esc(existente.estado) + (existente.fechaPago ? ' · ' + esc(existente.fechaPago) : '') + '</span>';
+      var estado = document.createElement('span'); estado.className = 'mu'; estado.style.fontSize = '11px';
+      estado.textContent = existente.estado + (existente.fechaPago ? ' - ' + existente.fechaPago : '');
+      acciones.appendChild(estado);
       if (existente.estado === 'Aprobada') acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(existente.id)));
     } else if (p.lineas.length) acciones.appendChild(mkBtn('btn-g btn-sm', 'Aprobar liquidación', (function(m, n) { return function() { comAprobarLiquidacion(m, n); }; })(seleccionado, p.nombre)));
     card.appendChild(acciones); sec.appendChild(card);
@@ -200,7 +220,12 @@ function comRenderControl() {
   activas.filter(function(l) { return !personas.some(function(p) { return p.nombre === l.persona; }); }).forEach(function(l) {
     var card = document.createElement('div'); card.className = 'card'; card.style.marginBottom = '8px';
     card.innerHTML = '<b>' + esc(l.persona) + '</b><div class="mu" style="font-size:11px;margin-top:4px">' + esc(l.estado) + ' · ' + (l.lineas || []).length + ' operación(es)</div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr);margin-top:5px">' + pesos(l.totalArs) + '</div>';
-    if (l.estado === 'Aprobada') card.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(l.id)));
+    var acciones = document.createElement('div'); acciones.className = 'fa'; acciones.style.marginTop = '10px';
+    acciones.appendChild(mkBtn('btn-g btn-sm', 'Copiar detalle', (function(m, n, ls, total, est) {
+      return function() { comCopiarDetalle(m, n, ls, total, est); };
+    })(seleccionado, l.persona, l.lineas || [], Number(l.totalArs || 0), l.estado)));
+    if (l.estado === 'Aprobada') acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(l.id)));
+    card.appendChild(acciones);
     sec.appendChild(card);
   });
   var excepciones = [];
