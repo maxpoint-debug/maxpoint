@@ -17,8 +17,10 @@ import {
   writeBatch,
   onSnapshot,
   query,
+  where,
   orderBy,
   limit,
+  runTransaction,
   serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
@@ -51,9 +53,12 @@ const cUsr = collection(db, 'usuarios');
 const cAud = collection(db, 'auditoria');
 const cFx  = collection(db, 'tiposCambio');
 const cLiq = collection(db, 'liquidacionesComisiones');
+const cAj  = collection(db, 'ajustesComisiones');
+const cNot = collection(db, 'notificaciones');
 const dMon = doc(db, 'config', 'moneda');
 
 let authModo = 'login', bootstrapDisponible = false;
+let detenerNotificaciones = null;
 function authMensaje(msg, color) { const e = document.getElementById('authErr'); if (e) { e.textContent = msg || ''; e.style.color = color || 'var(--rd)'; } }
 function authError(msg) { authMensaje(msg, 'var(--rd)'); }
 function authUiSesion() {
@@ -177,18 +182,37 @@ setPersistence(auth, browserLocalPersistence).catch(function() {});
 let revisionSesion = 0;
 onAuthStateChanged(auth, async function(user) {
   const revisionActual = ++revisionSesion;
+  if (detenerNotificaciones) { detenerNotificaciones(); detenerNotificaciones = null; }
   SESION.usuario = user || null; SESION.perfil = null; SESION.cargando = true;
-  if (!user) { SESION.cargando = false; authUiLogin(); authMostrarLogin(); return; }
+  if (!user) {
+    window.NOTIFICACIONES = [];
+    if (typeof window.notificacionesRender === 'function') window.notificacionesRender();
+    SESION.cargando = false; authUiLogin(); authMostrarLogin(); return;
   try {
     const perfil = (await getDoc(doc(cUsr, user.uid))).data();
     if (revisionActual !== revisionSesion || !auth.currentUser || auth.currentUser.uid !== user.uid) return;
     if (!perfil || perfil.activo === false) throw new Error(!perfil ? 'Tu cuenta no tiene un perfil habilitado.' : 'Tu usuario está inactivo.');
-    SESION.perfil = perfil; SESION.cargando = false; authUiSesion();
+    SESION.perfil = perfil; SESION.cargando = false; authUiSesion(); iniciarNotificaciones(user.uid);
   } catch (e) {
     if (revisionActual !== revisionSesion) return;
     SESION.cargando = false; authUiLogin(); authError(e.message || 'No se pudo validar la sesión.'); await signOut(auth);
   }
 });
+
+function iniciarNotificaciones(uid) {
+  if (detenerNotificaciones) { detenerNotificaciones(); detenerNotificaciones = null; }
+  if (!uid || !sesionActiva()) return;
+  // Se ordena localmente para no exigir un índice compuesto sólo para la V1.
+  detenerNotificaciones = onSnapshot(query(cNot, where('usuarioDestinoUid', '==', uid)), function(snap) {
+    if (!SESION.usuario || SESION.usuario.uid !== uid) return;
+    window.NOTIFICACIONES = snap.docs.map(function(d) { return Object.assign({ id:d.id }, d.data()); }).sort(function(a, b) {
+      var ta = a.creadaEn && a.creadaEn.toMillis ? a.creadaEn.toMillis() : 0;
+      var tb = b.creadaEn && b.creadaEn.toMillis ? b.creadaEn.toMillis() : 0;
+      return tb - ta;
+    });
+    if (typeof window.notificacionesRender === 'function') window.notificacionesRender();
+  }, function(err) { console.warn('Notificaciones:', err.message); });
+}
 
 function normKey(v) {
   return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
@@ -331,8 +355,86 @@ async function eliminarAuditable(coleccion, entidad, id) {
   await batch.commit();
 }
 
+// --- Notificaciones internas -------------------------------------------------
+// Se persiste un documento por destinatario. La clave de evento determina la
+// idempotencia: reintentar la misma transición no duplica avisos.
+function notificacionId(clave, uid) { return safeId('not', normKey(clave + '_' + uid)); }
+async function destinatariosNotificacion(reglas, reparacion) {
+  var snap = await getDocs(cUsr);
+  var usuarios = snap.docs.map(function(d) { return Object.assign({ uid:d.id }, d.data()); }).filter(function(u) { return u.activo !== false; });
+  var salida = [];
+  if (reglas.tecnico && reparacion && reparacion.tecnico) {
+    // El campo legacy `tecnico` guarda nombre, no UID. Se busca el usuario
+    // activo homónimo sin asumir que su rol sea necesariamente "tecnico".
+    usuarios.filter(function(u) { return u.nombre === reparacion.tecnico; }).forEach(function(u) { salida.push(u); });
+  }
+  if (reglas.administradores) usuarios.filter(function(u) { return u.rol === 'administrador'; }).forEach(function(u) { salida.push(u); });
+  if (reglas.recepcionistas) usuarios.filter(function(u) { return u.rol === 'recepcionista'; }).forEach(function(u) { salida.push(u); });
+  var vistos = {}; return salida.filter(function(u) { if (!u.uid || vistos[u.uid]) return false; vistos[u.uid] = true; return true; });
+}
+async function crearNotificaciones(evento) {
+  if (!evento || !evento.clave) return;
+  var destinos = await destinatariosNotificacion(evento.destinos || {}, evento.reparacion);
+  await Promise.all(destinos.map(async function(u) {
+    var ref = doc(cNot, notificacionId(evento.clave, u.uid));
+    // La clave determinista conserva la lectura individual ante reintentos.
+    await runTransaction(db, async function(tx) {
+      if ((await tx.get(ref)).exists()) return;
+      tx.set(ref, {
+        tipo:evento.tipo, titulo:evento.titulo, mensaje:evento.mensaje,
+        usuarioDestinoUid:u.uid, usuarioDestinoNombre:u.nombre || '', usuarioDestinoRol:u.rol || '',
+        entidad:evento.entidad || 'reparacion', entidadId:evento.entidadId || '',
+        prioridad:evento.prioridad === 'importante' ? 'importante' : 'normal', origen:evento.origen || 'sistema',
+        leida:false, leidaEn:null, creadaEn:serverTimestamp(), creadaPor:usuarioActualRegistro() || null,
+        eventoClave:evento.clave
+      });
+    });
+  }));
+}
+function datosMensajeReparacion(r) { return (r.orden || 'Sin orden') + ' · ' + (r.equipo || 'Equipo') + ' · ' + (r.nombre || 'Cliente'); }
+function dispararNotificacionReparacion(tipo, r, opciones) {
+  if (!r || !r.id) return Promise.resolve();
+  var cfg = {
+    reparacion_asignada:{ titulo:'Nueva reparación asignada', prioridad:'normal', destinos:{ tecnico:true }, origen:'sistema', mensaje:'Te asignaron ' + datosMensajeReparacion(r) },
+    presupuesto_aprobado:{ titulo:'Presupuesto aprobado', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'portal_cliente', mensaje:(r.nombre || 'Cliente') + ' aprobó la reparación ' + (r.orden || '') + ' · ' + (r.equipo || '') },
+    presupuesto_rechazado:{ titulo:'Presupuesto rechazado', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'portal_cliente', mensaje:(r.nombre || 'Cliente') + ' rechazó la reparación ' + (r.orden || '') + ' · ' + (r.equipo || '') },
+    cliente_viene_retirar:{ titulo:'Cliente viene a retirar', prioridad:'importante', destinos:{ administradores:true, recepcionistas:true }, origen:'portal_cliente', mensaje:(r.nombre || 'Cliente') + ' avisó que va a retirar ' + (r.orden || '') + ' · ' + (r.equipo || '') },
+    garantia_nueva:{ titulo:'Nueva garantía', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'sistema', mensaje:'Se abrió una garantía para ' + datosMensajeReparacion(r) },
+    incidencia_nueva:{ titulo:'Nueva incidencia', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'sistema', mensaje:'Se abrió una incidencia para ' + datosMensajeReparacion(r) }
+  }[tipo];
+  if (!cfg) return Promise.resolve();
+  return crearNotificaciones(Object.assign(cfg, { tipo:tipo, reparacion:r, entidad:'reparacion', entidadId:r.id, clave:(opciones && opciones.clave) || (tipo + ':' + r.id) }));
+}
+function dispararNotificacionRepuesto(tipo, repuesto) {
+  var vinculadas = (window.REPS || []).filter(function(r) { return repuesto && repuesto.orden && r.orden === repuesto.orden; });
+  // La orden es el único enlace disponible; sólo se usa si es exacto y único.
+  if (vinculadas.length !== 1) return Promise.resolve(false);
+  var r = vinculadas[0], llego = tipo === 'repuesto_llego';
+  return crearNotificaciones({
+    tipo:tipo, titulo:llego ? 'Llegó un repuesto' : 'Repuesto encargado',
+    mensaje:(llego ? 'Llegó ' : 'Se encargó ') + (repuesto.nombre || 'un repuesto') + ' para ' + (r.orden || ''),
+    prioridad:llego ? 'importante' : 'normal', destinos:{ tecnico:true, administradores:true },
+    entidad:'reparacion', entidadId:r.id, origen:'sistema', reparacion:r,
+    clave:tipo + ':' + repuesto.id
+  }).then(function() { return true; });
+}
+window.notificarEventoReparacion = function(tipo, reparacion, opciones) { return dispararNotificacionReparacion(tipo, reparacion, opciones).catch(function(e) { console.warn('Notificación:', e.message); }); };
+window.notificarEventoRepuesto = function(tipo, repuesto) { return dispararNotificacionRepuesto(tipo, repuesto).catch(function(e) { console.warn('Notificación:', e.message); }); };
+// API preparada para el portal cliente. El portal deberá invocarla con el ID
+// real de reparación; la misma clave por evento evita avisos duplicados.
+window.notificarEventoPortal = async function(tipo, reparacionId) {
+  if (['presupuesto_aprobado','presupuesto_rechazado','cliente_viene_retirar'].indexOf(tipo) === -1) return false;
+  var snap = await getDoc(doc(cR, reparacionId)); if (!snap.exists()) return false;
+  await dispararNotificacionReparacion(tipo, Object.assign({ id:snap.id }, snap.data()), { clave:'portal:' + tipo + ':' + reparacionId }); return true;
+};
+window.FB.marcarNotificacionLeida = function(id, cb) {
+  var n = (window.NOTIFICACIONES || []).find(function(x) { return x.id === id; });
+  if (!n || n.usuarioDestinoUid !== (SESION.usuario && SESION.usuario.uid)) { if (cb) cb('Notificación no disponible'); return; }
+  updateDoc(doc(cNot, id), { leida:true, leidaEn:serverTimestamp() }).then(function() { if (cb) cb(null); }).catch(function(e) { if (cb) cb(e.message); });
+};
+
 // --- Sobreescribir FB con funciones reales ---
-window.FB.add = (d, cb) => agregarAuditable('reparaciones', 'reparacion', d).then(id => { cb(null); v21Sync('reparacion', id, d, 'reparacion_creada'); }).catch(e => cb(e.message));
+window.FB.add = (d, cb) => agregarAuditable('reparaciones', 'reparacion', d).then(id => { cb(null, id); v21Sync('reparacion', id, d, 'reparacion_creada'); }).catch(e => cb(e.message));
 window.FB.addId = (id, d, cb) => agregarAuditable('reparaciones', 'reparacion', d, id).then(() => cb(null)).catch(e => cb(e.message));
 window.FB.upd = (id, d, cb) => actualizarAuditable('reparaciones', 'reparacion', id, d).then(() => { cb(null); v21Sync('reparacion', id, d, 'reparacion_actualizada'); }).catch(e => cb(e.message));
 window.FB.del = (id, cb) => eliminarAuditable('reparaciones', 'reparacion', id).then(() => cb(null)).catch(e => cb(e.message));
@@ -445,6 +547,10 @@ onSnapshot(cLiq, (snap) => {
   window.COM_LIQUIDACIONES = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
   if (window.VIEW === 'bal' && typeof renderBal === 'function') renderBal();
 }, () => {});
+onSnapshot(cAj, (snap) => {
+  window.COM_AJUSTES = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  if (window.VIEW === 'bal' && typeof renderBal === 'function') renderBal();
+}, () => {});
 
 // ── Config comisiones ──
 window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message));
@@ -470,6 +576,14 @@ window.FB.crearLiquidacionComision = (d, cb) => {
 window.FB.actualizarLiquidacionComision = (id, d, cb) => {
   if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar comisiones'); return; }
   actualizarAuditable('liquidacionesComisiones', 'liquidacion_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
+};
+window.FB.crearAjusteComision = (d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar ajustes'); return; }
+  agregarAuditable('ajustesComisiones', 'ajuste_comision', d).then(id => cb(null, id)).catch(e => cb(e.message));
+};
+window.FB.actualizarAjusteComision = (id, d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar ajustes'); return; }
+  actualizarAuditable('ajustesComisiones', 'ajuste_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
 };
 
 // ── CRUD ventas ──

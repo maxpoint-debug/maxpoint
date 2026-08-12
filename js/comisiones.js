@@ -356,6 +356,7 @@ function marcarGarantia(id) {
   FB.upd(id, { es_garantia: nuevo }, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
     if (nuevo === 'si') comGenerarAjuste('reparacion', id, 'Garantía posterior a liquidación');
+    if (nuevo === 'si' && typeof notificarEventoReparacion === 'function') notificarEventoReparacion('garantia_nueva', r);
     toast(nuevo === 'si' ? 'Marcada como garantia' : 'Garantia removida');
   });
 }
