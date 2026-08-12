@@ -98,6 +98,10 @@
         <kbd>Ctrl K</kbd>
         <div class="global-results" id="globalSearchResults" aria-live="polite"></div>
       </div>
+      <div class="notif-wrap" id="notifWrap">
+        <button class="notif-bell" id="notifBell" type="button" aria-label="Notificaciones" onclick="notificacionesToggle()">&#128276;<span id="notifBadge" class="notif-badge" style="display:none">0</span></button>
+        <div class="notif-panel" id="notifPanel"></div>
+      </div>
       <div class="topbar-r" id="topA"></div>
     </div>
     <div class="content" id="cnt">
@@ -622,6 +626,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/stock.js?v=24"></script>
 <script src="js/app.js?v=28"></script>
 <script src="js/buscador.js?v=1"></script>
+<script src="js/notificaciones.js?v=1"></script>
 <script type="module" src="js/firebase.js?v=34"></script>
 
 </body>
