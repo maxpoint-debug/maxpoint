@@ -240,15 +240,19 @@ function renderRpus() {
     // Color del select segun estado actual
     var colorMap = { 'Esperando':'var(--pu)', 'Encargado':'var(--or)', 'Llego':'var(--gr)', 'Usado':'var(--mu)' };
     sel.style.color = colorMap[r.estado] || 'var(--mu)';
-    sel.addEventListener('change', (function(id, selEl) {
+    sel.addEventListener('change', (function(id, selEl, anterior) {
       return function() {
         var nuevoEst = selEl.value;
         selEl.style.color = colorMap[nuevoEst] || 'var(--mu)';
-        FB.updR(id, { estado: nuevoEst }, function() {
+        FB.updR(id, { estado: nuevoEst }, function(err) {
+          if (err) { selEl.value = anterior; selEl.style.color = colorMap[anterior] || 'var(--mu)'; toast('Error: ' + err, 'var(--rd)'); return; }
+          if (nuevoEst !== anterior && (nuevoEst === 'Encargado' || nuevoEst === 'Llego') && typeof notificarEventoRepuesto === 'function') {
+            notificarEventoRepuesto(nuevoEst === 'Llego' ? 'repuesto_llego' : 'repuesto_encargado', r);
+          }
           toast('Estado: ' + nuevoEst);
         });
       };
-    })(r.id, sel));
+    })(r.id, sel, r.estado));
     btns.appendChild(sel);
 
     btns.appendChild(mkBtn('btn-d btn-sm', '🗑', (function(id) {

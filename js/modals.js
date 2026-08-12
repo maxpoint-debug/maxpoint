@@ -103,11 +103,14 @@ function saveRep() {
     d.creadoPor = { uid: SESION.usuario.uid, nombre: SESION.perfil.nombre, email: SESION.perfil.email };
   }
 
-  function done(err) {
+  function done(err, idNuevo) {
     btn.disabled = false; btn.textContent = 'Guardar';
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
     closeM('mForm');
     toast(_eid ? '✓ Actualizado' : '✓ Orden creada');
+    if (!_eid && d.es_garantia === 'si' && idNuevo && typeof notificarEventoReparacion === 'function') {
+      notificarEventoReparacion('garantia_nueva', Object.assign({ id:idNuevo, orden:orden }, d));
+    }
   }
 
   if (_eid) {
@@ -142,7 +145,14 @@ function actualizarReparacion(id, datos, done) {
     tl.push({ estado: cambios.estado, fecha: hoy(), hora: horaActual(), usuario: usuarioActualRegistro() });
     cambios.timeline = tl;
   }
-  FB.upd(id, cambios, done);
+  FB.upd(id, cambios, function(err) {
+    if (err) { done(err); return; }
+    var tecnicoFinal = Object.prototype.hasOwnProperty.call(cambios, 'tecnico') ? cambios.tecnico : prev.tecnico;
+    if (tecnicoFinal && tecnicoFinal !== prev.tecnico && typeof notificarEventoReparacion === 'function') {
+      notificarEventoReparacion('reparacion_asignada', Object.assign({}, prev, cambios, { id:id }), { clave:'reparacion_asignada:' + id + ':' + tecnicoFinal });
+    }
+    done(null);
+  });
 }
 
 function autorizarEntregaSaldo(id) {
@@ -182,6 +192,7 @@ function guardarIncidencia() {
   var resolucion = el('incResolucion').value;
   if (resolucion && !puede('resolver_incidencias')) { toast('Solo administración puede resolver una incidencia', 'var(--rd)'); return; }
   var anterior = r.incidencia || {};
+  var esNueva = !anterior.descripcion;
   var incidencia = { tipo:el('incTipo').value, responsable:val('incResponsable').trim(), costoEstimado:val('incCosto') || '0', descripcion:descripcion, evidencia:val('incEvidencia').trim(), estado:resolucion ? 'Resuelta' : 'Abierta', resolucion:resolucion, reportadaPor:anterior.reportadaPor || usuarioActualRegistro(), fechaReporte:anterior.fechaReporte || hoy() };
   if (resolucion) { incidencia.resueltaPor = usuarioActualRegistro(); incidencia.fechaResolucion = hoy(); }
   FB.upd(r.id, { incidencia:incidencia }, function(err) {
@@ -189,6 +200,7 @@ function guardarIncidencia() {
     if (resolucion === 'Garantía sin costo' || resolucion === 'Acuerdo con cliente' || resolucion === 'Responsabilidad compartida' || resolucion === 'Responsabilidad individual') {
       if (typeof comGenerarAjuste === 'function') comGenerarAjuste('reparacion', r.id, 'Incidencia resuelta: ' + resolucion);
     }
+    if (esNueva && typeof notificarEventoReparacion === 'function') notificarEventoReparacion('incidencia_nueva', r);
     closeM('mIncidencia'); toast(resolucion ? 'Incidencia resuelta' : 'Incidencia registrada');
   });
 }
