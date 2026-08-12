@@ -123,6 +123,25 @@ nav { padding: 14px 10px; flex: 1; min-height: 0; overflow-y: auto; }
 }
 .topbar-r { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* ===================== BUSCADOR UNIVERSAL ===================== */
+.global-search { position:relative; flex:1; max-width:500px; min-width:180px; }
+.global-search-ico { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--mu); z-index:1; }
+.global-search input { width:100%; height:34px; border:1px solid var(--bd); border-radius:7px; background:var(--s2); color:var(--tx); padding:7px 52px 7px 29px; outline:none; font:12px -apple-system,'SF Pro Text','Inter',sans-serif; }
+.global-search input:focus { border-color:var(--tx); background:var(--s); }
+.global-search kbd { position:absolute; right:8px; top:50%; transform:translateY(-50%); color:var(--mu); border:1px solid var(--bd); border-radius:4px; padding:1px 4px; font:10px -apple-system,sans-serif; pointer-events:none; }
+.global-results { display:none; position:absolute; z-index:200; top:calc(100% + 8px); left:0; right:0; max-height:min(68vh,620px); overflow:auto; padding:8px; background:var(--s); border:1px solid var(--bd); border-radius:10px; box-shadow:0 14px 36px rgba(26,25,22,.16); }
+.global-results.open { display:block; }
+.gs-group { padding:4px 0 8px; }
+.gs-group + .gs-group { border-top:1px solid var(--bd); }
+.gs-title { padding:6px 8px 5px; color:var(--mu); font-size:10px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; }
+.gs-row { padding:9px 10px; border-radius:7px; cursor:pointer; }
+.gs-row:hover,.gs-row.sel { background:var(--s2); }
+.gs-main { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; font-weight:650; }
+.gs-meta { margin-top:3px; color:var(--mu); font-size:11px; line-height:1.35; }
+.gs-actions { display:flex; gap:5px; flex-wrap:wrap; margin-top:7px; }
+.gs-more { margin:4px 8px 1px; padding:0; border:0; background:none; color:var(--bl); cursor:pointer; font:11px -apple-system,sans-serif; }
+.gs-empty { padding:18px 12px; color:var(--mu); text-align:center; font-size:12px; }
+
 /* ===================== BUTTONS ===================== */
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -405,6 +424,11 @@ textarea { resize: vertical; min-height: 80px; }
 .sidebar-overlay.open { display: block; }
 
 @media (max-width: 700px) {
+  .topbar { padding:10px 12px; flex-wrap:wrap; }
+  .topbar-t { order:1; flex:1; }
+  .global-search { order:3; flex-basis:100%; max-width:none; }
+  .topbar-r { order:2; }
+  .global-results { position:fixed; left:10px; right:10px; top:calc(var(--global-search-top, 100px)); max-height:65vh; }
   .menu-btn { display: flex; align-items: center; }
   .sidebar {
     position: fixed !important; top: 0; left: 0; bottom: 0;
