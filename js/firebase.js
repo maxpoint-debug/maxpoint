@@ -188,6 +188,7 @@ onAuthStateChanged(auth, async function(user) {
     window.NOTIFICACIONES = [];
     if (typeof window.notificacionesRender === 'function') window.notificacionesRender();
     SESION.cargando = false; authUiLogin(); authMostrarLogin(); return;
+  }
   try {
     const perfil = (await getDoc(doc(cUsr, user.uid))).data();
     if (revisionActual !== revisionSesion || !auth.currentUser || auth.currentUser.uid !== user.uid) return;
