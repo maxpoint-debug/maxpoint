@@ -64,7 +64,11 @@ function usuarioActualRegistro() {
 
 function puede(permiso) {
   var roles = PERMISOS_BASE[permiso] || [];
-  return sesionActiva() && roles.indexOf(SESION.perfil.rol) !== -1;
+  // Compatibilidad con perfiles creados antes de normalizar el rol.
+  var rol = String(SESION && SESION.perfil && SESION.perfil.rol || '').trim().toLowerCase();
+  if (rol === 'admin') rol = 'administrador';
+  if (rol === 'técnico') rol = 'tecnico';
+  return sesionActiva() && roles.indexOf(rol) !== -1;
 }
 
 // ===================== FIREBASE OBJECT =====================
