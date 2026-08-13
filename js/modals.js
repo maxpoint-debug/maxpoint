@@ -111,6 +111,11 @@ function saveRep() {
     if (!_eid && d.es_garantia === 'si' && idNuevo && typeof notificarEventoReparacion === 'function') {
       notificarEventoReparacion('garantia_nueva', Object.assign({ id:idNuevo, orden:orden }, d));
     }
+    // En altas no pasa por actualizarReparacion(). Si se asignó a otra
+    // persona, dispara el mismo evento de asignación sin auto-notificarse.
+    if (!_eid && d.tecnico && idNuevo && SESION.perfil && d.tecnico !== SESION.perfil.nombre && typeof notificarEventoReparacion === 'function') {
+      notificarEventoReparacion('reparacion_asignada', Object.assign({ id:idNuevo, orden:orden }, d), { clave:'reparacion_asignada:' + idNuevo + ':' + d.tecnico });
+    }
   }
 
   if (_eid) {
