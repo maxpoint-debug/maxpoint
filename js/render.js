@@ -148,7 +148,7 @@ function renderReps() {
     var tdActs = document.createElement('td'); tdActs.className = 'acts';
     tdActs.appendChild(mkBtn('btn-g btn-sm', 'Ver',  (function(id) { return function() { openDet(id); }; })(r.id)));
     tdActs.appendChild(mkBtn('btn-g btn-sm', '✏️',   (function(id) { return function() { openEditRep(id); }; })(r.id)));
-    tdActs.appendChild(mkBtn('btn-d btn-sm', '🗑',   (function(id, ord) {
+    if (puede('eliminar_operaciones')) tdActs.appendChild(mkBtn('btn-d btn-sm', '🗑',   (function(id, ord) {
       return function() {
         if (confirm('Eliminar orden ' + ord + '?')) {
           FB.del(id, function(err) {
@@ -255,10 +255,10 @@ function renderRpus() {
     })(r.id, sel, r.estado));
     btns.appendChild(sel);
 
-    btns.appendChild(mkBtn('btn-d btn-sm', '🗑', (function(id) {
+    if (puede('eliminar_operaciones')) btns.appendChild(mkBtn('btn-d btn-sm', '🗑', (function(id) {
       return function() {
         if (confirm('Eliminar repuesto?')) {
-          FB.delR(id, function() { toast('Eliminado', 'var(--rd)'); });
+          FB.delR(id, function(err) { if (err) toast('Error: ' + err, 'var(--rd)'); else toast('Eliminado', 'var(--rd)'); });
         }
       };
     })(r.id)));
@@ -1065,7 +1065,7 @@ function renderVen() {
         + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
-        + '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>'
+        + (puede('eliminar_operaciones') ? '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>' : '')
         + '</div>';
       sec.appendChild(card);
     });
@@ -1117,7 +1117,7 @@ function renderStock() {
         + estados.map(function(e) { return '<option' + (e===s.estado?' selected':'') + '>' + e + '</option>'; }).join('')
         + '</select>'
         + '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>'
-        + '<button class="btn btn-d btn-sm" data-sid="' + s.id + '" onclick="eliminarStock(this.dataset.sid)">&#128465;</button>'
+        + (puede('eliminar_operaciones') ? '<button class="btn btn-d btn-sm" data-sid="' + s.id + '" onclick="eliminarStock(this.dataset.sid)">&#128465;</button>' : '')
         + '</div>';
       sec.appendChild(card);
     });

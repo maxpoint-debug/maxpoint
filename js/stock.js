@@ -78,6 +78,7 @@ function saveStock() {
 }
 
 function eliminarStock(id) {
+  if (!puede('eliminar_operaciones')) { toast('Solo administrador puede eliminar operaciones', 'var(--rd)'); return; }
   if (!confirm('Eliminar este equipo del stock?')) return;
   FB.delSt(id, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }

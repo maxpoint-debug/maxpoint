@@ -365,17 +365,20 @@ async function destinatariosNotificacion(reglas, reparacion) {
   var usuarios = snap.docs.map(function(d) { return Object.assign({ uid:d.id }, d.data()); }).filter(function(u) { return u.activo !== false; });
   var salida = [];
   if (reglas.tecnico && reparacion && reparacion.tecnico) {
-    // El campo legacy `tecnico` guarda nombre, no UID. Se busca el usuario
-    // activo homónimo sin asumir que su rol sea necesariamente "tecnico".
-    usuarios.filter(function(u) { return u.nombre === reparacion.tecnico; }).forEach(function(u) { salida.push(u); });
+    // El campo legacy `tecnico` guarda nombre, no UID. Se normalizan acentos,
+    // espacios y mayúsculas para resolver el perfil activo correspondiente.
+    var tecnicoClave = normKey(reparacion.tecnico);
+    usuarios.filter(function(u) { return tecnicoClave && normKey(u.nombre) === tecnicoClave; }).forEach(function(u) { salida.push(u); });
   }
   if (reglas.administradores) usuarios.filter(function(u) { return u.rol === 'administrador'; }).forEach(function(u) { salida.push(u); });
   if (reglas.recepcionistas) usuarios.filter(function(u) { return u.rol === 'recepcionista'; }).forEach(function(u) { salida.push(u); });
-  var vistos = {}; return salida.filter(function(u) { if (!u.uid || vistos[u.uid]) return false; vistos[u.uid] = true; return true; });
+  var excluirUid = reglas.excluirUid || '';
+  var vistos = {}; return salida.filter(function(u) { if (!u.uid || u.uid === excluirUid || vistos[u.uid]) return false; vistos[u.uid] = true; return true; });
 }
 async function crearNotificaciones(evento) {
   if (!evento || !evento.clave) return;
   var destinos = await destinatariosNotificacion(evento.destinos || {}, evento.reparacion);
+  if (!destinos.length) throw new Error('No se encontró un usuario activo destinatario para esta notificación');
   await Promise.all(destinos.map(async function(u) {
     var ref = doc(cNot, notificacionId(evento.clave, u.uid));
     // La clave determinista conserva la lectura individual ante reintentos.
@@ -404,6 +407,7 @@ function dispararNotificacionReparacion(tipo, r, opciones) {
     incidencia_nueva:{ titulo:'Nueva incidencia', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'sistema', mensaje:'Se abrió una incidencia para ' + datosMensajeReparacion(r) }
   }[tipo];
   if (!cfg) return Promise.resolve();
+  if (opciones && opciones.excluirUid) cfg.destinos.excluirUid = opciones.excluirUid;
   return crearNotificaciones(Object.assign(cfg, { tipo:tipo, reparacion:r, entidad:'reparacion', entidadId:r.id, clave:(opciones && opciones.clave) || (tipo + ':' + r.id) }));
 }
 function dispararNotificacionRepuesto(tipo, repuesto) {
@@ -419,8 +423,8 @@ function dispararNotificacionRepuesto(tipo, repuesto) {
     clave:tipo + ':' + repuesto.id
   }).then(function() { return true; });
 }
-window.notificarEventoReparacion = function(tipo, reparacion, opciones) { return dispararNotificacionReparacion(tipo, reparacion, opciones).catch(function(e) { console.warn('Notificación:', e.message); }); };
-window.notificarEventoRepuesto = function(tipo, repuesto) { return dispararNotificacionRepuesto(tipo, repuesto).catch(function(e) { console.warn('Notificación:', e.message); }); };
+window.notificarEventoReparacion = function(tipo, reparacion, opciones) { return dispararNotificacionReparacion(tipo, reparacion, opciones).catch(function(e) { console.error('Notificación no creada:', e); toast('No se pudo crear la notificación: ' + e.message, 'var(--rd)'); return false; }); };
+window.notificarEventoRepuesto = function(tipo, repuesto) { return dispararNotificacionRepuesto(tipo, repuesto).catch(function(e) { console.error('Notificación no creada:', e); toast('No se pudo crear la notificación: ' + e.message, 'var(--rd)'); return false; }); };
 // API preparada para el portal cliente. El portal deberá invocarla con el ID
 // real de reparación; la misma clave por evento evita avisos duplicados.
 window.notificarEventoPortal = async function(tipo, reparacionId) {
@@ -438,10 +442,10 @@ window.FB.marcarNotificacionLeida = function(id, cb) {
 window.FB.add = (d, cb) => agregarAuditable('reparaciones', 'reparacion', d).then(id => { cb(null, id); v21Sync('reparacion', id, d, 'reparacion_creada'); }).catch(e => cb(e.message));
 window.FB.addId = (id, d, cb) => agregarAuditable('reparaciones', 'reparacion', d, id).then(() => cb(null)).catch(e => cb(e.message));
 window.FB.upd = (id, d, cb) => actualizarAuditable('reparaciones', 'reparacion', id, d).then(() => { cb(null); v21Sync('reparacion', id, d, 'reparacion_actualizada'); }).catch(e => cb(e.message));
-window.FB.del = (id, cb) => eliminarAuditable('reparaciones', 'reparacion', id).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.del = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('reparaciones', 'reparacion', id).then(() => cb(null)).catch(e => cb(e.message)); };
 window.FB.addR = (d, cb) => agregarAuditable('repuestos', 'repuesto', d).then(() => cb(null)).catch(e => cb(e.message));
 window.FB.updR = (id, d, cb) => actualizarAuditable('repuestos', 'repuesto', id, d).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.delR = (id, cb) => eliminarAuditable('repuestos', 'repuesto', id).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.delR = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('repuestos', 'repuesto', id).then(() => cb(null)).catch(e => cb(e.message)); };
 
 // --- Catalogo y config ---
 window.FB.setConfig = (d, cb) => actualizarAuditable('config', 'config_catalogo', 'catalogo', d).then(() => cb(null)).catch(e => cb(e.message));
@@ -590,12 +594,12 @@ window.FB.actualizarAjusteComision = (id, d, cb) => {
 // ── CRUD ventas ──
 window.FB.addV = (d, cb) => agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message));
 window.FB.updV = (id, d, cb) => actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message));
-window.FB.delV = (id, cb) => eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── CRUD stock ──
 window.FB.addSt = (d, cb) => agregarAuditable('stock', 'stock', d).then(id => { cb(null); v21Sync('stock', id, d, 'stock_creado'); }).catch(e => cb(e.message));
 window.FB.updSt = (id, d, cb) => actualizarAuditable('stock', 'stock', id, d).then(() => { cb(null); v21Sync('stock', id, d, 'stock_actualizado'); }).catch(e => cb(e.message));
-window.FB.delSt = (id, cb) => eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message));
+window.FB.delSt = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── setUsados ──
 window.FB.setUsados = async (items, cb) => {

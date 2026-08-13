@@ -145,6 +145,7 @@ function togglePartePago() {
 }
 
 function eliminarVenta(id) {
+  if (!puede('eliminar_operaciones')) { toast('Solo administrador puede eliminar operaciones', 'var(--rd)'); return; }
   if (!confirm('Eliminar esta venta?')) return;
   FB.delV(id, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
