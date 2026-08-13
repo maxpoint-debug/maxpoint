@@ -27,6 +27,7 @@ var USADOS     = [];   // equipos usados para cotizar
 var VENTAS     = [];   // registro de ventas
 var STOCK      = [];   // stock de equipos
 var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
+var COM_AJUSTES = []; // ajustes aprobables para períodos posteriores
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 
 // ===================== SESION Y PERMISOS =====================
@@ -38,6 +39,8 @@ var PERMISOS_BASE = {
   ver_costos: ['administrador'],
   editar_costos: ['administrador'],
   editar_reparacion: ['administrador', 'tecnico', 'recepcionista'],
+  eliminar_operaciones: ['administrador'],
+  reasignar_reparacion_terminada: ['administrador'],
   crear_usuario: ['administrador'],
   actualizar_cotizador: ['administrador'],
   editar_tipo_cambio: ['administrador'],

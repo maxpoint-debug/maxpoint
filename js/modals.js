@@ -4,6 +4,10 @@
 // ============================================================
 // FORMULARIO REPARACION
 // ============================================================
+function mismoNombreUsuario(a, b) {
+  return String(a || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
+    === String(b || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+}
 function openNewRep() {
   _eid = null;
   window._garantiaOrigen = null;
@@ -19,6 +23,7 @@ function openNewRep() {
     var curVal = selT.value;
     selT.innerHTML = comOpcionesTecnicos(curVal);
   } else if (selT) { selT.value = ''; }
+  if (selT) selT.disabled = false;
   el('suggBanner').style.display = 'none';
   openM('mForm');
 }
@@ -41,6 +46,9 @@ function openEditRep(id) {
   el('fPag').value = r.pago      || 'Pendiente';
   el('fResultadoServicio').value = r.resultadoServicio || 'Pendiente de cierre';
   el('fTec').value = r.tecnico   || '';
+  // Estados terminales reales: Entregado y No aprobado. Garantia continúa
+  // siendo operativa en el sistema actual, por eso no se bloquea aquí.
+  el('fTec').disabled = (r.estado === 'Entregado' || r.estado === 'No aprobado') && !puede('reasignar_reparacion_terminada');
   setVal('fGar',  r.garantia_ref || '');
   setVal('fEstadoFisico', r.estadoFisicoRecepcion || '');
   setVal('fEstadoFisicoFinal', r.estadoFisicoEntrega || '');
@@ -113,8 +121,8 @@ function saveRep() {
     }
     // En altas no pasa por actualizarReparacion(). Si se asignó a otra
     // persona, dispara el mismo evento de asignación sin auto-notificarse.
-    if (!_eid && d.tecnico && idNuevo && SESION.perfil && d.tecnico !== SESION.perfil.nombre && typeof notificarEventoReparacion === 'function') {
-      notificarEventoReparacion('reparacion_asignada', Object.assign({ id:idNuevo, orden:orden }, d), { clave:'reparacion_asignada:' + idNuevo + ':' + d.tecnico });
+    if (!_eid && d.tecnico && idNuevo && !mismoNombreUsuario(d.tecnico, SESION.perfil && SESION.perfil.nombre) && typeof notificarEventoReparacion === 'function') {
+      notificarEventoReparacion('reparacion_asignada', Object.assign({ id:idNuevo, orden:orden }, d), { clave:'reparacion_asignada:' + idNuevo + ':' + d.tecnico, excluirUid:(SESION.usuario && SESION.usuario.uid) || '' });
     }
   }
 
@@ -135,6 +143,11 @@ function actualizarReparacion(id, datos, done) {
   if (!prev) { done('Orden no encontrada'); return; }
 
   var cambios = Object.assign({}, datos);
+  var cambiaTecnico = Object.prototype.hasOwnProperty.call(cambios, 'tecnico') && cambios.tecnico !== prev.tecnico;
+  var esTerminal = prev.estado === 'Entregado' || prev.estado === 'No aprobado';
+  if (cambiaTecnico && esTerminal && !puede('reasignar_reparacion_terminada')) {
+    done('Solo administrador puede reasignar una reparación terminada'); return;
+  }
   var estadoFinal = cambios.estado || prev.estado;
   var resultadoFinal = Object.prototype.hasOwnProperty.call(cambios, 'resultadoServicio') ? cambios.resultadoServicio : prev.resultadoServicio;
   var fisicoFinal = Object.prototype.hasOwnProperty.call(cambios, 'estadoFisicoEntrega') ? cambios.estadoFisicoEntrega : prev.estadoFisicoEntrega;
