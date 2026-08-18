@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Piccolo · Entretenimiento Infantil. Plazas blandas, peloteros, castillos inflables y más para tu evento.">
+  <title>Piccolo · Entretenimiento Infantil</title>
+
+  <!-- CSS (orden importa) -->
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/hero.css">
+  <link rel="stylesheet" href="css/links.css">
+  <link rel="stylesheet" href="css/catalog.css">
+  <link rel="stylesheet" href="css/gallery.css">
+  <link rel="stylesheet" href="css/form.css">
+</head>
+<body>
+
+  <!-- ① HERO -->
+  <section class="hero" id="top">
+    <div class="hero-bg-deco" aria-hidden="true"></div>
+
+    <div class="logo-wrap">
+      <img src="assets/logo.jpeg" alt="Piccolo Entretenimiento Infantil" class="logo-img">
+    </div>
+
+    <p class="hero-tagline">
+      Un espacio seguro donde los niños pueden<br>explorar, reír y crecer
+    </p>
+
+    <div class="scroll-hint" aria-hidden="true">
+      <span>Explorar</span>
+      <div class="scroll-line"></div>
+    </div>
+  </section>
+
+  <!-- ② LINKS RÁPIDOS -->
+  <section class="links-section fade-in" aria-label="Accesos rápidos">
+    <span class="section-label">Accesos rápidos</span>
+
+    <nav class="links-nav">
+
+      <a class="link-btn" href="assets/catalog-pdf.pdf" target="_blank">
+        <div class="link-icon">🎠</div>
+        <div class="link-text">
+          <strong>Catálogo completo</strong>
+          <small>Descargá el PDF con todos los espacios</small>
+        </div>
+        <span class="link-arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a class="link-btn" href="#reserva">
+        <div class="link-icon">📅</div>
+        <div class="link-text">
+          <strong>Consultar disponibilidad</strong>
+          <small>Elegí tu fecha y obtené tu presupuesto</small>
+        </div>
+        <span class="link-arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a class="link-btn" href="https://wa.me/542323538825" target="_blank" rel="noopener">
+        <div class="link-icon">💬</div>
+        <div class="link-text">
+          <strong>WhatsApp</strong>
+          <small>Escribinos directamente</small>
+        </div>
+        <span class="link-arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a class="link-btn" href="https://instagram.com/piccolo.entretenimiento" target="_blank" rel="noopener">
+        <div class="link-icon">📸</div>
+        <div class="link-text">
+          <strong>Instagram</strong>
+          <small>@piccolo.entretenimiento</small>
+        </div>
+        <span class="link-arrow" aria-hidden="true">→</span>
+      </a>
+
+    </nav>
+  </section>
+
+  <!-- ③ GALERÍA -->
+  <div class="divider" aria-hidden="true">
+    <div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div>
+  </div>
+
+  <section class="gallery-section fade-in" aria-label="Galería de espacios">
+    <span class="section-label">Galería</span>
+
+    <!-- Fondo difuminado: cambia con la foto activa -->
+    <div class="gallery-blur-bg" id="galleryBg" aria-hidden="true"></div>
+
+    <div class="gallery-grid" id="galleryGrid">
+      <!-- Slots: reemplazá src con tus fotos reales -->
+      <div class="gallery-item" data-src="assets/photos/gallery-1.jpg" data-label="Castillo Gigante">
+        <img src="assets/photos/gallery-1.jpg" alt="Castillo Gigante Blanco" loading="lazy">
+        <div class="gallery-overlay"><span>Ver</span></div>
+      </div>
+      <div class="gallery-item" data-src="assets/photos/gallery-2.jpg" data-label="Plaza Blanda">
+        <img src="assets/photos/gallery-2.jpg" alt="Plaza Blanda Nórdica" loading="lazy">
+        <div class="gallery-overlay"><span>Ver</span></div>
+      </div>
+      <div class="gallery-item" data-src="assets/photos/gallery-3.jpg" data-label="Pelotero XL">
+        <img src="assets/photos/gallery-3.jpg" alt="Pelotero XL Blanco" loading="lazy">
+        <div class="gallery-overlay"><span>Ver</span></div>
+      </div>
+      <div class="gallery-item" data-src="assets/photos/gallery-4.jpg" data-label="Estación de Arte">
+        <img src="assets/photos/gallery-4.jpg" alt="Estación de Arte" loading="lazy">
+        <div class="gallery-overlay"><span>Ver</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lightbox -->
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Vista ampliada">
+    <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+    <button class="lightbox-close" id="lightboxClose" aria-label="Cerrar">✕</button>
+    <div class="lightbox-content">
+      <img src="" alt="" id="lightboxImg">
+      <p class="lightbox-label" id="lightboxLabel"></p>
+    </div>
+  </div>
+
+  <!-- ④ CATÁLOGO SCROLL -->
+  <div class="divider" aria-hidden="true">
+    <div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div>
+  </div>
+
+  <section class="catalog-section fade-in" id="catalogo" aria-label="Catálogo de espacios">
+    <div class="catalog-inner">
+      <span class="section-label">Nuestros espacios</span>
+      <div class="products-scroll" id="productsScroll" role="list"></div>
+    </div>
+  </section>
+
+  <!-- Modal producto -->
+  <div class="product-modal" id="productModal" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" id="modalBackdrop"></div>
+    <div class="modal-content">
+      <button class="modal-close" id="modalClose" aria-label="Cerrar">✕</button>
+      <span class="modal-tag" id="modalTag"></span>
+      <h2 class="modal-name" id="modalName"></h2>
+      <p class="modal-price" id="modalPrice"></p>
+      <ul class="modal-list" id="modalList"></ul>
+      <button class="modal-select-btn" id="modalSelectBtn">
+        Elegir este espacio →
+      </button>
+    </div>
+  </div>
+
+  <!-- ⑤ FORMULARIO -->
+  <div class="divider" aria-hidden="true">
+    <div class="divider-line"></div><div class="divider-dot"></div><div class="divider-line"></div>
+  </div>
+
+  <section class="form-section fade-in" id="reserva" aria-label="Formulario de consulta">
+    <span class="section-label">Disponibilidad y presupuesto</span>
+    <p class="form-intro">Completá el formulario y te respondemos por WhatsApp. Sin compromiso.</p>
+
+    <div class="form-group">
+      <label for="nombre">Nombre y apellido</label>
+      <input type="text" id="nombre" placeholder="María García" autocomplete="name">
+    </div>
+
+    <div class="form-group">
+      <label for="agasajado">Nombre del agasajado/a</label>
+      <input type="text" id="agasajado" placeholder="Sofía">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="fecha">Fecha del evento</label>
+        <input type="date" id="fecha">
+      </div>
+      <div class="form-group">
+        <label for="horario">Horario estimado</label>
+        <select id="horario">
+          <option value="">Elegir</option>
+          <option value="12:00">12:00 hs</option>
+          <option value="13:00">13:00 hs</option>
+          <option value="14:00">14:00 hs</option>
+          <option value="15:00">15:00 hs</option>
+          <option value="16:00">16:00 hs</option>
+          <option value="17:00">17:00 hs</option>
+          <option value="noche">Nocturno (+costo)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Badge disponibilidad -->
+    <div class="availability-badge" id="availBadge" aria-live="polite">
+      <div class="badge-dot"></div>
+      <span id="availText"></span>
+    </div>
+
+    <div class="form-group">
+      <label for="espacio">Espacio o combo deseado</label>
+      <select id="espacio">
+        <option value="">Seleccioná un espacio</option>
+        <optgroup label="— Espacios individuales —">
+          <option value="plaza-nordica|78000">Plaza blanda Nórdica — $78.000</option>
+          <option value="plaza-pasteles|78000">Plaza blanda Pasteles — $78.000</option>
+          <option value="plaza-soft|82000">Plaza Soft — $82.000</option>
+          <option value="pelotero-xl|105000">Pelotero XL Blanco — $105.000</option>
+          <option value="pelotero-chico|85000">Pelotero Blanco Chico — $85.000</option>
+          <option value="castillo-gigante|120000">Castillo Gigante Blanco — $120.000</option>
+          <option value="castillo-pelotero|110000">Castillo Inflable con Pelotero — $110.000</option>
+          <option value="calesita|110000">Calesita Manual — $110.000</option>
+          <option value="estacion-arte|85000">Estación de Arte — $85.000</option>
+          <option value="kermes|110000">Kermés Total White — $110.000</option>
+          <option value="mesitas-curvas|85000">Mesitas Curvas — $85.000</option>
+          <option value="mesitas-picnic|95000">Mesitas Picnic — $95.000</option>
+        </optgroup>
+        <optgroup label="— Combos Piccolitos —">
+          <option value="combo1|145000">Combo 1: Inflable 2en1 + Plaza blanda — $145.000</option>
+          <option value="combo2|175000">Combo 2: Calesita + Mesitas curvas — $175.000</option>
+          <option value="combo3|160000">Combo 3: Inflable gigante + Pelotero XL — $160.000</option>
+          <option value="combo4|135000">Combo 4: Pelotero XL + Plaza blanda — $135.000</option>
+          <option value="combo5|190000">Combo 5: Inflable gigante + Mesitas curvas — $190.000</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="ubicacion">Dirección del evento</label>
+      <input type="text" id="ubicacion" placeholder="Calle y número">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="localidad">Localidad</label>
+        <input type="text" id="localidad" placeholder="Mercedes">
+      </div>
+      <div class="form-group">
+        <label for="cp">Código postal</label>
+        <input type="text" id="cp" placeholder="6600" inputmode="numeric" maxlength="8">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="telefono">WhatsApp de contacto</label>
+      <input type="tel" id="telefono" placeholder="+54 9 23 0000-0000" autocomplete="tel">
+    </div>
+
+    <div class="form-group">
+      <label for="extras">Adicionales o consultas (opcional)</label>
+      <textarea id="extras" placeholder="Personalización, temática, cantidad de niños..."></textarea>
+    </div>
+
+    <!-- Precio estimado -->
+    <div class="price-preview" id="pricePreview">
+      <div class="price-row">
+        <span id="priceProductName">—</span>
+        <span id="priceBase"></span>
+      </div>
+      <div class="price-row" id="priceNocheRow" style="display:none">
+        <span>Adicional nocturno</span>
+        <span>A confirmar</span>
+      </div>
+      <div class="price-row total">
+        <span>Precio estimado</span>
+        <span id="priceTotal"></span>
+      </div>
+      <p class="price-seña">
+        Seña del 20%: <strong id="priceSeñaVal"></strong> para confirmar tu fecha
+      </p>
+    </div>
+
+    <button class="submit-btn" id="submitBtn">
+      <svg class="wa-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+      </svg>
+      Consultar por WhatsApp
+    </button>
+
+    <p class="form-disclaimer">
+      Al hacer clic se abrirá WhatsApp con tu consulta pre-armada.<br>
+      La reserva se confirma con el 20% de seña por transferencia.
+    </p>
+  </section>
+
+  <!-- ⑥ FOOTER -->
+  <footer class="site-footer">
+    <p>© 2025 Piccolo · Entretenimiento Infantil</p>
+    <a href="https://instagram.com/piccolo.entretenimiento" target="_blank" rel="noopener">
+      @piccolo.entretenimiento
+    </a>
+  </footer>
+
+  <script type="module" src="js/firebase.js"></script>
+
+  <!-- JS (orden importa) -->
+  <script src="js/catalog.js"></script>
+  <script src="js/gallery.js"></script>
+  <script src="js/form.js"></script>
+  <script src="js/availability.js"></script>
+  <script>
+    // Scroll fade-in observer
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); }
+      });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+    // Min date = hoy
+    document.getElementById('fecha').min = new Date().toISOString().split('T')[0];
+  </script>
+
+</body>
+</html>
