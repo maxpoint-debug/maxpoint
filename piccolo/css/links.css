@@ -1,0 +1,99 @@
+/* ═══════════════════════════════════════════
+   LINKS.CSS — Botones bio estilo link-in-bio
+═══════════════════════════════════════════ */
+
+.links-section {
+  padding: 2.5rem var(--pad-x) 2rem;
+  max-width: var(--max-w);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+}
+
+.links-section .section-label {
+  margin-bottom: .85rem;
+}
+
+.links-nav {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+/* ── Botón base ── */
+.link-btn {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .95rem 1.2rem;
+  background: var(--cream);
+  border: 1px solid var(--sand);
+  border-radius: 3px;
+  color: var(--charcoal);
+  position: relative;
+  overflow: hidden;
+  transition: border-color .22s ease, transform .15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Relleno hover */
+.link-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--rose-light);
+  opacity: 0;
+  transition: opacity .25s ease;
+  z-index: 0;
+}
+.link-btn:hover::before,
+.link-btn:focus-visible::before { opacity: .35; }
+.link-btn:hover  { border-color: var(--rose-light); }
+.link-btn:active { transform: scale(.985); }
+
+.link-btn > * { position: relative; z-index: 1; }
+
+/* ── Icono ── */
+.link-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(184,117,107,.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  transition: background .22s;
+}
+.link-btn:hover .link-icon {
+  background: rgba(184,117,107,.22);
+}
+
+/* ── Texto ── */
+.link-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .12rem;
+}
+.link-text strong {
+  font-size: .85rem;
+  font-weight: 500;
+  letter-spacing: .02em;
+}
+.link-text small {
+  font-size: .7rem;
+  color: var(--muted);
+  font-weight: 300;
+}
+
+/* ── Flecha ── */
+.link-arrow {
+  font-size: 1rem;
+  color: var(--rose);
+  transition: transform .2s ease;
+  flex-shrink: 0;
+}
+.link-btn:hover .link-arrow { transform: translateX(5px); }
