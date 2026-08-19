@@ -196,28 +196,7 @@
     <div class="form-group">
       <label for="espacio">Espacio o combo deseado</label>
       <select id="espacio">
-        <option value="">Seleccioná un espacio</option>
-        <optgroup label="— Espacios individuales —">
-          <option value="plaza-nordica|78000">Plaza blanda Nórdica — $78.000</option>
-          <option value="plaza-pasteles|78000">Plaza blanda Pasteles — $78.000</option>
-          <option value="plaza-soft|82000">Plaza Soft — $82.000</option>
-          <option value="pelotero-xl|105000">Pelotero XL Blanco — $105.000</option>
-          <option value="pelotero-chico|85000">Pelotero Blanco Chico — $85.000</option>
-          <option value="castillo-gigante|120000">Castillo Gigante Blanco — $120.000</option>
-          <option value="castillo-pelotero|110000">Castillo Inflable con Pelotero — $110.000</option>
-          <option value="calesita|110000">Calesita Manual — $110.000</option>
-          <option value="estacion-arte|85000">Estación de Arte — $85.000</option>
-          <option value="kermes|110000">Kermés Total White — $110.000</option>
-          <option value="mesitas-curvas|85000">Mesitas Curvas — $85.000</option>
-          <option value="mesitas-picnic|95000">Mesitas Picnic — $95.000</option>
-        </optgroup>
-        <optgroup label="— Combos Piccolitos —">
-          <option value="combo1|145000">Combo 1: Inflable 2en1 + Plaza blanda — $145.000</option>
-          <option value="combo2|175000">Combo 2: Calesita + Mesitas curvas — $175.000</option>
-          <option value="combo3|160000">Combo 3: Inflable gigante + Pelotero XL — $160.000</option>
-          <option value="combo4|135000">Combo 4: Pelotero XL + Plaza blanda — $135.000</option>
-          <option value="combo5|190000">Combo 5: Inflable gigante + Mesitas curvas — $190.000</option>
-        </optgroup>
+        <option value="">Cargando catálogo...</option>
       </select>
     </div>
 
@@ -262,8 +241,26 @@
         <span id="priceTotal"></span>
       </div>
       <p class="price-seña">
-        Seña del 20%: <strong id="priceSeñaVal"></strong> para confirmar tu fecha
+        Seña del <span id="depositPercentageLabel">20%</span>: <strong id="priceSeñaVal"></strong> para confirmar tu fecha
       </p>
+    </div>
+
+    <div class="terms-box">
+      <details>
+        <summary>Condiciones de cuidado, cancelación y reprogramación</summary>
+        <ul>
+          <li>No comer ni beber ni ingresar con calzado en los espacios.</li>
+          <li>No ingresar con elementos punzantes, maquillaje artístico ni objetos que puedan manchar.</li>
+          <li>No mover los espacios y mantener siempre supervisión adulta.</li>
+          <li>Las manchas o roturas pueden generar cargos de limpieza o reparación.</li>
+          <li>Las cancelaciones ajenas a Piccolo no tienen devolución de seña.</li>
+          <li>Se puede reprogramar sin costo si existe disponibilidad.</li>
+        </ul>
+      </details>
+      <label class="terms-accept" for="termsAccepted">
+        <input type="checkbox" id="termsAccepted">
+        <span>Leí y acepto las condiciones para continuar.</span>
+      </label>
     </div>
 
     <button class="submit-btn" id="submitBtn">
@@ -303,8 +300,6 @@
     }, { threshold: 0.1 });
     document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
-    // Min date = hoy
-    document.getElementById('fecha').min = new Date().toISOString().split('T')[0];
   </script>
 
 </body>
