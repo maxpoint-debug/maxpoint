@@ -1,17 +1,9 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-app.js';
 import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js';
-import { addDoc, collection, doc, getDoc, getFirestore, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js';
+import { addDoc, collection, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, where } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js';
+import { FIREBASE_CONFIG, FIREBASE_ENV } from './firebase-config.js';
 
-const firebaseConfig = {
-  apiKey: 'AIzaSyC-xGKCJauxL5hlIhhlMs4nlSqSuGjGMd8',
-  authDomain: 'piccolo-maxpoint.firebaseapp.com',
-  projectId: 'piccolo-maxpoint',
-  storageBucket: 'piccolo-maxpoint.firebasestorage.app',
-  messagingSenderId: '473799249189',
-  appId: '1:473799249189:web:593a93f75c0b2b146e1ecc'
-};
-
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
 let authPromise;
@@ -32,6 +24,7 @@ function productId(value) {
 }
 
 window.piccoloFirebase = {
+  environment: FIREBASE_ENV,
   async saveInquiry(data) {
     const user = await ensureAnonymousSession();
     const result = await addDoc(collection(db, 'inquiries'), {
@@ -45,13 +38,17 @@ window.piccoloFirebase = {
     return result.id;
   },
 
-  async isAvailable(date, productValue) {
-    await ensureAnonymousSession();
-    const slotId = `${date}_${productId(productValue)}`;
-    const snapshot = await getDoc(doc(db, 'occupiedDates', slotId));
-    return !snapshot.exists();
+  async getCatalog() {
+    const [productSnapshot, comboSnapshot, settingsSnapshot] = await Promise.all([
+      getDocs(query(collection(db, 'products'), where('active', '==', true))),
+      getDocs(query(collection(db, 'combos'), where('active', '==', true))),
+      getDoc(doc(db, 'settings', 'public'))
+    ]);
+    const map = snapshot => snapshot.docs
+      .map(item => ({ id: item.id, ...item.data() }))
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    return { products: map(productSnapshot), combos: map(comboSnapshot), settings: settingsSnapshot.data() || {} };
   }
 };
 
 window.dispatchEvent(new CustomEvent('piccolo:firebase-ready'));
-
