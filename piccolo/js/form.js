@@ -2,7 +2,7 @@
    FORM.JS — Precio estimado + WhatsApp
 ═══════════════════════════════════════════ */
 
-const WA_NUMBER = '542323538825';
+const DEFAULT_WA_NUMBER = '542323538825';
 
 // ── Precio ──
 function updatePrice() {
@@ -14,13 +14,15 @@ function updatePrice() {
 
   const price   = parseInt(val.split('|')[1]);
   const name    = select.options[select.selectedIndex].text.split(' — ')[0];
-  const seña    = Math.round(price * 0.2);
+  const depositPercentage = Number(window.piccoloSettings?.depositPercentage ?? 20);
+  const seña    = Math.round(price * depositPercentage / 100);
   const horario = document.getElementById('horario').value;
 
   document.getElementById('priceProductName').textContent = name;
   document.getElementById('priceBase').textContent        = `$${price.toLocaleString('es-AR')}`;
   document.getElementById('priceTotal').textContent       = `$${price.toLocaleString('es-AR')}`;
   document.getElementById('priceSeñaVal').textContent     = `$${seña.toLocaleString('es-AR')}`;
+  document.getElementById('depositPercentageLabel').textContent = `${depositPercentage}%`;
   document.getElementById('priceNocheRow').style.display  = horario === 'noche' ? 'flex' : 'none';
 
   preview.classList.add('visible');
@@ -48,6 +50,7 @@ document.getElementById('submitBtn').addEventListener('click', () => {
   const cp        = document.getElementById('cp').value.trim();
   const telefono  = document.getElementById('telefono').value.trim();
   const extras    = document.getElementById('extras').value.trim();
+  const termsAccepted = document.getElementById('termsAccepted').checked;
   const select    = document.getElementById('espacio');
   const espacio   = select.value
     ? select.options[select.selectedIndex].text.split(' — ')[0]
@@ -55,6 +58,11 @@ document.getElementById('submitBtn').addEventListener('click', () => {
 
   if (!nombre || !fecha || !espacio || !telefono) {
     alert('Por favor completá al menos: nombre, fecha, espacio deseado y WhatsApp de contacto.');
+    return;
+  }
+
+  if (!termsAccepted) {
+    alert('Para continuar, leé y aceptá las condiciones de cuidado, cancelación y reprogramación.');
     return;
   }
 
@@ -88,11 +96,27 @@ document.getElementById('submitBtn').addEventListener('click', () => {
         localidad,
         cp,
         telefono,
-        extras
+        extras,
+        termsAccepted,
+        termsVersion: window.piccoloSettings?.termsVersion || 'catalogo-diciembre-v1',
+        displayedPrice: Number(select.value.split('|')[1]),
+        displayedDepositPercentage: Number(window.piccoloSettings?.depositPercentage ?? 20)
       }).catch(error => {
       console.warn('No se pudo guardar la consulta en Firebase:', error);
       });
   }
 
-  window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+  const whatsappNumber = window.piccoloSettings?.whatsappNumber || DEFAULT_WA_NUMBER;
+  window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(msg)}`, '_blank');
 });
+
+function applyMinimumDate() {
+  const minimumDays = Number(window.piccoloSettings?.minimumAdvanceDays ?? 5);
+  const minimum = new Date();
+  minimum.setHours(12, 0, 0, 0);
+  minimum.setDate(minimum.getDate() + minimumDays);
+  document.getElementById('fecha').min = minimum.toISOString().split('T')[0];
+}
+
+window.addEventListener('piccolo:catalog-ready', applyMinimumDate);
+applyMinimumDate();
