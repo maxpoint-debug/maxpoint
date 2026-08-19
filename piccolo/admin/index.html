@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Administración · Piccolo</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">Piccolo</p>
+        <h1>Administración</h1>
+      </div>
+      <button class="button secondary hidden" id="logoutBtn" type="button">Cerrar sesión</button>
+    </header>
+
+    <section class="card login-card" id="loginView">
+      <h2>Ingresar</h2>
+      <p>Usá la cuenta habilitada como administradora en Firebase.</p>
+      <form id="loginForm">
+        <label>Email<input id="email" type="email" autocomplete="username" required></label>
+        <label>Contraseña<input id="password" type="password" autocomplete="current-password" required></label>
+        <button class="button primary" type="submit">Ingresar</button>
+        <p class="message" id="loginMessage" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="hidden" id="adminView">
+      <nav class="tabs" aria-label="Secciones del panel">
+        <button class="tab active" data-tab="products" type="button">Productos</button>
+        <button class="tab" data-tab="combos" type="button">Combos</button>
+        <button class="tab" data-tab="settings" type="button">Configuración</button>
+        <button class="tab" data-tab="setup" type="button">Carga inicial</button>
+      </nav>
+
+      <div class="tab-panel" id="productsPanel">
+        <div class="panel-heading"><div><h2>Productos</h2><p>Los productos con historial se desactivan; no se eliminan.</p></div><button class="button primary" data-new="product" type="button">Nuevo producto</button></div>
+        <div class="item-list" id="productsList"></div>
+      </div>
+
+      <div class="tab-panel hidden" id="combosPanel">
+        <div class="panel-heading"><div><h2>Combos</h2><p>Cada combo debe relacionar productos físicos reales.</p></div><button class="button primary" data-new="combo" type="button">Nuevo combo</button></div>
+        <div class="item-list" id="combosList"></div>
+      </div>
+
+      <div class="tab-panel hidden" id="settingsPanel">
+        <div class="panel-heading"><div><h2>Configuración comercial</h2><p>Estos valores serán validados por Functions al cotizar y reservar.</p></div></div>
+        <form class="card form-grid" id="settingsForm">
+          <label class="wide">Dirección base<input name="baseAddress" required></label>
+          <label>Radio gratuito (km)<input name="freeRadiusKm" type="number" min="0" step="0.1" required></label>
+          <label>Precio por km excedente<input name="extraKmPrice" type="number" min="0" step="1" required></label>
+          <label>Seña (%)<input name="depositPercentage" type="number" min="1" max="100" required></label>
+          <label>Retención (minutos)<input name="holdMinutes" type="number" min="1" required></label>
+          <label>Anticipación mínima (días)<input name="minimumAdvanceDays" type="number" min="0" required></label>
+          <label>Horario desde<input name="usualStartTime" type="time" required></label>
+          <label>Horario hasta<input name="usualEndTime" type="time" required></label>
+          <label class="wide">WhatsApp<input name="whatsappNumber" inputmode="numeric" required></label>
+          <button class="button primary" type="submit">Guardar configuración</button>
+          <p class="message wide" id="settingsMessage" aria-live="polite"></p>
+        </form>
+      </div>
+
+      <div class="tab-panel hidden" id="setupPanel">
+        <div class="card setup-card">
+          <h2>Carga inicial</h2>
+          <p>Importa productos, combos y configuración desde el catálogo local. Los documentos con el mismo ID se actualizan.</p>
+          <button class="button primary" id="seedBtn" type="button">Importar catálogo inicial</button>
+          <p class="message" id="seedMessage" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="editorDialog">
+    <form method="dialog" class="editor" id="editorForm">
+      <div class="panel-heading"><h2 id="editorTitle">Editar</h2><button class="icon-button" value="cancel" aria-label="Cerrar">×</button></div>
+      <input name="kind" type="hidden">
+      <label>ID estable<input name="id" pattern="[a-z0-9-]+" required></label>
+      <label>Título<input name="title" required maxlength="160"></label>
+      <label>Descripción<textarea name="description" rows="3"></textarea></label>
+      <label>Dimensiones o espacio necesario<input name="dimensions"></label>
+      <div class="form-grid compact">
+        <label>Precio<input name="price" type="number" min="0" step="1" required></label>
+        <label>Orden<input name="sortOrder" type="number" step="1" required></label>
+        <label>Categoría<input name="category"></label>
+        <label>Edad recomendada<input name="recommendedAge"></label>
+      </div>
+      <label>Capacidad orientativa<input name="capacity"></label>
+      <label>Contenido (una línea por elemento)<textarea name="contents" rows="5"></textarea></label>
+      <label class="combo-only hidden">IDs de productos incluidos (separados por coma)<input name="componentProductIds"></label>
+      <label>Notas de revisión<textarea name="reviewNotes" rows="3"></textarea></label>
+      <label>Fotografía<input name="image" type="file" accept="image/*"></label>
+      <div class="checks">
+        <label><input name="active" type="checkbox"> Publicado</label>
+        <label><input name="bookable" type="checkbox"> Reservable</label>
+        <label class="product-only"><input name="outOfService" type="checkbox"> Fuera de servicio</label>
+      </div>
+      <div class="actions"><button class="button secondary" value="cancel">Cancelar</button><button class="button primary" id="saveItemBtn" value="default">Guardar</button></div>
+      <p class="message" id="editorMessage" aria-live="polite"></p>
+    </form>
+  </dialog>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
+
