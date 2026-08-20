@@ -1,13 +1,11 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-auth.js';
 import { collection, doc, getDoc, getDocs, getFirestore, orderBy, query, serverTimestamp, setDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-firestore.js';
-import { getDownloadURL, getStorage, ref, uploadBytes } from 'https://www.gstatic.com/firebasejs/12.17.0/firebase-storage.js';
 import { FIREBASE_CONFIG } from '../js/firebase-config.js';
 
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 const $ = selector => document.querySelector(selector);
 const loginView = $('#loginView');
@@ -21,6 +19,14 @@ let combos = [];
 function message(element, text, error = false) {
   element.textContent = text;
   element.classList.toggle('error', error);
+}
+
+function withTimeout(promise, milliseconds, timeoutMessage) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
 
 async function userIsAdmin(user) {
@@ -107,6 +113,8 @@ function escapeHtml(value) {
 document.querySelectorAll('[data-new]').forEach(button => button.addEventListener('click', () => openEditor(button.dataset.new)));
 
 function openEditor(kind, item = null) {
+  const saveButton = $('#saveItemBtn');
+  saveButton.disabled = false;
   editorForm.reset();
   const isCombo = kind === 'combo';
   $('#editorTitle').textContent = `${item ? 'Editar' : 'Nuevo'} ${isCombo ? 'combo' : 'producto'}`;
@@ -116,7 +124,7 @@ function openEditor(kind, item = null) {
   document.querySelectorAll('.product-only').forEach(el => el.classList.toggle('hidden', isCombo));
 
   if (item) {
-    for (const name of ['id', 'title', 'description', 'dimensions', 'price', 'sortOrder', 'category', 'recommendedAge', 'capacity']) {
+    for (const name of ['id', 'title', 'description', 'dimensions', 'price', 'sortOrder', 'category', 'recommendedAge', 'capacity', 'imagePath']) {
       if (editorForm.elements[name]) editorForm.elements[name].value = item[name] ?? '';
     }
     editorForm.elements.contents.value = (item.contents || []).join('\n');
@@ -149,16 +157,7 @@ editorForm.addEventListener('submit', async event => {
     const id = String(values.get('id')).trim();
     const collectionName = kind === 'combo' ? 'combos' : 'products';
     const previous = (kind === 'combo' ? combos : products).find(item => item.id === id) || {};
-    let imagePath = previous.imagePath || '';
-    let imageUrl = previous.imageUrl || '';
-    const image = values.get('image');
-    if (image?.size) {
-      const safeName = image.name.replace(/[^a-zA-Z0-9._-]/g, '-');
-      imagePath = `catalog/${collectionName}/${id}/${Date.now()}-${safeName}`;
-      const imageRef = ref(storage, imagePath);
-      await uploadBytes(imageRef, image, { contentType: image.type });
-      imageUrl = await getDownloadURL(imageRef);
-    }
+    const imagePath = String(values.get('imagePath')).trim();
     const payload = {
       title: String(values.get('title')).trim(),
       description: String(values.get('description')).trim(),
@@ -173,7 +172,6 @@ editorForm.addEventListener('submit', async event => {
       active: values.get('active') === 'on',
       bookable: values.get('bookable') === 'on',
       imagePath,
-      imageUrl,
       updatedAt: serverTimestamp(),
       createdAt: previous.createdAt || serverTimestamp()
     };
@@ -182,7 +180,11 @@ editorForm.addEventListener('submit', async event => {
       payload.componentProductIds = String(values.get('componentProductIds')).split(',').map(x => x.trim()).filter(Boolean);
       payload.componentGroups = previous.componentGroups || [];
     }
-    await setDoc(doc(db, collectionName, id), payload, { merge: true });
+    await withTimeout(
+      setDoc(doc(db, collectionName, id), payload, { merge: true }),
+      15000,
+      'Firebase tardó demasiado en responder. Recargá el panel y verificá si el cambio se guardó antes de intentarlo otra vez.'
+    );
     dialog.close();
     await loadAll();
   } catch (error) {
@@ -253,4 +255,3 @@ $('#seedBtn').addEventListener('click', async event => {
     button.disabled = false;
   }
 });
-
