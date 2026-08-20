@@ -31,11 +31,35 @@
   background: var(--warm-white);
   border: 1px solid var(--sand);
   border-radius: 3px;
-  padding: 1rem .9rem;
+  padding: 0;
+  overflow: hidden;
   cursor: pointer;
   transition: border-color .2s, transform .2s, box-shadow .2s;
   -webkit-tap-highlight-color: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
+
+.product-card-media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--cream);
+}
+.product-card-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .25s ease;
+}
+.product-card:hover .product-card-media img { transform: scale(1.035); }
+.product-card-placeholder {
+  background: linear-gradient(145deg, var(--cream), var(--sand));
+}
+.product-card-body { display: block; padding: .85rem .9rem 1rem; }
 .product-card:hover {
   border-color: var(--rose-light);
   transform: translateY(-3px);
@@ -55,6 +79,7 @@
 }
 
 .product-card-name {
+  display: block;
   font-family: var(--font-serif);
   font-size: 1rem;
   color: var(--rose-dark);
@@ -63,8 +88,16 @@
 }
 
 .product-card-price {
+  display: block;
   font-size: .72rem;
   color: var(--muted);
+}
+
+.product-card-note {
+  display: block;
+  margin-top: .5rem;
+  color: var(--rose-dark);
+  font-size: .62rem;
 }
 
 /* ── Modal de producto ── */
@@ -98,6 +131,15 @@
   padding: 1.8rem var(--pad-x) 2.5rem;
   animation: sheetUp .32s ease;
 }
+
+.modal-image {
+  display: block;
+  width: calc(100% + (2 * var(--pad-x)));
+  max-height: 42vh;
+  object-fit: cover;
+  margin: -1.8rem calc(-1 * var(--pad-x)) 1.25rem;
+}
+.modal-image[hidden] { display: none; }
 
 .modal-close {
   position: absolute;
