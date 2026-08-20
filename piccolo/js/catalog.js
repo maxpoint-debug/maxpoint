@@ -52,7 +52,13 @@ function renderCatalog(catalog) {
     card.type = 'button';
     card.className = 'product-card';
     card.setAttribute('role', 'listitem');
-    card.innerHTML = `<span class="product-card-tag">${proposal.tag}</span><span class="product-card-name">${proposal.title}</span><span class="product-card-price">${money(proposal.price)}</span>${proposal.bookable === false ? '<span class="product-card-note">Requiere confirmación</span>' : ''}`;
+    const imagePath = safeImagePath(proposal.imagePath);
+    card.innerHTML = `${imagePath ? `<span class="product-card-media"><img src="${escapeHtml(imagePath)}" alt="" loading="lazy"></span>` : '<span class="product-card-media product-card-placeholder" aria-hidden="true"></span>'}<span class="product-card-body"><span class="product-card-tag">${escapeHtml(proposal.tag)}</span><span class="product-card-name">${escapeHtml(proposal.title)}</span><span class="product-card-price">${money(proposal.price)}</span>${proposal.bookable === false ? '<span class="product-card-note">Requiere confirmación</span>' : ''}</span>`;
+    const cardImage = card.querySelector('img');
+    cardImage?.addEventListener('error', () => {
+      cardImage.parentElement.classList.add('product-card-placeholder');
+      cardImage.remove();
+    }, { once: true });
     card.addEventListener('click', () => openProductModal(proposal));
     container.appendChild(card);
 
@@ -70,6 +76,15 @@ function renderCatalog(catalog) {
 
 function openProductModal(proposal) {
   currentProposal = proposal;
+  const modalImage = document.getElementById('modalImage');
+  const imagePath = safeImagePath(proposal.imagePath);
+  modalImage.hidden = !imagePath;
+  modalImage.src = imagePath || '';
+  modalImage.alt = imagePath ? `Fotografía de ${proposal.title}` : '';
+  modalImage.onerror = () => {
+    modalImage.hidden = true;
+    modalImage.removeAttribute('src');
+  };
   document.getElementById('modalTag').textContent = proposal.tag;
   document.getElementById('modalName').textContent = proposal.title;
   document.getElementById('modalPrice').textContent = money(proposal.price);
@@ -86,6 +101,11 @@ function escapeHtml(value) {
   const div = document.createElement('div');
   div.textContent = String(value);
   return div.innerHTML;
+}
+
+function safeImagePath(value) {
+  const path = String(value || '').trim().replace(/^\.\//, '');
+  return /^assets\/products\/[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(path) ? path : '';
 }
 
 function closeProductModal() {
