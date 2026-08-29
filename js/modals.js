@@ -12,7 +12,8 @@ function openNewRep() {
   _eid = null;
   window._garantiaOrigen = null;
   el('mFormT').textContent = 'Nuevo ingreso';
-  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot','fEstadoFisico','fEstadoFisicoFinal'].forEach(function(id) { setVal(id, ''); });
+  ['fNom','fTel','fEq','fMod','fCla','fGar','fNot','fDiagnostico','fEstadoFisico','fEstadoFisicoFinal'].forEach(function(id) { setVal(id, ''); });
+  el('fDiagWrap').style.display = 'none';
   setVal('fFal', ''); setVal('fPres', ''); setVal('fSen', '');
   el('fEst').value  = 'Ingresado';
   el('fPag').value  = 'Pendiente';
@@ -53,6 +54,8 @@ function openEditRep(id) {
   setVal('fEstadoFisico', r.estadoFisicoRecepcion || '');
   setVal('fEstadoFisicoFinal', r.estadoFisicoEntrega || '');
   setVal('fNot',  r.notas        || '');
+  setVal('fDiagnostico', r.diagnosticoTaller || '');
+  el('fDiagWrap').style.display = '';
   var fGremio = el('fGremio'); if (fGremio) fGremio.checked = r.gremio === 'si';
   el('suggBanner').style.display = 'none';
   openM('mForm');
@@ -67,15 +70,18 @@ function saveRep() {
   var btn = el('btnSave');
   btn.disabled = true; btn.textContent = 'Guardando...';
 
+  var anterior = _eid ? REPS.find(function(x) { return x.id === _eid; }) : null;
   var est = el('fEst').value;
   var resultadoServicio = el('fResultadoServicio').value;
   if (est === 'Entregado' && (resultadoServicio === 'Pendiente de cierre' || !val('fEstadoFisicoFinal').trim())) {
     btn.disabled = false; btn.textContent = 'Guardar'; toast('Completá resultado y estado físico final antes de entregar la reparación', 'var(--rd)'); return;
   }
-  if (est === 'Entregado' && el('fPag').value !== 'Pagado') {
+  var pagoFormulario = estadoPagoReparacion(Object.assign({}, anterior || {}, {
+    presupuesto: val('fPres') || '0', sena: val('fSen') || '0', pago: el('fPag').value
+  }));
+  if (est === 'Entregado' && pagoFormulario !== 'Pagado') {
     btn.disabled = false; btn.textContent = 'Guardar'; toast('La reparación debe estar pagada antes de entregar', 'var(--rd)'); return;
   }
-  var anterior = _eid ? REPS.find(function(x) { return x.id === _eid; }) : null;
   var presupuestoNumero = Number(val('fPres') || 0);
   var d = {
     nombre:       nom,
@@ -93,10 +99,18 @@ function saveRep() {
     estadoFisicoRecepcion: val('fEstadoFisico'),
     estadoFisicoEntrega: val('fEstadoFisicoFinal'),
     notas:        val('fNot'),
+    diagnosticoTaller: val('fDiagnostico'),
     gremio:       el('fGremio') && el('fGremio').checked ? 'si' : 'no',
     resultadoServicio: resultadoServicio,
     controlComisionV1: true,
   };
+  // Con presupuesto, el estado sale del dinero cobrado. pagos[] tiene
+  // prioridad y sena conserva compatibilidad con registros anteriores.
+  var baseFinanciera = Object.assign({}, anterior || {}, d);
+  var resumenFinanciero = resumenFinancieroReparacion(baseFinanciera);
+  d.pago = resumenFinanciero.pago;
+  d.totalCobrado = resumenFinanciero.totalCobrado;
+  d.saldo = resumenFinanciero.saldo;
   if (window._garantiaOrigen) {
     d.es_garantia = 'si'; d.garantiaOrigenId = window._garantiaOrigen.id; d.garantia_ref = window._garantiaOrigen.orden || '';
   }
@@ -151,12 +165,18 @@ function actualizarReparacion(id, datos, done) {
   var estadoFinal = cambios.estado || prev.estado;
   var resultadoFinal = Object.prototype.hasOwnProperty.call(cambios, 'resultadoServicio') ? cambios.resultadoServicio : prev.resultadoServicio;
   var fisicoFinal = Object.prototype.hasOwnProperty.call(cambios, 'estadoFisicoEntrega') ? cambios.estadoFisicoEntrega : prev.estadoFisicoEntrega;
-  var pagoFinal = cambios.pago || prev.pago;
+  var financieroFinal = resumenFinancieroReparacion(Object.assign({}, prev, cambios));
+  var pagoFinal = financieroFinal.pago;
   if (prev.controlComisionV1 && estadoFinal === 'Entregado' && (!resultadoFinal || resultadoFinal === 'Pendiente de cierre' || !String(fisicoFinal || '').trim())) {
     done('Completá resultado y estado físico final antes de entregar la reparación'); return;
   }
   if (prev.controlComisionV1 && estadoFinal === 'Entregado' && pagoFinal !== 'Pagado' && !(prev.entregaExcepcion && prev.entregaExcepcion.autorizada)) {
     done('La reparación debe estar pagada antes de entregar'); return;
+  }
+  if (Object.prototype.hasOwnProperty.call(cambios, 'presupuesto') || Object.prototype.hasOwnProperty.call(cambios, 'sena') || Object.prototype.hasOwnProperty.call(cambios, 'pagos') || Object.prototype.hasOwnProperty.call(cambios, 'pago')) {
+    cambios.pago = financieroFinal.pago;
+    cambios.totalCobrado = financieroFinal.totalCobrado;
+    cambios.saldo = financieroFinal.saldo;
   }
   if (Object.prototype.hasOwnProperty.call(cambios, 'estado') && prev.estado !== cambios.estado) {
     var tl = (prev.timeline || []).slice();
@@ -167,7 +187,7 @@ function actualizarReparacion(id, datos, done) {
     if (err) { done(err); return; }
     var tecnicoFinal = Object.prototype.hasOwnProperty.call(cambios, 'tecnico') ? cambios.tecnico : prev.tecnico;
     if (tecnicoFinal && tecnicoFinal !== prev.tecnico && typeof notificarEventoReparacion === 'function') {
-      notificarEventoReparacion('reparacion_asignada', Object.assign({}, prev, cambios, { id:id }), { clave:'reparacion_asignada:' + id + ':' + tecnicoFinal });
+      notificarEventoReparacion('reparacion_asignada', Object.assign({}, prev, cambios, { id:id }), { clave:'reparacion_asignada:' + id + ':' + String(prev.tecnico || 'sin_tecnico') + ':' + String(tecnicoFinal) + ':' + Date.now() });
     }
     done(null);
   });
@@ -285,7 +305,7 @@ if (!r) return;
   var fallaBox = document.createElement('div');
   fallaBox.style.cssText = 'background:var(--s2);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--mu)';
   fallaBox.textContent = r.falla || '—';
-  ds2.innerHTML = '<div class="dst">Falla</div>';
+  ds2.innerHTML = '<div class="dst">Falla informada por el cliente</div>';
   ds2.appendChild(fallaBox);
   if (r.modelo) {
     var imeiDiv = document.createElement('div'); imeiDiv.className = 'dr'; imeiDiv.style.marginTop = '4px';
@@ -298,6 +318,15 @@ if (!r) return;
     ds2.appendChild(claveDiv);
   }
   col1.appendChild(ds2);
+
+  if (r.diagnosticoTaller) {
+    var dsDiagnostico = document.createElement('div'); dsDiagnostico.className = 'ds';
+    var diagnosticoBox = document.createElement('div');
+    diagnosticoBox.style.cssText = 'background:var(--s2);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--tx)';
+    diagnosticoBox.textContent = r.diagnosticoTaller;
+    dsDiagnostico.innerHTML = '<div class="dst">Diagnóstico / información para cliente</div>';
+    dsDiagnostico.appendChild(diagnosticoBox); col1.appendChild(dsDiagnostico);
+  }
 
   // Repuestos relacionados
   if (rpu.length) {
@@ -404,13 +433,13 @@ if (!r) return;
     col2.appendChild(ds4);
   }
 
-  // Notas
+  // Nota interna
   if (r.notas) {
     var ds5 = document.createElement('div'); ds5.className = 'ds';
     var notasBox = document.createElement('div');
     notasBox.style.cssText = 'background:var(--s2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--mu)';
     notasBox.textContent = r.notas;
-    ds5.innerHTML = '<div class="dst">Notas</div>';
+    ds5.innerHTML = '<div class="dst">Nota interna · sólo taller</div>';
     ds5.appendChild(notasBox);
     col2.appendChild(ds5);
   }
@@ -548,8 +577,10 @@ function confPago() {
   var presupuesto = Number(r.presupuesto || 0);
   // Sin presupuesto no se infiere un estado financiero: se mantiene el actual.
   var nuevoEstadoPago = presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente');
-  FB.upd(_pagoId, { pago: nuevoEstadoPago, pagos: pagos, sena: String(totalCobrado) }, function(err) {
+  var financieros = { pago: nuevoEstadoPago, pagos: pagos, totalCobrado: totalCobrado, saldo: Math.max(0, presupuesto - totalCobrado) };
+  FB.upd(_pagoId, financieros, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    Object.assign(r, financieros);
     closeM('mPago');
     toast('✓ Pago registrado — saldo ' + pesos(Math.max(0, presupuesto - totalCobrado)));
   });
@@ -632,8 +663,9 @@ function mkRecHTML(r) {
   h.push('<div style="background:#f8f8f8;border-left:3px solid #F0B429;border-radius:0 4px 4px 0;padding:9px 12px;margin-bottom:14px">');
   h.push('<div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:4px">Descripci&oacute;n del problema</div>');
   h.push('<div style="font-size:11.5px;color:#222;line-height:1.5">' + esc(r.falla || '—') + '</div>');
-  if (r.notas) {
-    h.push('<div style="font-size:10px;color:#888;margin-top:6px;padding-top:6px;border-top:1px dashed #ddd">Obs: ' + esc(r.notas) + '</div>');
+  if (r.diagnosticoTaller) {
+    h.push('<div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-top:8px;margin-bottom:4px">Diagn&oacute;stico de MaxPoint</div>');
+    h.push('<div style="font-size:11px;color:#222;line-height:1.5">' + esc(r.diagnosticoTaller) + '</div>');
   }
   h.push('</div>');
 
@@ -1046,9 +1078,9 @@ function prtOrdenTaller(id) {
     + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:3px">Falla declarada</div>'
     + '<div style="font-size:11px;color:#222;line-height:1.5">' + e2(r.falla||'\u2014') + '</div>'
     + '</div>'
-    + (r.notas ? '<div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:8px 12px;margin-bottom:10px">'
-      + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#0284c7;margin-bottom:3px">Notas del tecnico</div>'
-      + '<div style="font-size:10px;color:#0c4a6e;line-height:1.5">' + e2(r.notas) + '</div></div>' : '')
+    + (r.diagnosticoTaller ? '<div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:8px 12px;margin-bottom:10px">'
+      + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#0284c7;margin-bottom:3px">Diagnóstico de MaxPoint</div>'
+      + '<div style="font-size:10px;color:#0c4a6e;line-height:1.5">' + e2(r.diagnosticoTaller) + '</div></div>' : '')
     + '<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr>'
     + '<td style="font-size:10px;color:#555;padding:3px 0">Presupuesto</td>'
     + '<td style="text-align:right;font-weight:700;font-size:10px">' + (Number(r.presupuesto||0) ? fmt(r.presupuesto) : 'A confirmar') + '</td></tr>'
