@@ -32,7 +32,7 @@ function saveVenta() {
   var imei = val('vImei');
   var precio = val('vPrecio');
   if (!nom || !mod || !imei || !precio) {
-    alert('Nombre, modelo, IMEI y precio son obligatorios.');
+    alert('Nombre, modelo, IMEI / número de serie y precio son obligatorios.');
     return;
   }
   var btn = el('btnSaveVenta');
@@ -205,7 +205,7 @@ function prtVenta(id) {
     + '<td style="vertical-align:top;padding-left:10px">'
     + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:4px">Equipo vendido</div>'
     + '<div style="font-size:13px;font-weight:800">' + esc2(v.modelo||'') + (v.capacidad?' '+esc2(v.capacidad):'') + (v.color?' '+esc2(v.color):'') + '</div>'
-    + '<div style="font-size:9px;color:#777;font-family:monospace;margin-top:2px">IMEI: ' + esc2(v.imei||'') + '</div>'
+    + '<div style="font-size:9px;color:#777;font-family:monospace;margin-top:2px">IMEI / Serie: ' + esc2(v.imei||'') + '</div>'
     + '<div style="font-size:9px;color:#2DCE89;font-weight:700;margin-top:2px">' + esc2(v.garantia||'6 meses') + ' de garantia</div>'
     + '</td>'
     + '</tr></table>'
