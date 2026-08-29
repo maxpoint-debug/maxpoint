@@ -420,7 +420,7 @@ function dispararNotificacionRepuesto(tipo, repuesto) {
     mensaje:(llego ? 'Llegó ' : 'Se encargó ') + (repuesto.nombre || 'un repuesto') + ' para ' + (r.orden || ''),
     prioridad:llego ? 'importante' : 'normal', destinos:{ tecnico:true, administradores:true },
     entidad:'reparacion', entidadId:r.id, origen:'sistema', reparacion:r,
-    clave:tipo + ':' + repuesto.id
+    clave:tipo + ':' + repuesto.id + ':' + Date.now()
   }).then(function() { return true; });
 }
 window.notificarEventoReparacion = function(tipo, reparacion, opciones) { return dispararNotificacionReparacion(tipo, reparacion, opciones).catch(function(e) { console.error('Notificación no creada:', e); toast('No se pudo crear la notificación: ' + e.message, 'var(--rd)'); return false; }); };

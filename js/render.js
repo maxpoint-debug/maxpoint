@@ -1021,20 +1021,43 @@ function renderVen() {
     return;
   }
 
-  var MN = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var MN = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  function fechaVentaPartes(valor) {
+    var texto = String(valor || '').trim();
+    var m = texto.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})$/);
+    if (m) {
+      var anio = Number(m[3]); if (anio < 100) anio += 2000;
+      return { anio:anio, mes:Number(m[2]), dia:Number(m[1]), valida:true };
+    }
+    m = texto.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+    if (m) return { anio:Number(m[1]), mes:Number(m[2]), dia:Number(m[3]), valida:true };
+    return { anio:0, mes:0, dia:0, valida:false };
+  }
+  function fechaVentaOrden(v) {
+    var p = fechaVentaPartes(v && v.fecha);
+    return p.valida ? p.anio * 10000 + p.mes * 100 + p.dia : 0;
+  }
+  function fechaVentaMes(v) {
+    var p = fechaVentaPartes(v && v.fecha);
+    return p.valida ? String(p.anio) + '-' + String(p.mes).padStart(2, '0') : 'sin-fecha';
+  }
   // Agrupar por mes
   var porMes = {};
-  VENTAS.slice().sort(function(a,b){ return (b.fecha||'').localeCompare(a.fecha||''); })
+  VENTAS.slice().sort(function(a,b){ return fechaVentaOrden(b) - fechaVentaOrden(a); })
   .forEach(function(v) {
-    var k = typeof fechaAMesKey === 'function' ? fechaAMesKey(v.fecha) : (v.fecha||'').slice(0,7);
+    var k = fechaVentaMes(v);
     if (!porMes[k]) porMes[k] = [];
     porMes[k].push(v);
   });
 
-  Object.keys(porMes).sort().reverse().forEach(function(mesKey) {
+  Object.keys(porMes).sort(function(a,b) {
+    if (a === 'sin-fecha') return 1;
+    if (b === 'sin-fecha') return -1;
+    return b.localeCompare(a);
+  }).forEach(function(mesKey) {
     var vensMes = porMes[mesKey];
     var pt = mesKey.split('-');
-    var titulo = (MN[parseInt(pt[1])]||pt[1]) + ' ' + pt[0];
+    var titulo = mesKey === 'sin-fecha' ? 'SIN FECHA' : (MN[parseInt(pt[1], 10)]||pt[1]) + ' ' + pt[0];
     var totalMes = vensMes.reduce(function(s,v){return s+Number(v.precio||0);},0);
     var ganMes   = vensMes.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
 

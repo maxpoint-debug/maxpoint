@@ -187,6 +187,17 @@ function estadoPagoReparacion(r) {
   return totalCobradoReparacion(r) >= presupuesto ? 'Pagado' : 'Pendiente';
 }
 
+// Campos derivados sin mezclar la seña legacy con el historial nuevo.
+function resumenFinancieroReparacion(r) {
+  var presupuesto = Number(r && r.presupuesto || 0);
+  var totalCobrado = totalCobradoReparacion(r);
+  return {
+    totalCobrado: totalCobrado,
+    saldo: Math.max(0, presupuesto - totalCobrado),
+    pago: presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : ((r && r.pago) || 'Pendiente')
+  };
+}
+
 // Los estados existentes son Cobrada, Pendiente, Anulada y Devuelta. Los
 // históricos sin estado se tratan como Cobrada para mantener compatibilidad.
 function ventaValidaParaMetricas(venta) {
