@@ -136,7 +136,11 @@
     </div>
     <div class="f"><label>IMEI / Serie</label><input id="fMod"/></div>
     <div class="f"><label>Clave / PIN</label><input id="fCla" placeholder="Clave de desbloqueo"/></div>
-    <div class="f full"><label>Falla *</label><textarea id="fFal" oninput="chkSugg()"></textarea></div>
+    <div class="f full">
+      <label>NOTA PARA CLIENTE / FALLA INFORMADA *</label>
+      <textarea id="fFal" oninput="chkSugg()" placeholder="Información que puede aparecer en la orden, recibo o consulta del cliente"></textarea>
+      <div class="mu" style="font-size:11px;margin-top:4px">Visible para el cliente. Usar para la falla declarada y la información que se le comunica.</div>
+    </div>
     <div class="f full"><label>Estado físico al recibir</label><textarea id="fEstadoFisico" placeholder="Ej: pantalla quebrada, marco marcado, cámara OK, enciende, sin humedad visible"></textarea></div>
     <div class="f full"><label>Estado físico al entregar</label><textarea id="fEstadoFisicoFinal" placeholder="Confirmación final antes de entregar el equipo"></textarea></div>
     <div class="f"><label>Presupuesto ($)</label><input id="fPres" type="number"/></div>
@@ -181,7 +185,11 @@
       <input type="checkbox" id="fGremio" style="width:18px;height:18px;cursor:pointer"/>
       <label for="fGremio" style="cursor:pointer;font-size:13px;color:var(--tx)">Cliente gremio <span style="font-size:11px;color:var(--mu)">(no suma comision)</span></label>
     </div>
-    <div class="f full"><label>Notas</label><textarea id="fNot"></textarea></div>
+    <div class="f full" style="border-top:1px solid var(--bd);padding-top:12px">
+      <label>NOTA INTERNA</label>
+      <textarea id="fNot" placeholder="Diagnóstico, coordinación o información exclusiva del taller"></textarea>
+      <div class="mu" style="font-size:11px;margin-top:4px">Sólo uso interno. No se incluye en órdenes, recibos ni mensajes al cliente.</div>
+    </div>
   </div>
   <div class="fa">
     <button class="btn btn-g" onclick="closeM('mForm')">Cancelar</button>
@@ -614,10 +622,10 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="js/data.js?v=22"></script>
 <script src="js/state.js?v=32"></script>
-<script src="js/helpers.js?v=25"></script>
+<script src="js/helpers.js?v=26"></script>
 <script src="js/moneda.js?v=2"></script>
-<script src="js/render.js?v=36"></script>
-<script src="js/modals.js?v=42"></script>
+<script src="js/render.js?v=37"></script>
+<script src="js/modals.js?v=43"></script>
 <script src="js/catalogo.js?v=22"></script>
 <script src="js/comisiones.js?v=32"></script>
 <script src="js/seguimientos.js?v=22"></script>
@@ -627,7 +635,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/app.js?v=28"></script>
 <script src="js/buscador.js?v=1"></script>
 <script src="js/notificaciones.js?v=1"></script>
-<script type="module" src="js/firebase.js?v=35"></script>
+<script type="module" src="js/firebase.js?v=36"></script>
 
 </body>
 </html>
