@@ -137,9 +137,14 @@
     <div class="f"><label>IMEI / Serie</label><input id="fMod"/></div>
     <div class="f"><label>Clave / PIN</label><input id="fCla" placeholder="Clave de desbloqueo"/></div>
     <div class="f full">
-      <label>NOTA PARA CLIENTE / FALLA INFORMADA *</label>
-      <textarea id="fFal" oninput="chkSugg()" placeholder="Información que puede aparecer en la orden, recibo o consulta del cliente"></textarea>
-      <div class="mu" style="font-size:11px;margin-top:4px">Visible para el cliente. Usar para la falla declarada y la información que se le comunica.</div>
+      <label>FALLA INFORMADA POR EL CLIENTE *</label>
+      <textarea id="fFal" oninput="chkSugg()" placeholder="Ej: Se cayó y no funciona el táctil"></textarea>
+      <div class="mu" style="font-size:11px;margin-top:4px">Motivo por el que el equipo ingresó al taller.</div>
+    </div>
+    <div class="f full" id="fDiagWrap" style="display:none">
+      <label>DIAGNÓSTICO / INFORMACIÓN PARA CLIENTE</label>
+      <textarea id="fDiagnostico" placeholder="Ej: La pantalla presenta daño interno y requiere reemplazo"></textarea>
+      <div class="mu" style="font-size:11px;margin-top:4px">Diagnóstico, avance o información del taller que puede mostrarse al cliente.</div>
     </div>
     <div class="f full"><label>Estado físico al recibir</label><textarea id="fEstadoFisico" placeholder="Ej: pantalla quebrada, marco marcado, cámara OK, enciende, sin humedad visible"></textarea></div>
     <div class="f full"><label>Estado físico al entregar</label><textarea id="fEstadoFisicoFinal" placeholder="Confirmación final antes de entregar el equipo"></textarea></div>
@@ -188,7 +193,7 @@
     <div class="f full" style="border-top:1px solid var(--bd);padding-top:12px">
       <label>NOTA INTERNA</label>
       <textarea id="fNot" placeholder="Diagnóstico, coordinación o información exclusiva del taller"></textarea>
-      <div class="mu" style="font-size:11px;margin-top:4px">Sólo uso interno. No se incluye en órdenes, recibos ni mensajes al cliente.</div>
+      <div class="mu" style="font-size:11px;margin-top:4px">Sólo visible para el equipo de MaxPoint. Nunca se muestra al cliente.</div>
     </div>
   </div>
   <div class="fa">
@@ -625,7 +630,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/helpers.js?v=26"></script>
 <script src="js/moneda.js?v=2"></script>
 <script src="js/render.js?v=38"></script>
-<script src="js/modals.js?v=43"></script>
+<script src="js/modals.js?v=44"></script>
 <script src="js/catalogo.js?v=22"></script>
 <script src="js/comisiones.js?v=32"></script>
 <script src="js/seguimientos.js?v=22"></script>
