@@ -1076,7 +1076,7 @@ function renderVen() {
         + '<div style="flex:1">'
         + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
         + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
-        + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI: ' + esc(v.imei||'') + '</div>'
+        + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI / Serie: ' + esc(v.imei||'') + '</div>'
         + (v.vendedor ? '<div style="font-size:10px;color:var(--mu)">' + esc(v.vendedor) + (v.canal?' via '+esc(v.canal):'') + '</div>' : '')
         + '</div>'
         + '<div style="text-align:right;flex-shrink:0">'
