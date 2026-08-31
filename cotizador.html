@@ -219,7 +219,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
       <div class="bat-val" id="batVal">100%</div>
       <input type="range" id="batSlider" min="50" max="100" value="100" oninput="actualizarBat(this.value)">
       <div class="bat-labels"><span>50%</span><span>75%</span><span>100%</span></div>
-      <div class="bat-warn" id="batWarn">⚠️ Batería por debajo del 90% — se descuenta el costo de reemplazo</div>
+      <div class="bat-warn" id="batWarn">⚠️ Batería por debajo del umbral configurado — se descuenta el costo de reemplazo</div>
     </div>
   </div>
 
@@ -254,12 +254,12 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
       <div class="opt" data-val="leve" onclick="selOpt(this,'estetica')">
         <div class="opt-ico">🔍</div>
         <div class="opt-lbl">Leve</div>
-        <div class="opt-sub">- USD 15</div>
+        <div class="opt-sub">Aplica descuento configurado</div>
       </div>
       <div class="opt" data-val="marcado" onclick="selOpt(this,'estetica')">
         <div class="opt-ico">⚠️</div>
         <div class="opt-lbl">Marcado</div>
-        <div class="opt-sub">- USD 35</div>
+        <div class="opt-sub">Aplica descuento configurado</div>
       </div>
     </div>
   </div>
@@ -441,6 +441,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 
 <div class="footer">MaxPoint — Av 17 y 34, Mercedes, Bs As · (2324) 522082</div>
 
+<script src="js/cotizador-core.js?v=1"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getFirestore, collection, onSnapshot, doc }
@@ -459,7 +460,7 @@ const db = getFirestore(app);
 // ── Estado global ─────────────────────────────────────
 let USADOS   = [];
 let CATALOGO = [];
-let CFG      = { usd: 1425 };
+let COT_CFG  = window.MAXPOINT_COTIZADOR.config({});
 let equipoSel = null;
 let pantalla  = 'ok';
 let estetica  = 'ok';
@@ -481,7 +482,7 @@ function checkLoaded() {
 }
 
 onSnapshot(collection(db, 'usados'), snap => {
-  USADOS = snap.docs.map(d => d.data());
+  USADOS = snap.docs.map(d => { const u=d.data(); return Object.assign({},u,{modeloClave:u.modeloClave||window.MAXPOINT_COTIZADOR.modeloClave(u.modelo,true)}); });
   loadedUsados = true;
   checkLoaded();
 });
@@ -492,8 +493,9 @@ onSnapshot(collection(db, 'catalogo'), snap => {
   checkLoaded();
 });
 
-onSnapshot(doc(db, 'config', 'catalogo'), snap => {
-  if (snap.exists()) CFG = snap.data();
+onSnapshot(doc(db, 'config', 'cotizador'), snap => {
+  COT_CFG = window.MAXPOINT_COTIZADOR.config(snap.exists() ? snap.data() : {});
+  if (equipoSel && window._cotResult) calcularResultado();
 });
 
 // ── Navegación ────────────────────────────────────────
@@ -590,7 +592,7 @@ document.addEventListener('click', e => {
 // ── Batería ───────────────────────────────────────────
 window.actualizarBat = function(v) {
   document.getElementById('batVal').textContent = v + '%';
-  document.getElementById('batWarn').style.display = v < 90 ? 'block' : 'none';
+  document.getElementById('batWarn').style.display = v < COT_CFG.bateria.umbral ? 'block' : 'none';
 };
 
 // ── Selects visuales ──────────────────────────────────
@@ -619,122 +621,16 @@ window.selProblema = function(el, grupo) {
   }
 };
 
-function esPro(modelo) {
-  return /pro/i.test(modelo);
-}
-
-function buscarEnCatalogo(keywords) {
-  return CATALOGO.find(p => {
-    const lbl = p.label.toLowerCase();
-    return keywords.every(k => lbl.includes(k));
-  });
-}
-
-function getDescuentoProblema(grupo, val, modelo) {
-  if (val !== 'ok') return { lbl: 'Requiere revisión presencial', usd: 0, consultar: true };
-  const mNum = modelo.toLowerCase().match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
-  const mStr = mNum ? mNum[0].trim() : null;
-  const isPro = esPro(modelo);
-  let cat, desc, lbl, consultar = false;
-
-  switch(grupo) {
-    case 'faceid':
-      if (val !== 'no') return null;
-      cat = mStr ? buscarEnCatalogo(['face', 'iphone', mStr]) : null;
-      desc = cat ? Math.round(cat.costo_usd) : 80;
-      lbl  = cat ? 'Face ID (' + cat.label + ')' : 'Face ID (estimado)';
-      return { lbl, usd: desc };
-
-    case 'camtras':
-      if (val === 'ok') return null;
-      cat = mStr ? buscarEnCatalogo(['camara', 'iphone', mStr]) || buscarEnCatalogo(['camera', 'iphone', mStr]) : null;
-      desc = cat ? Math.round(cat.costo_usd) : (isPro ? 100 : 40);
-      lbl  = cat ? 'Cámara trasera (' + cat.label + ')' : 'Cámara trasera ' + (val === 'borrosa' ? '(borrosa)' : '') + ' (estimado)';
-      return { lbl, usd: desc };
-
-    case 'camfront':
-      if (val === 'ok') return null;
-      cat = mStr ? buscarEnCatalogo(['frontal', 'iphone', mStr]) : null;
-      if (!cat) return { lbl: 'Cámara frontal ' + (val === 'borrosa' ? '(borrosa)' : '(no anda)'), usd: 0, consultar: true };
-      return { lbl: 'Cámara frontal (' + cat.label + ')', usd: Math.round(cat.costo_usd) };
-
-    case 'carcasa':
-      if (val === 'ok') return null;
-      cat = mStr ? buscarEnCatalogo(['carcasa', 'iphone', mStr]) || buscarEnCatalogo(['tapa', 'iphone', mStr]) : null;
-      if (!cat) return { lbl: 'Carcasa dañada', usd: 0, consultar: true };
-      return { lbl: 'Carcasa (' + cat.label + ')', usd: Math.round(cat.costo_usd) };
-
-    case 'vidriocam':
-      if (val === 'ok') return null;
-      cat = mStr ? buscarEnCatalogo(['vidrio', 'camara', mStr]) : null;
-      desc = cat ? Math.round(cat.costo_usd) : 20;
-      lbl  = cat ? 'Vidrio cámara (' + cat.label + ')' : 'Vidrio de cámara (estimado)';
-      return { lbl, usd: desc };
-
-    case 'botones':
-      if (val === 'ok') return null;
-      cat = mStr ? buscarEnCatalogo(['boton', 'iphone', mStr]) || buscarEnCatalogo(['flex', 'boton', mStr]) : null;
-      desc = cat ? Math.round(cat.costo_usd) : 30;
-      lbl  = cat ? 'Botones (' + cat.label + ')' : 'Botones (estimado)';
-      return { lbl, usd: desc };
-
-    case 'pieza':
-      if (val === 'ok') return null;
-      const desc2 = document.getElementById('piezaDesc') ? document.getElementById('piezaDesc').value.trim() : '';
-      return { lbl: 'Pieza desconocida' + (desc2 ? ': ' + desc2 : ''), usd: 40 };
-
-    default: return null;
-  }
-}
-
 // ── Calcular ──────────────────────────────────────────
 window.calcularResultado = function() {
   if (!equipoSel) return;
   const bat = parseInt(document.getElementById('batSlider').value) || 100;
-  const usd = CFG.usd || 1425;
-  let base = equipoSel.precio_usd;
-  let descuentos = [];
-
-  // Batería
-  if (bat < 90) {
-    const mNum = equipoSel.modelo.toLowerCase().match(/\d+(?:\s*(?:pro\s*max|pro|plus|air|mini))?/);
-    const mStr = mNum ? mNum[0].trim() : null;
-    let batCat = mStr ? CATALOGO.find(p => {
-      const lbl = p.label.toLowerCase();
-      return lbl.includes('bater') && lbl.includes('iphone') && lbl.includes(mStr);
-    }) : null;
-    const descBat = batCat ? Math.round(batCat.costo_usd) : 20;
-    const lblBat  = batCat ? 'Batería (' + batCat.label + ')' : 'Batería (estimado)';
-    descuentos.push({ lbl: lblBat, usd: descBat });
-  }
-
-  // Estética
-  if (estetica === 'leve')    descuentos.push({ lbl: 'Estética — detalles leves', usd: 15 });
-  if (estetica === 'marcado') descuentos.push({ lbl: 'Estética — muy marcada',    usd: 35 });
-
-  // Pantalla
-  if (pantalla === 'rota') {
-    const m = equipoSel.modelo.toLowerCase();
-    const n = Number((m.match(/iphone\s+(\d+)/) || [])[1]);
-    let descPan = 0;
-    if (/pro\s*max/.test(m) && n <= 16) descPan = 150;
-    else if (/\bpro\b/.test(m) && n <= 16) descPan = 120;
-    else if (!/\bpro\b/.test(m) && n <= 15) descPan = 70;
-    if (descPan) descuentos.push({ lbl: 'Pantalla dañada (estimado)', usd: descPan });
-    else descuentos.push({ lbl: 'Pantalla dañada: requiere revisión presencial', usd: 0, consultar: true });
-  }
-
-  // Problemas predefinidos
-  Object.keys(problemas).forEach(grupo => {
-    const d = getDescuentoProblema(grupo, problemas[grupo], equipoSel.modelo);
-    if (d) descuentos.push(d);
-  });
-
-  const totalDesc = descuentos.reduce((s, d) => s + (d.consultar ? 0 : d.usd), 0);
-  const total     = Math.max(0, base - totalDesc);
+  const piezaDesc = document.getElementById('piezaDesc') ? document.getElementById('piezaDesc').value.trim() : '';
+  const resultado = window.MAXPOINT_COTIZADOR.calcular({ modelo:equipoSel.modelo, base:equipoSel.precio_usd, bateria:bat,
+    estetica, pantalla, problemas, piezaDescripcion:piezaDesc, catalogo:CATALOGO, config:COT_CFG });
 
   // Mostrar resultado
-  document.getElementById('resPrecio').textContent = 'USD ' + total;
+  document.getElementById('resPrecio').textContent = resultado.requiereRevision ? 'Revisión presencial' : 'USD ' + resultado.total;
   document.getElementById('resSub').textContent = equipoSel.modelo + ' · ' + bat + '% batería';
 
   let det = `<div class="res-row"><span class="res-lbl">Equipo</span><span class="res-val base">${equipoSel.modelo}</span></div>`;
@@ -751,7 +647,8 @@ window.calcularResultado = function() {
   document.getElementById('interesTexto').textContent = txtInteres[interes] || '';
 
   // Guardar para WA
-  window._cotResult = { total, base, descuentos, bat, modelo: equipoSel.modelo, interes };
+  window._cotResult = { total:resultado.total, base:equipoSel.precio_usd, descuentos:resultado.descuentos,
+    revision:resultado.revision, requiereRevision:resultado.requiereRevision, bat, modelo:equipoSel.modelo, interes };
 
   mostrarVista('view3');
 };
@@ -777,10 +674,9 @@ window.enviarWA = function() {
     '',
     `📊 *Resultado de la cotización:*`,
     `• Batería: ${r.bat}%`,
-    ...(r.descuentos.map(d => d.consultar
-      ? `• ${d.lbl}: consultar precio`
-      : `• ${d.lbl}: - USD ${d.usd}`)),
-    `• *Valor de toma estimado: USD ${r.total}*`,
+    ...(r.descuentos.map(d => `• ${d.lbl}: - USD ${d.usd}`)),
+    ...((r.revision || []).map(lbl => `• ${lbl}: requiere revisión presencial`)),
+    r.requiereRevision ? `• *Valor de toma sujeto a revisión presencial*` : `• *Valor de toma estimado: USD ${r.total}*`,
     '',
     `Estoy buscando: *${intTexto[r.interes] || r.interes}*`,
     '',

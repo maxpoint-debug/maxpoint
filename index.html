@@ -463,14 +463,23 @@
       <div class="f"><label>Estetica</label>
         <select id="cotEstetica" onchange="cotCalcular()">
           <option value="ok">Impecable</option>
-          <option value="leve">Detalles leves (-15 USD)</option>
-          <option value="marcado">Muy marcado (-35 USD)</option>
+          <option value="leve">Detalles leves</option>
+          <option value="marcado">Muy marcado</option>
         </select></div>
       <div class="f full"><label>Pantalla</label>
         <select id="cotPantalla" onchange="cotCalcular()">
           <option value="ok">Ok</option>
           <option value="rota">Rota (descuenta modulo)</option>
         </select></div>
+      <div class="fgrid" style="margin-top:8px">
+        <div class="f"><label>Face ID</label><select id="cotFaceId" onchange="cotCalcular()"><option value="ok">OK</option><option value="no">No funciona</option></select></div>
+        <div class="f"><label>Cámara trasera</label><select id="cotCamTras" onchange="cotCalcular()"><option value="ok">OK</option><option value="no">No funciona</option><option value="borrosa">Borrosa</option></select></div>
+        <div class="f"><label>Cámara frontal</label><select id="cotCamFront" onchange="cotCalcular()"><option value="ok">OK</option><option value="no">No funciona</option><option value="borrosa">Borrosa</option></select></div>
+        <div class="f"><label>Carcasa</label><select id="cotCarcasa" onchange="cotCalcular()"><option value="ok">OK</option><option value="danada">Dañada</option></select></div>
+        <div class="f"><label>Vidrio cámara</label><select id="cotVidrioCam" onchange="cotCalcular()"><option value="ok">OK</option><option value="roto">Roto</option></select></div>
+        <div class="f"><label>Botones</label><select id="cotBotones" onchange="cotCalcular()"><option value="ok">OK</option><option value="falla">Falla alguno</option></select></div>
+        <div class="f full"><label>Otra pieza</label><input id="cotPieza" placeholder="Vacío si no corresponde" oninput="cotCalcular()"/></div>
+      </div>
       <div id="cotExtrasWrap" style="margin-top:4px"></div>
       <button class="btn btn-g btn-sm" onclick="cotAgregarExtra()" style="width:100%;margin-top:4px;font-size:12px">+ Agregar descuento</button>
       <div id="cotResultado" style="display:none"><div id="cotResultadoInner"></div></div>
@@ -512,8 +521,9 @@
         placeholder="Pega aca el texto de la lista del proveedor..."></textarea>
     </div>
     <div class="f full">
-      <button class="btn btn-g btn-sm" id="btnInterpretarLista" type="button" style="width:100%">Interpretar lista</button>
+      <button class="btn btn-g btn-sm" id="btnInterpretarLista" type="button" style="width:100%">Procesar esta lista</button>
     </div>
+    <div id="listaSesionInfo" class="mu" style="font-size:11px;margin:6px 0">Todavía no procesaste listas en esta actualización.</div>
     <div id="listaPreview" style="display:none">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:6px">Preview</div>
       <div id="listaPreviewContent" style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px;max-height:180px;overflow-y:auto"></div>
@@ -527,9 +537,29 @@
       <div class="f"><label>Valor USD</label><input id="cotManualPrecio" type="number" min="0" step="1" placeholder="0"/></div>
     </div>
     <div class="fa"><button class="btn btn-g btn-sm" onclick="cotManualNuevo()">Nuevo modelo</button><button class="btn btn-p btn-sm" id="btnCotManual" onclick="cotGuardarManual()">Guardar modelo</button></div>
+    <div style="border-top:1px solid var(--bd);margin:18px 0 12px"></div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:8px">Parámetros comerciales</div>
+    <div class="fgrid">
+      <div class="f"><label>Umbral batería %</label><input id="cfgCotBatUmbral" type="number" min="0" max="100"/></div>
+      <div class="f"><label>Fallback batería USD</label><input id="cfgCotBatFallback" type="number" min="0"/></div>
+      <div class="f"><label>Estética leve USD</label><input id="cfgCotEstLeve" type="number" min="0"/></div>
+      <div class="f"><label>Estética marcada USD</label><input id="cfgCotEstMarcada" type="number" min="0"/></div>
+      <div class="f"><label>Fallback pantalla USD</label><input id="cfgCotPantalla" type="number" min="0"/></div>
+      <div class="f"><label>Face ID USD</label><input id="cfgCotFace" type="number" min="0"/></div>
+      <div class="f"><label>Cámara normal USD</label><input id="cfgCotCamNormal" type="number" min="0"/></div>
+      <div class="f"><label>Cámara Pro USD</label><input id="cfgCotCamPro" type="number" min="0"/></div>
+      <div class="f"><label>Vidrio cámara USD</label><input id="cfgCotVidrio" type="number" min="0"/></div>
+      <div class="f"><label>Botones USD</label><input id="cfgCotBotones" type="number" min="0"/></div>
+      <div class="f"><label>Pieza desconocida USD</label><input id="cfgCotPieza" type="number" min="0"/></div>
+      <div class="f"><label>Total mínimo USD</label><input id="cfgCotMinimo" type="number" min="0"/></div>
+      <div class="f"><label>Sin coincidencia exacta</label><select id="cfgCotSinCoincidencia"><option value="revision_presencial">Revisión presencial</option><option value="usar_fallback">Usar fallback configurado</option></select></div>
+      <div class="f"><label>Redondeo</label><select id="cfgCotRedondeo"><option value="entero">USD entero</option><option value="sin_redondeo">Sin redondeo</option></select></div>
+    </div>
+    <div class="fa"><button class="btn btn-p btn-sm" id="btnGuardarCfgCot" onclick="cotGuardarConfig()">Guardar parámetros</button></div>
   </div>
   <div class="mf">
-    <button class="btn btn-g" onclick="closeM('mLista')">Cancelar</button>
+    <button class="btn btn-g" onclick="cotReiniciarListas()">Reiniciar listas</button>
+    <button class="btn btn-g" onclick="closeM('mLista')">Cerrar</button>
     <button class="btn btn-p" id="btnSubirLista" onclick="subirLista()" disabled>Actualizar base</button>
   </div>
 </div></div>
@@ -626,7 +656,8 @@ document.addEventListener('DOMContentLoaded', function() {
 -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="js/data.js?v=22"></script>
-<script src="js/state.js?v=32"></script>
+<script src="js/cotizador-core.js?v=1"></script>
+<script src="js/state.js?v=33"></script>
 <script src="js/helpers.js?v=26"></script>
 <script src="js/moneda.js?v=2"></script>
 <script src="js/render.js?v=38"></script>
@@ -634,13 +665,13 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/catalogo.js?v=22"></script>
 <script src="js/comisiones.js?v=32"></script>
 <script src="js/seguimientos.js?v=22"></script>
-<script src="js/cotizador.js?v=33"></script>
+<script src="js/cotizador.js?v=34"></script>
 <script src="js/ventas.js?v=28"></script>
 <script src="js/stock.js?v=25"></script>
 <script src="js/app.js?v=28"></script>
 <script src="js/buscador.js?v=1"></script>
 <script src="js/notificaciones.js?v=1"></script>
-<script type="module" src="js/firebase.js?v=36"></script>
+<script type="module" src="js/firebase.js?v=37"></script>
 
 </body>
 </html>
