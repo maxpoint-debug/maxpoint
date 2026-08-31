@@ -29,6 +29,7 @@ var STOCK      = [];   // stock de equipos
 var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
 var COM_AJUSTES = []; // ajustes aprobables para períodos posteriores
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
+var COTIZADOR_CFG = window.MAXPOINT_COTIZADOR ? window.MAXPOINT_COTIZADOR.config({}) : {};
 
 // ===================== SESION Y PERMISOS =====================
 // El perfil se completa desde Firebase Authentication + usuarios/{uid}.
@@ -85,6 +86,7 @@ window.FB = {
   delR:     function(id, cb)     { cb('Firebase no conectado todavía'); },
   setCat:   function(items, cb)  { cb('Firebase no conectado todavía'); },
   setConfig:function(d, cb)      { cb('Firebase no conectado todavía'); },
+  setCotizadorConfig:function(d, cb) { cb('Firebase no conectado todavía'); },
   crearLiquidacionComision:function(d, cb) { cb('Firebase no conectado todavía'); },
   actualizarLiquidacionComision:function(id, d, cb) { cb('Firebase no conectado todavía'); },
   getConfig:function(cb)         { cb(null, {}); },

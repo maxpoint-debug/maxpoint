@@ -44,6 +44,7 @@ const cVen = collection(db, 'ventas');
 const cSt  = collection(db, 'stock');
 const dCfg  = doc(db, 'config', 'catalogo');
 const dCom  = doc(db, 'config', 'comisiones');
+const dCot  = doc(db, 'config', 'cotizador');
 
 // V2.1 — entidades base. Conviven con las colecciones actuales.
 const cCli = collection(db, 'clientes');
@@ -449,6 +450,10 @@ window.FB.delR = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo ad
 
 // --- Catalogo y config ---
 window.FB.setConfig = (d, cb) => actualizarAuditable('config', 'config_catalogo', 'catalogo', d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.setCotizadorConfig = (d, cb) => {
+  if (!puede('actualizar_cotizador')) { cb('Solo administrador puede modificar el cotizador'); return; }
+  actualizarAuditable('config', 'config_cotizador', 'cotizador', d).then(() => cb(null)).catch(e => cb(e.message));
+};
 
 window.FB.setCat = async (items, cb) => {
   try {
@@ -538,6 +543,9 @@ onSnapshot(dCom, (snap) => {
 onSnapshot(dCfg, (snap) => {
   if (snap.exists() && typeof catLoadConfig === 'function') catLoadConfig(snap.data());
 }, () => {});
+onSnapshot(dCot, (snap) => {
+  if (typeof cotLoadConfig === 'function') cotLoadConfig(snap.exists() ? snap.data() : {});
+}, () => {});
 
 // --- Tipo de cambio de referencia e historial ---
 onSnapshot(dMon, (snap) => {
@@ -608,7 +616,10 @@ window.FB.setUsados = async (items, cb) => {
     const old = await getDocs(cUsa);
     const b1 = writeBatch(db); old.docs.forEach(d => b1.delete(d.ref)); await b1.commit();
     const b2 = writeBatch(db);
-    items.forEach(u => { const r = doc(cUsa, u.modelo.replace(/[^a-zA-Z0-9]/g,'_')); b2.set(r, u); });
+    items.forEach(u => {
+      const clave = u.modeloClave || (window.MAXPOINT_COTIZADOR && window.MAXPOINT_COTIZADOR.modeloClave(u.modelo, true)) || u.modelo.replace(/[^a-zA-Z0-9]/g,'_');
+      const r = doc(cUsa, clave); b2.set(r, Object.assign({}, u, { modeloClave:clave }));
+    });
     await b2.commit(); await registrarAuditoria('cotizador', 'usados', 'base_reemplazada', {}, { modelos: items.length }); cb(null);
   } catch(e) { cb(e.message); }
 };
