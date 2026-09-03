@@ -62,16 +62,17 @@
         <span class="nb r" id="nb-r" style="display:none"></span>
       </div>
       <div class="ns">Gestion</div>
-      <div class="ni" onclick="showView('pos',this)"><span class="ico">🛒</span>Nueva venta</div>
+      <div class="ni" onclick="showView('pos',this)"><span class="ico">🛒</span>Caja</div>
       <div class="ni" onclick="showView('prod',this)"><span class="ico">🏷️</span>Productos</div>
       <div class="ni" onclick="showView('inv',this)"><span class="ico">📋</span>Inventario</div>
       <div class="ni" onclick="showView('seg',this)"><span class="ico">&#128276;</span>Seguimientos<span class="nb r" id="nb-seg" style="display:none">0</span></div>
-      <div class="ni" onclick="showView('ven',this)"><span class="ico">&#128201;</span>Historial de ventas</div>
+      <div class="ni" onclick="showView('ops',this)"><span class="ico">&#128201;</span>Operaciones de caja</div>
       <div class="ni" onclick="showView('stock',this)"><span class="ico">&#128241;</span>Stock de equipos</div>
       <div class="ni" onclick="showView('cot',this)"><span class="ico">&#128242;</span>Cotizador</div>
       <div class="ni" onclick="showView('cli',this)"><span class="ico">👤</span>Clientes</div>
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
       <div class="ns">Admin</div>
+      <div class="ni" id="nav-ventas-equipos" style="display:none" onclick="showView('ven',this)"><span class="ico">📱</span>Ventas de equipos</div>
       <div class="ni" id="nav-balance" onclick="openLock()"><span class="ico">📊</span>Balance</div>
       <div class="ni" id="nav-users" style="display:none" onclick="showView('users',this)"><span class="ico">👥</span>Usuarios</div>
     </nav>
@@ -661,22 +662,22 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="js/data.js?v=22"></script>
 <script src="js/cotizador-core.js?v=3"></script>
-<script src="js/state.js?v=34"></script>
+<script src="js/state.js?v=35"></script>
 <script src="js/helpers.js?v=27"></script>
 <script src="js/moneda.js?v=2"></script>
-<script src="js/render.js?v=39"></script>
-<script src="js/modals.js?v=46"></script>
+<script src="js/render.js?v=40"></script>
+<script src="js/modals.js?v=47"></script>
 <script src="js/catalogo.js?v=22"></script>
 <script src="js/comisiones.js?v=32"></script>
 <script src="js/seguimientos.js?v=23"></script>
 <script src="js/cotizador.js?v=36"></script>
-<script src="js/pos.js?v=2"></script>
+<script src="js/pos.js?v=3"></script>
 <script src="js/ventas.js?v=28"></script>
 <script src="js/stock.js?v=27"></script>
-<script src="js/app.js?v=29"></script>
+<script src="js/app.js?v=30"></script>
 <script src="js/buscador.js?v=1"></script>
 <script src="js/notificaciones.js?v=1"></script>
-<script type="module" src="js/firebase.js?v=39"></script>
+<script type="module" src="js/firebase.js?v=41"></script>
 
 </body>
 </html>
