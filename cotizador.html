@@ -684,7 +684,7 @@ window.enviarWA = function() {
     '',
     `Coticé mi ${r.modelo} en el cotizador de MaxPoint y quería consultar.`,
     '',
-    `📊 *Resultado de la cotización:*`,
+    `\uD83D\uDCCA *Resultado de la cotización:*`,
     `• Batería: ${r.bat}%`,
     ...(r.descuentos.map(d => `• ${d.lbl}${d.repuesto ? ` (${d.repuesto})` : ''}: - USD ${d.usd}`)),
     ...((r.revision || []).map(lbl => `• ${lbl}: requiere revisión presencial`)),
