@@ -441,7 +441,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 
 <div class="footer">MaxPoint — Av 17 y 34, Mercedes, Bs As · (2324) 522082</div>
 
-<script src="js/cotizador-core.js?v=2"></script>
+<script src="js/cotizador-core.js?v=3"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getFirestore, collection, onSnapshot, doc }
@@ -633,8 +633,20 @@ window.calcularResultado = function() {
   document.getElementById('resPrecio').textContent = resultado.requiereRevision ? 'Revisión presencial' : 'USD ' + resultado.total;
   document.getElementById('resSub').textContent = equipoSel.modelo + ' · ' + bat + '% batería';
 
-  let det = `<div class="res-row"><span class="res-lbl">Equipo</span><span class="res-val base">${equipoSel.modelo}</span></div>`;
-  det += `<div class="res-row"><span class="res-lbl">Estado informado</span><span class="res-val base">Batería ${bat}%</span></div>`;
+  const seguro = v => String(v || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const usd = v => Number(v || 0).toLocaleString('es-AR', { minimumFractionDigits:0, maximumFractionDigits:2 });
+  let det = `<div class="res-row"><span class="res-lbl">Equipo</span><span class="res-val base">${seguro(equipoSel.modelo)}</span></div>`;
+  det += `<div class="res-row"><span class="res-lbl">Valor base</span><span class="res-val base">USD ${usd(equipoSel.precio_usd)}</span></div>`;
+  resultado.descuentos.forEach(d => {
+    const repuesto = d.repuesto ? `<div style="font-size:10px;color:var(--mu);margin-top:2px">${seguro(d.repuesto)}</div>` : '';
+    det += `<div class="res-row"><span class="res-lbl">${seguro(d.lbl)}${repuesto}</span><span class="res-val" style="color:var(--rd)">− USD ${usd(d.usd)}</span></div>`;
+  });
+  resultado.revision.forEach(lbl => {
+    det += `<div class="res-row"><span class="res-lbl">${seguro(lbl)}</span><span class="res-val" style="color:var(--acc)">Revisión presencial</span></div>`;
+  });
+  if (!resultado.descuentos.length && !resultado.revision.length) {
+    det += `<div class="res-row"><span class="res-lbl">Descuentos</span><span class="res-val base">Sin descuentos</span></div>`;
+  }
   det += `<div style="font-size:12px;color:var(--mu);line-height:1.5;padding-top:14px">Valor estimado sujeto a revisión presencial. Atención especializada y evaluación sin compromiso.</div>`;
   document.getElementById('resDetalle').innerHTML = det;
 
@@ -674,7 +686,7 @@ window.enviarWA = function() {
     '',
     `📊 *Resultado de la cotización:*`,
     `• Batería: ${r.bat}%`,
-    ...(r.descuentos.map(d => `• ${d.lbl}: - USD ${d.usd}`)),
+    ...(r.descuentos.map(d => `• ${d.lbl}${d.repuesto ? ` (${d.repuesto})` : ''}: - USD ${d.usd}`)),
     ...((r.revision || []).map(lbl => `• ${lbl}: requiere revisión presencial`)),
     r.requiereRevision ? `• *Valor de toma sujeto a revisión presencial*` : `• *Valor de toma estimado: USD ${r.total}*`,
     '',
