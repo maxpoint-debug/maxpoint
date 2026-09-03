@@ -246,7 +246,8 @@ function cotCalcular() {
 
   var html = row('Precio base', 'USD ' + base, 'var(--tx)')
   resultado.descuentos.forEach(function(e) {
-    html += row(e.lbl, '- USD ' + e.usd, 'var(--rd)');
+    var concepto = e.lbl + (e.repuesto ? '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(e.repuesto) + '</div>' : '');
+    html += row(concepto, '- USD ' + e.usd, 'var(--rd)');
   });
   resultado.revision.forEach(function(lbl) { html += row(lbl, 'Revisión presencial', 'var(--or)'); });
   html += '<div style="background:' + (resultado.requiereRevision ? 'rgba(240,180,41,.08)' : 'rgba(45,206,137,.08)') + ';border:1px solid ' + (resultado.requiereRevision ? 'rgba(240,180,41,.25)' : 'rgba(45,206,137,.25)') + ';'
@@ -449,7 +450,7 @@ function cotEnviarWA() {
   if (estetica === 'marcado') partes.push('Estetica: Muy marcado');
   if (pantalla === 'rota')    partes.push('Pantalla: Rota');
   _cotExtras.forEach(function(e) {
-    if (e.usd) partes.push((e.lbl || 'Descuento') + ': - USD ' + e.usd);
+    if (e.usd) partes.push((e.lbl || 'Descuento') + (e.repuesto ? ' (' + e.repuesto + ')' : '') + ': - USD ' + e.usd);
   });
   partes.push('');
   partes.push(resultado.requiereRevision ? 'Valor de toma: sujeto a revisión presencial' : 'Valor de toma en parte de pago: USD ' + resultado.total);

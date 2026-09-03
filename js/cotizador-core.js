@@ -140,32 +140,39 @@
     return tipoCoincide(texto, tipo) ? 50 : -1;
   }
 
-  function costoCatalogo(catalogo, modelo, tipo, redondeo) {
+  function seleccionarCatalogo(catalogo, modelo, tipo, redondeo) {
     var objetivo = datosModelo(modelo); if (!objetivo) return null;
     var candidatos = (catalogo || []).filter(function(p) {
       var d = datosModelo(p.label);
       return d && d.generacion === objetivo.generacion && d.variante === objetivo.variante
         && tipoCoincide([p.label, p.tipo].filter(Boolean).join(' '), tipo) && Number(p.costo_usd) > 0;
     }).map(function(p) {
-      return { costo:Number(p.costo_usd), prioridad:prioridadRepuesto(p, tipo, objetivo) };
+      return { costo:Number(p.costo_usd), prioridad:prioridadRepuesto(p, tipo, objetivo), label:String(p.label || '') };
     }).filter(function(p) { return p.prioridad >= 0; });
     if (!candidatos.length) return null;
     candidatos.sort(function(a, b) { return b.prioridad - a.prioridad || a.costo - b.costo; });
-    var costo = candidatos[0].costo;
-    return redondeo === 'sin_redondeo' ? costo : Math.round(costo);
+    var elegido = candidatos[0];
+    return { costo:redondeo === 'sin_redondeo' ? elegido.costo : Math.round(elegido.costo), label:elegido.label };
+  }
+
+  function costoCatalogo(catalogo, modelo, tipo, redondeo) {
+    var elegido = seleccionarCatalogo(catalogo, modelo, tipo, redondeo);
+    return elegido ? elegido.costo : null;
   }
 
   function calcular(entrada) {
     var cfg = config(entrada.config), modelo = entrada.modelo || '';
     var detalles = [], revision = [];
-    function descuento(lbl, usd) { if (Number(usd) > 0) detalles.push({ lbl:lbl, usd:Number(usd) }); }
+    function descuento(lbl, usd, repuesto) {
+      if (Number(usd) > 0) detalles.push({ lbl:lbl, usd:Number(usd), repuesto:repuesto || '' });
+    }
     function falta(lbl, fallback, usarSiempre) {
       if ((usarSiempre || cfg.sinCoincidencia === 'usar_fallback') && Number(fallback) > 0) descuento(lbl + ' (configurado)', fallback);
       else revision.push(lbl);
     }
     function catalogoO(tipo, lbl, fallback, usarSiempre) {
-      var costo = costoCatalogo(entrada.catalogo, modelo, tipo, cfg.redondeo);
-      if (costo != null) descuento(lbl, costo); else falta(lbl, fallback, usarSiempre);
+      var elegido = seleccionarCatalogo(entrada.catalogo, modelo, tipo, cfg.redondeo);
+      if (elegido) descuento(lbl, elegido.costo, elegido.label); else falta(lbl, fallback, usarSiempre);
     }
 
     if (Number(entrada.bateria) < cfg.bateria.umbral) catalogoO('bateria', 'Batería', cfg.bateria.fallbackUsd, true);
@@ -196,6 +203,7 @@
     modeloClave: modeloClave,
     etiquetaModelo: etiquetaModelo,
     consolidar: consolidar,
+    seleccionarCatalogo: seleccionarCatalogo,
     costoCatalogo: costoCatalogo,
     calcular: calcular
   };
