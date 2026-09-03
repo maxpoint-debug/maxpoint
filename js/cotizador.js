@@ -459,7 +459,7 @@ function cotEnviarWA() {
   partes.push('MaxPoint - Sistema de Taller');
 
   var msg = partes.join('\n');
-  var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
+  var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(waTextoPlano(msg));
   window.open(url, '_blank');
   closeM('mCotWA');
 }

@@ -112,6 +112,15 @@ function setVal(id, v) {
   if (e) e.value = v || '';
 }
 
+// Evita que WhatsApp reciba caracteres sustitutos o pares Unicode que algunos
+// hostings/navegadores convierten en el símbolo "rombo con signo de pregunta".
+function waTextoPlano(texto) {
+  return String(texto || '')
+    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')
+    .replace(/\uFFFD/g, '')
+    .replace(/[\u2600-\u27BF]/g, '');
+}
+
 function copiarTexto(texto, mensaje) {
   if (!texto) { toast('No hay dato para copiar', 'var(--rd)'); return; }
   function copiarFallback() {

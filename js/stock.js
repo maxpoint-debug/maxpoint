@@ -102,7 +102,7 @@ function copiarListaStock() {
     var label = [s.modelo, s.capacidad, s.color].filter(Boolean).join(' ');
     var precio = s.precio_venta ? ' — $' + Number(s.precio_venta).toLocaleString('es-AR') : '';
     var det = s.detalles ? ' (' + s.detalles + ')' : '';
-    return '\uD83D\uDCF1 ' + label + det + precio;
+    return '- ' + label + det + precio;
   }).join('\n');
 
   if (navigator.clipboard && navigator.clipboard.writeText) {

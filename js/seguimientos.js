@@ -131,7 +131,7 @@ function segEnviarWA(seg) {
   var tel = (seg.tel || '').replace(/[^0-9]/g,'');
   if (!tel) { toast('Sin telefono registrado', 'var(--rd)'); return; }
   var msg = segMensaje(seg);
-  var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(msg);
+  var url = 'https://wa.me/' + tel + '?text=' + encodeURIComponent(waTextoPlano(msg));
   window.open(url, '_blank');
   // Marcar como contactado automaticamente
   segCambiarEstado(seg, 'contactado');
