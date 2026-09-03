@@ -8,7 +8,7 @@ function render() {
   else if (VIEW === 'rpus') renderRpus();
   else if (VIEW === 'seg')   renderSeg();
   else if (VIEW === 'pos' && typeof renderPos === 'function') renderPos();
-  else if (VIEW === 'ven' && typeof renderPosHistorial === 'function') renderPosHistorial();
+  else if (VIEW === 'ops' && typeof renderPosHistorial === 'function') renderPosHistorial();
   else if (VIEW === 'ven')   renderVen();
   else if (VIEW === 'prod' && typeof renderProductosPos === 'function') renderProductosPos();
   else if (VIEW === 'inv' && typeof renderInventarioPos === 'function') renderInventarioPos();
@@ -1006,16 +1006,25 @@ function fallbackCopy(texto) {
 // ── RENDER VENTAS ────────────────────────────────────
 function renderVen() {
   var cnt = el('cnt'); cnt.innerHTML = '';
-  var total        = VENTAS.length;
-  var totalPesos   = VENTAS.reduce(function(s,v) { return s + Number(v.precio||0); }, 0);
-  var totalCosto   = VENTAS.reduce(function(s,v) { return s + Number(v.costo||0); }, 0);
+  // Registro administrativo separado: nunca mezcla documentos del POS.
+  var ventasEquipos = VENTAS.filter(function(v) { return v.tipoRegistro !== 'pos'; });
+  var total        = ventasEquipos.length;
+  var totalPesos   = ventasEquipos.reduce(function(s,v) { return s + Number(v.precio||0); }, 0);
+  var totalCosto   = ventasEquipos.reduce(function(s,v) { return s + Number(v.costo||0); }, 0);
   var totalGanancia = totalPesos - totalCosto;
+  var ahoraVentas = new Date();
+  var ventasMesActual = ventasEquipos.filter(function(v) { var p=fechaVentaPartes(v.fecha); return p.valida && p.anio===ahoraVentas.getFullYear() && p.mes===ahoraVentas.getMonth()+1; });
+  var facturacionMesActual = ventasMesActual.reduce(function(s,v){return s+Number(v.precio||0);},0);
+  var margenMesActual = ventasMesActual.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
 
   var sc = document.createElement('div'); sc.className = 'sc-row';
-  sc.innerHTML = '<div class="sc"><div class="scl">Total ventas</div><div class="scv cb">' + total + '</div></div>';
+  sc.innerHTML = '<div class="sc"><div class="scl">Equipos este mes</div><div class="scv cb">' + ventasMesActual.length + '</div></div>'
+    + '<div class="sc"><div class="scl">Facturación mes</div><div class="scv cg">' + ccUsd(facturacionMesActual) + '</div></div>'
+    + '<div class="sc"><div class="scl">Margen mes</div><div class="scv ' + (margenMesActual>=0?'cg':'cr') + '">' + ccUsd(margenMesActual) + '</div></div>'
+    + '<div class="sc"><div class="scl">Registro histórico</div><div class="scv cb">' + total + '</div></div>';
   cnt.appendChild(sc);
 
-  if (!VENTAS.length) {
+  if (!ventasEquipos.length) {
     var empty = document.createElement('div');
     empty.style.cssText = 'padding:32px;text-align:center;color:var(--mu)';
     empty.innerHTML = '<div style="font-size:32px;margin-bottom:12px">&#128201;</div>'
@@ -1047,7 +1056,7 @@ function renderVen() {
   }
   // Agrupar por mes
   var porMes = {};
-  VENTAS.slice().sort(function(a,b){ return fechaVentaOrden(b) - fechaVentaOrden(a); })
+  ventasEquipos.slice().sort(function(a,b){ return fechaVentaOrden(b) - fechaVentaOrden(a); })
   .forEach(function(v) {
     var k = fechaVentaMes(v);
     if (!porMes[k]) porMes[k] = [];
@@ -1067,7 +1076,7 @@ function renderVen() {
 
     var sec = document.createElement('div'); sec.style.cssText = 'margin-top:16px';
     sec.innerHTML = '<div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bd)">'
-      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">' + titulo + ' — ' + vensMes.length + ' ventas</div>'
+      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">' + titulo + ' — ' + vensMes.length + ' equipos · ' + ccUsd(totalMes) + ' · margen ' + ccUsd(ganMes) + '</div>'
       + '</div>';
 
     vensMes.forEach(function(v) {
@@ -1084,9 +1093,9 @@ function renderVen() {
         + (v.vendedor ? '<div style="font-size:10px;color:var(--mu)">' + esc(v.vendedor) + (v.canal?' via '+esc(v.canal):'') + '</div>' : '')
         + '</div>'
         + '<div style="text-align:right;flex-shrink:0">'
-        + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + pesos(v.precio||0) + '</div>'
-        + (puede('ver_costos') && v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + pesos(v.costo) + '</div>' : '')
-        + (gan !== null ? '<div style="font-size:11px;font-weight:700;color:' + (gan>=0?'var(--gr)':'var(--rd)') + '">Gan: ' + pesos(gan) + '</div>' : '')
+        + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + ccUsd(v.precio||0) + '</div>'
+        + (puede('ver_costos') && v.costo && Number(v.costo) ? '<div style="font-size:10px;color:var(--mu)">Costo: ' + ccUsd(v.costo) + '</div>' : '')
+        + (gan !== null ? '<div style="font-size:11px;font-weight:700;color:' + (gan>=0?'var(--gr)':'var(--rd)') + '">Margen: ' + ccUsd(gan) + '</div>' : '')
         + '<div style="font-size:10px;color:var(--mu);margin-top:2px">' + esc(v.fecha||'') + '</div>'
         + '</div></div>'
         + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'

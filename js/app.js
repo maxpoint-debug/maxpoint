@@ -11,7 +11,7 @@ function showView(v, navEl) {
   if (navEl) navEl.classList.add('active');
 
   // Titulo
-  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', seg: 'Seguimientos', pos: 'Nueva venta', ven: 'Historial de ventas', prod: 'Productos', inv: 'Inventario', stock: 'Stock de equipos', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Centro de Control', users: 'Usuarios' };
+  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', seg: 'Seguimientos', pos: 'Caja', ops: 'Operaciones de caja', ven: 'Ventas de equipos', prod: 'Productos', inv: 'Inventario', stock: 'Stock de equipos', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Centro de Control', users: 'Usuarios' };
   el('topT').textContent = titulos[v] || v;
 
   // Botones topbar
@@ -28,10 +28,13 @@ function setTopActions(v) {
   } else if (v === 'rpus') {
     ta.appendChild(mkBtn('btn-p', '＋ Nuevo repuesto', openNewRepuesto));
   } else if (v === 'pos') {
-    ta.appendChild(mkBtn('btn-g btn-sm', 'Historial', function() { showView('ven'); }));
+    ta.appendChild(mkBtn('btn-g btn-sm', 'Operaciones', function() { showView('ops'); }));
+    ta.appendChild(mkBtn('btn-g btn-sm', 'Cobrar reparación', posElegirReparacionCobro));
+    if (puede('ver_ventas_equipos')) ta.appendChild(mkBtn('btn-g btn-sm', 'Vender equipo', openNewVenta));
   } else if (v === 'ven') {
-    ta.appendChild(mkBtn('btn-g btn-sm', 'Venta anterior', openNewVenta));
-    ta.appendChild(mkBtn('btn-p', '+ Nueva venta POS', function() { showView('pos'); }));
+    ta.appendChild(mkBtn('btn-p', '+ Vender equipo', openNewVenta));
+  } else if (v === 'ops') {
+    ta.appendChild(mkBtn('btn-p', '+ Vender accesorio', function() { showView('pos'); }));
   } else if (v === 'prod') {
     if (puede('gestionar_productos')) ta.appendChild(mkBtn('btn-p', '+ Nuevo producto', function() { posAbrirProducto(); }));
   } else if (v === 'inv') {
