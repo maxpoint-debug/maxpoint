@@ -26,6 +26,8 @@ var CATALOGO   = [];   // productos del proveedor (desde Firebase)
 var USADOS     = [];   // equipos usados para cotizar
 var VENTAS     = [];   // registro de ventas
 var STOCK      = [];   // stock de equipos
+var PRODUCTOS_POS = []; // catalogo comercial POS (productos y servicios)
+var MOVIMIENTOS_STOCK_POS = []; // trazabilidad del inventario POS
 var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
 var COM_AJUSTES = []; // ajustes aprobables para períodos posteriores
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
@@ -46,7 +48,10 @@ var PERMISOS_BASE = {
   actualizar_cotizador: ['administrador'],
   editar_tipo_cambio: ['administrador'],
   gestionar_comisiones: ['administrador'],
-  resolver_incidencias: ['administrador']
+  resolver_incidencias: ['administrador'],
+  gestionar_productos: ['administrador'],
+  ajustar_stock_pos: ['administrador'],
+  anular_venta_pos: ['administrador']
 };
 
 function sesionActiva() {
@@ -90,6 +95,10 @@ window.FB = {
   crearLiquidacionComision:function(d, cb) { cb('Firebase no conectado todavía'); },
   actualizarLiquidacionComision:function(id, d, cb) { cb('Firebase no conectado todavía'); },
   getConfig:function(cb)         { cb(null, {}); },
+  guardarProductoPos:function(d, cb) { cb('Firebase no conectado todavía'); },
+  ajustarStockPos:function(d, cb) { cb('Firebase no conectado todavía'); },
+  crearVentaPos:function(d, cb) { cb('Firebase no conectado todavía'); },
+  anularVentaPos:function(id, motivo, cb) { cb('Firebase no conectado todavía'); },
 };
 
 // ===================== CONSTANTES =====================
