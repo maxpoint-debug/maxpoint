@@ -122,7 +122,7 @@
 
     if (tipo === 'pantalla') {
       if (!/(oled)/.test(texto) || !/(^|\W)ic(\W|$)/.test(texto)) return -1;
-      if (/(incell|in cell|lcd|tft|gx|soft oled|hard oled)/.test(texto)) return -1;
+      if (/(incell|in cell|lcd|tft|gx|diagnostico)/.test(texto)) return -1;
       return 100;
     }
     if (tipo === 'bateria') {
@@ -131,8 +131,8 @@
     }
     if (tipo === 'carcasa') {
       if (gen >= 14) {
-        if (!/(vidrio|glass|tapa)/.test(texto) || !/chapa/.test(texto)) return -1;
-        return 100;
+        if (!/(vidrio|glass|tapa)/.test(texto)) return -1;
+        return /chapa/.test(texto) ? 110 : 100;
       }
       if (!/(carcasa|housing|chasis)/.test(texto) || /(con\s*flex|flex\s*incluido)/.test(texto)) return -1;
       return /sin\s*flex/.test(texto) ? 110 : 100;
