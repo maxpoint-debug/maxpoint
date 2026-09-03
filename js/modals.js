@@ -874,7 +874,7 @@ function abrirWA2(id) {
   var mensajes = {
     'Ingresado':   'recibimos tu equipo y quedo registrado. Te avisamos cuando tengamos novedades.',
     'En proceso':  'tu equipo esta siendo reparado. Te avisamos en cuanto este listo.',
-    'Listo':       'tu equipo esta *LISTO para retirar* 🎉. Podes pasar cuando quieras por Av 17 y 34.',
+    'Listo':       'tu equipo esta *LISTO para retirar* \uD83C\uDF89. Podes pasar cuando quieras por Av 17 y 34.',
     'Entregado':   'gracias por tu visita. Ante cualquier consulta, avisanos.',
     'No aprobado': 'necesitamos hablar sobre el presupuesto. Por favor comunicate con nosotros.',
     'Garantia':    'tu equipo ingreso por garantia. Te informamos en cuanto tengamos novedades.',
@@ -883,23 +883,23 @@ function abrirWA2(id) {
   var nombreCorto = (r.nombre || '').split(' ')[0];
   var lineas = [];
 
-  lineas.push('Hola *' + nombreCorto + '*! 👋 Te escribimos desde *MaxPoint* (Av 17 y 34, Mercedes).');
+  lineas.push('Hola *' + nombreCorto + '*! \uD83D\uDC4B Te escribimos desde *MaxPoint* (Av 17 y 34, Mercedes).');
   lineas.push('');
   lineas.push('Sobre tu *' + (r.equipo || '') + '* (Orden ' + (r.orden || '') + '):');
   lineas.push(mensajes[r.estado] || 'Tenemos novedades sobre tu equipo.');
 
   if (r.presupuesto && r.presupuesto !== '0') {
     lineas.push('');
-    lineas.push('💰 Presupuesto: $' + Number(r.presupuesto).toLocaleString());
+    lineas.push('\uD83D\uDCB0 Presupuesto: $' + Number(r.presupuesto).toLocaleString());
     if (estadoPagoReparacion(r) !== 'Pagado') {
       var saldo = saldoReparacion(r);
       var cobrado = totalCobradoReparacion(r);
       if (cobrado > 0) {
-        lineas.push('✅ Cobrado: $' + cobrado.toLocaleString());
+        lineas.push('\u2705 Cobrado: $' + cobrado.toLocaleString());
       }
-      lineas.push('💳 Saldo pendiente: $' + saldo.toLocaleString());
+      lineas.push('\uD83D\uDCB3 Saldo pendiente: $' + saldo.toLocaleString());
     } else {
-      lineas.push('✅ Pago completo');
+      lineas.push('\u2705 Pago completo');
     }
   }
 
@@ -909,7 +909,7 @@ function abrirWA2(id) {
   }
 
   lineas.push('');
-  lineas.push('🙏 Gracias por elegirnos!');
+  lineas.push('\uD83D\uDE4F Gracias por elegirnos!');
 
   var msg = lineas.join('\n');
   abrirWA(r.telefono, msg);
