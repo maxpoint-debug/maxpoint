@@ -511,13 +511,20 @@ function badgeRpu(estado) {
 // ============================================================
 // PAGO
 // ============================================================
+var _pagosRepBorrador = [];
+
+function cuentaSugeridaPago(medio) {
+  if (medio === 'Efectivo') return 'Caja efectivo';
+  if (medio === 'Mercado Pago') return 'Mercado Pago';
+  return 'Santander MaxPoint';
+}
+
 function openPago(id) {
   var r = REPS.find(function(x) { return x.id === id; });
   if (!r) return;
   _pagoId  = id;
-  _pagoMedio = 'Efectivo';
-
   var sal = saldoReparacion(r);
+  _pagosRepBorrador = [{ medio:'Efectivo', cuenta:'Caja efectivo', monto:sal > 0 ? sal : Number(r.presupuesto || 0) }];
   var c   = el('mPagoC'); c.innerHTML = '';
 
   // Info orden
@@ -527,62 +534,44 @@ function openPago(id) {
   sub.textContent = (r.orden || '') + ' · ' + (r.equipo || '');
   info.appendChild(nom); info.appendChild(sub); c.appendChild(info);
 
-  // Campos
+  // Datos comunes del cobro
   var fg = document.createElement('div'); fg.className = 'fgrid';
   fg.innerHTML = ''
-    + '<div class="f"><label>Monto ($)</label><input id="pgMonto" type="number" value="' + (sal > 0 ? sal : (r.presupuesto || 0)) + '"/></div>'
     + '<div class="f"><label>Fecha</label><input id="pgFech" value="' + hoy() + '"/></div>'
     + '<div class="f full"><label>Notas</label><input id="pgNot" placeholder="Opcional"/></div>';
   c.appendChild(fg);
-
-  // Medio de pago
-  var ml = document.createElement('div'); ml.className = 'f full'; ml.style.marginTop = '10px';
-  var lbl = document.createElement('label'); lbl.textContent = 'Medio de pago'; ml.appendChild(lbl);
-  var po = document.createElement('div'); po.className = 'po';
-  [
-    { k: 'Efectivo',       l: '💵 Efectivo' },
-    { k: 'Transferencia',  l: '📲 Transferencia' },
-    { k: 'Debito',         l: '💳 Debito' },
-    { k: 'Credito',        l: '💳 Credito' },
-  ].forEach(function(op) {
-    var d = document.createElement('div');
-    d.className = 'po-opt' + (op.k === 'Efectivo' ? ' sel' : '');
-    d.textContent = op.l;
-    d.addEventListener('click', function() {
-      _pagoMedio = op.k;
-      po.querySelectorAll('.po-opt').forEach(function(x) { x.classList.remove('sel'); });
-      d.classList.add('sel');
-    });
-    po.appendChild(d);
-  });
-  ml.appendChild(po); c.appendChild(ml);
+  var titulo = document.createElement('div'); titulo.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-top:12px';
+  titulo.innerHTML='<label style="font-size:11px;font-weight:700">Pagos · ARS</label><button class="btn btn-g btn-sm" type="button" onclick="agregarPagoReparacion()">+ Combinar</button>';
+  c.appendChild(titulo);
+  var lista=document.createElement('div');lista.id='pgLista';c.appendChild(lista);
+  var diferencia=document.createElement('div');diferencia.id='pgDiferencia';diferencia.style.cssText='text-align:right;font-size:11px;font-weight:700;margin-top:6px';c.appendChild(diferencia);
+  renderPagosReparacion();
 
   openM('mPago');
 }
 
+function renderPagosReparacion() {
+  var lista=el('pgLista');if(!lista)return;
+  lista.innerHTML=_pagosRepBorrador.map(function(p,i){return '<div class="pos-pago"><select onchange="cambiarPagoReparacion('+i+',\'medio\',this.value)">'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(m){return '<option'+(m===p.medio?' selected':'')+'>'+m+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="cambiarPagoReparacion('+i+',\'cuenta\',this.value)"><input type="number" min="0" value="'+p.monto+'" onchange="cambiarPagoReparacion('+i+',\'monto\',this.value)">'+(_pagosRepBorrador.length>1?'<button class="pos-remove" onclick="quitarPagoReparacion('+i+')">×</button>':'')+'</div>';}).join('');
+  actualizarDiferenciaPagoReparacion();
+}
+function cambiarPagoReparacion(i,campo,valor){if(campo==='monto')_pagosRepBorrador[i].monto=Math.max(0,Number(valor)||0);else{_pagosRepBorrador[i][campo]=valor;if(campo==='medio')_pagosRepBorrador[i].cuenta=cuentaSugeridaPago(valor);}renderPagosReparacion();}
+function agregarPagoReparacion(){_pagosRepBorrador.push({medio:'Transferencia',cuenta:'Santander MaxPoint',monto:0});renderPagosReparacion();}
+function quitarPagoReparacion(i){if(_pagosRepBorrador.length>1)_pagosRepBorrador.splice(i,1);renderPagosReparacion();}
+function actualizarDiferenciaPagoReparacion(){var r=REPS.find(function(x){return x.id===_pagoId;});if(!r)return;var total=_pagosRepBorrador.reduce(function(s,p){return s+Number(p.monto||0);},0),dif=saldoReparacion(r)-total,e=el('pgDiferencia');if(!e)return;e.textContent=Math.abs(dif)<0.01?'Saldo cubierto':(dif>0?'Quedará pendiente '+pesos(dif):'Excede el saldo '+pesos(-dif));e.style.color=dif<0?'var(--rd)':(Math.abs(dif)<0.01?'var(--gr)':'var(--or)');}
+
 function confPago() {
   var r = REPS.find(function(x) { return x.id === _pagoId; });
   if (!r) return;
-  var monto = Number(val('pgMonto'));
-  if (!Number.isFinite(monto) || monto <= 0) { toast('Ingresá un monto de pago válido', 'var(--rd)'); return; }
-  // Si el registro es legacy, preservamos la seña previa como primer pago al
-  // registrar el siguiente. No hay migración masiva ni se reemplazan pagos.
-  var pagos = pagosReparacion(r).concat([{
-    monto:  monto,
-    fecha:  val('pgFech'),
-    medio:  _pagoMedio,
-    notas:  val('pgNot'),
-  }]);
-  var totalCobrado = pagos.reduce(function(total, pago) { return total + Number(pago.monto || 0); }, 0);
-  var presupuesto = Number(r.presupuesto || 0);
-  // Sin presupuesto no se infiere un estado financiero: se mantiene el actual.
-  var nuevoEstadoPago = presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente');
-  var financieros = { pago: nuevoEstadoPago, pagos: pagos, totalCobrado: totalCobrado, saldo: Math.max(0, presupuesto - totalCobrado) };
-  FB.upd(_pagoId, financieros, function(err) {
+  var pagos=_pagosRepBorrador.map(function(p){return {monto:Number(p.monto||0),medio:p.medio,cuenta:p.cuenta,fecha:val('pgFech'),notas:val('pgNot'),moneda:'ARS'};});
+  if(!pagos.length||pagos.some(function(p){return !(p.monto>0)||!p.medio||!p.cuenta;})){toast('Completá medio, cuenta e importe de cada pago','var(--rd)');return;}
+  if(Number(r.presupuesto||0)>0&&pagos.reduce(function(s,p){return s+p.monto;},0)>saldoReparacion(r)+0.01){toast('El cobro supera el saldo pendiente','var(--rd)');return;}
+  var boton=document.querySelector('#mPago .mf .btn-p');if(boton)boton.disabled=true;
+  FB.registrarCobroReparacion(_pagoId, pagos, function(err, resultado) {
+    if(boton)boton.disabled=false;
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    Object.assign(r, financieros);
     closeM('mPago');
-    toast('✓ Pago registrado — saldo ' + pesos(Math.max(0, presupuesto - totalCobrado)));
+    toast('✓ Cobro registrado en Caja — saldo ' + pesos(resultado.saldo));
   });
 }
 

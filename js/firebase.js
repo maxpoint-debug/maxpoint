@@ -74,6 +74,7 @@ function authUiSesion() {
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'none';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = puede('crear_usuario') ? '' : 'none';
   const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = puede('ver_balance') ? '' : 'none';
+  const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = puede('ver_ventas_equipos') ? '' : 'none';
   const resumen = document.getElementById('financeSummary'); if (resumen) resumen.style.display = puede('ver_balance') ? '' : 'none';
   const info = document.getElementById('sesionInfo');
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
@@ -82,6 +83,7 @@ function authUiLogin() {
   const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'none';
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'flex';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = 'none';
+  const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = 'none';
 }
 async function verificarBootstrap() {
   try { bootstrapDisponible = (await getDocs(query(cUsr, limit(1)))).empty; }
@@ -519,7 +521,7 @@ onSnapshot(query(cRp, orderBy('_ts','asc')), (snap) => {
 // --- Listener ventas ---
 onSnapshot(query(cVen, orderBy('fecha','desc')), (snap) => {
   window.VENTAS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  if (window.VIEW === 'ven') render();
+  if (window.VIEW === 'ven' || window.VIEW === 'ops') render();
   if (typeof actualizarBadgeSeg === 'function') actualizarBadgeSeg();
 }, () => {});
 
@@ -556,6 +558,10 @@ onSnapshot(cPro, (snap) => {
 onSnapshot(cMovSt, (snap) => {
   window.MOVIMIENTOS_STOCK_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data())).sort((a,b) => String(b.fechaHora||'').localeCompare(String(a.fechaHora||'')));
   if (window.VIEW === 'inv' && typeof render === 'function') render();
+}, () => {});
+onSnapshot(query(cMovFin, orderBy('fechaHora','desc'), limit(250)), (snap) => {
+  window.MOVIMIENTOS_FINANCIEROS_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
+  if (window.VIEW === 'ops' && typeof render === 'function') render();
 }, () => {});
 onSnapshot(dCot, (snap) => {
   if (typeof cotLoadConfig === 'function') cotLoadConfig(snap.exists() ? snap.data() : {});
@@ -684,6 +690,43 @@ window.FB.ajustarStockPos = async (data, cb) => {
   } catch (e) { cb(e.message); }
 };
 
+window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
+  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  try {
+    const pagosEntrada = Array.isArray(nuevosPagos) ? nuevosPagos : [];
+    if (!pagosEntrada.length || pagosEntrada.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta)) throw new Error('Cada pago necesita medio, cuenta e importe');
+    const reparacionRef = doc(cR, id), pagoRefs = pagosEntrada.map(() => doc(cPagPos));
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    let saldoFinal = 0;
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(reparacionRef);
+      if (!snap.exists()) throw new Error('La reparación ya no existe');
+      const r = snap.data(), presupuesto = Number(r.presupuesto || 0);
+      const existentes = Array.isArray(r.pagos) && r.pagos.length ? r.pagos.slice() : (Number(r.sena || 0) > 0 ? [{ monto:Number(r.sena), fecha:r.fecha || '', medio:'Registro previo', cuenta:'Sin especificar', moneda:'ARS', legacy:true }] : []);
+      const cobradoAnterior = existentes.reduce((s,p) => s + Number(p.monto || 0), 0);
+      const ingreso = pagosEntrada.reduce((s,p) => s + Number(p.monto || 0), 0);
+      if (presupuesto > 0 && cobradoAnterior + ingreso > presupuesto + 0.01) throw new Error('El cobro supera el saldo pendiente');
+      const embebidos = pagosEntrada.map((p,idx) => ({ pagoId:pagoRefs[idx].id, monto:Number(p.monto), fecha:p.fecha || hoy(),
+        medio:p.medio, cuenta:p.cuenta, moneda:'ARS', notas:String(p.notas || ''), estado:'aplicado', usuario:actor, fechaHora:ahora }));
+      const pagosFinales = existentes.concat(embebidos), totalCobrado = cobradoAnterior + ingreso;
+      saldoFinal = Math.max(0, presupuesto-totalCobrado);
+      const financieros = { pagos:pagosFinales, totalCobrado:totalCobrado, saldo:saldoFinal,
+        pago:presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente') };
+      tx.update(reparacionRef, Object.assign({}, financieros, { actualizadoEn:serverTimestamp() }));
+      embebidos.forEach((p,idx) => {
+        const pagoDoc = Object.assign({}, p, { schemaVersion:1, origenTipo:'reparacion', origenId:id, reparacionId:id,
+          orden:r.orden || '', clienteNombre:r.nombre || '', creadoEn:serverTimestamp() });
+        tx.set(pagoRefs[idx], pagoDoc);
+        tx.set(doc(cMovFin), Object.assign({}, pagoDoc, { tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
+      });
+      tx.set(doc(cAud), { entidad:'reparacion', entidadId:id, accion:'cobro_registrado', actor:actor,
+        cambios:[{campo:'totalCobrado',antes:cobradoAnterior,despues:totalCobrado},{campo:'saldo',antes:Math.max(0,presupuesto-cobradoAnterior),despues:saldoFinal}],
+        fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, { saldo:saldoFinal });
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
 window.FB.crearVentaPos = async (data, cb) => {
   if (!sesionActiva()) { cb('Sesión no válida'); return; }
   try {
@@ -735,6 +778,7 @@ window.FB.crearVentaPos = async (data, cb) => {
         descuentoTotal:descuentoItemsValidado+importePorcentaje+importeFijo, total:totalValidado,
         costoTotal:costoValidado, margenBruto:totalValidado-costoValidado, schemaVersion:1, tipoRegistro:'pos', numeroVenta:numero,
         numeroHumano:'Venta #' + String(numero).padStart(6, '0'), estado:'activa', usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      venta.fecha = hoy(); venta.hora = horaActual();
       tx.set(ventaRef, venta);
       snapshots.forEach(x => {
         if (!x.p.controlaStock) return;
