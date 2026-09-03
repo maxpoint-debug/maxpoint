@@ -55,12 +55,15 @@
 
   function datosModelo(texto) {
     var limpio = sinAcentos(texto).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
-    var modelo = limpio.match(/iphone\s*(\d{1,2})(?:\s*(pro\s*max|pro|max|plus|mini|air))?/i)
-      || limpio.match(/(?:^|\s)(\d{1,2})(?:\s*(pro\s*max|pro|max|plus|mini|air))?(?=\s|$)/i);
+    // La lista de proveedores suele abreviar iPhone como IP/IPH y Pro/Pro Max
+    // como P/PM (por ejemplo: "OLED IC IP 14P").
+    var modelo = limpio.match(/(?:iphone|iph|ip)\s*(\d{1,2})\s*(pro\s*max|promax|pm|pro|p|max|plus|mini|air)?(?=\s|$)/i)
+      || limpio.match(/(?:^|\s)(\d{1,2})\s*(pro\s*max|promax|pm|pro|p|max|plus|mini|air)?(?=\s|$)/i);
     var capacidad = limpio.match(/\b(\d+)\s*(gb|tb)\b/i);
     if (!modelo) return null;
     var variante = String(modelo[2] || '').replace(/\s+/g, ' ').trim();
-    if (variante === 'max') variante = 'pro max';
+    if (variante === 'max' || variante === 'pm' || variante === 'promax') variante = 'pro max';
+    if (variante === 'p') variante = 'pro';
     return {
       generacion: String(Number(modelo[1])),
       variante: variante,
@@ -103,11 +106,38 @@
       faceid: function() { return /(face\s*id|faceid)/.test(l); },
       camtras: function() { return /(camara|camera)/.test(l) && !/(frontal|front)/.test(l) && !/(vidrio|glass)/.test(l); },
       camfront: function() { return /(camara|camera)/.test(l) && /(frontal|front)/.test(l); },
-      carcasa: function() { return /(carcasa|tapa|chasis)/.test(l); },
+      carcasa: function() { return /(carcasa|tapa|chasis|vidrio\s*trasero|back\s*glass)/.test(l); },
       vidriocam: function() { return /(vidrio|glass)/.test(l) && /(camara|camera)/.test(l); },
       botones: function() { return /(boton|flex)/.test(l) && /(power|volumen|boton)/.test(l); }
     };
     return reglas[tipo] ? reglas[tipo]() : false;
+  }
+
+  // Devuelve prioridad comercial. Un valor negativo descarta el repuesto.
+  // No se elige simplemente el más barato: primero se respeta la calidad/tipo
+  // que MaxPoint usa para presupuestar y recién después se compara el costo.
+  function prioridadRepuesto(producto, tipo, objetivo) {
+    var texto = sinAcentos([producto.label, producto.tipo].filter(Boolean).join(' '));
+    var gen = Number(objetivo.generacion || 0);
+
+    if (tipo === 'pantalla') {
+      if (!/(oled)/.test(texto) || !/(^|\W)ic(\W|$)/.test(texto)) return -1;
+      if (/(incell|in cell|lcd|tft|gx|soft oled|hard oled)/.test(texto)) return -1;
+      return 100;
+    }
+    if (tipo === 'bateria') {
+      if (!/ampsentrix/.test(texto) || /(con\s*flex|flex\s*incluido)/.test(texto)) return -1;
+      return /sin\s*flex/.test(texto) ? 110 : 100;
+    }
+    if (tipo === 'carcasa') {
+      if (gen >= 14) {
+        if (!/(vidrio|glass|tapa)/.test(texto) || !/chapa/.test(texto)) return -1;
+        return 100;
+      }
+      if (!/(carcasa|housing|chasis)/.test(texto) || /(con\s*flex|flex\s*incluido)/.test(texto)) return -1;
+      return /sin\s*flex/.test(texto) ? 110 : 100;
+    }
+    return tipoCoincide(texto, tipo) ? 50 : -1;
   }
 
   function costoCatalogo(catalogo, modelo, tipo, redondeo) {
@@ -115,10 +145,13 @@
     var candidatos = (catalogo || []).filter(function(p) {
       var d = datosModelo(p.label);
       return d && d.generacion === objetivo.generacion && d.variante === objetivo.variante
-        && tipoCoincide(p.label, tipo) && Number(p.costo_usd) > 0;
-    }).map(function(p) { return Number(p.costo_usd); });
+        && tipoCoincide([p.label, p.tipo].filter(Boolean).join(' '), tipo) && Number(p.costo_usd) > 0;
+    }).map(function(p) {
+      return { costo:Number(p.costo_usd), prioridad:prioridadRepuesto(p, tipo, objetivo) };
+    }).filter(function(p) { return p.prioridad >= 0; });
     if (!candidatos.length) return null;
-    var costo = Math.min.apply(null, candidatos);
+    candidatos.sort(function(a, b) { return b.prioridad - a.prioridad || a.costo - b.costo; });
+    var costo = candidatos[0].costo;
     return redondeo === 'sin_redondeo' ? costo : Math.round(costo);
   }
 
