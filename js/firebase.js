@@ -57,6 +57,12 @@ const cLiq = collection(db, 'liquidacionesComisiones');
 const cAj  = collection(db, 'ajustesComisiones');
 const cNot = collection(db, 'notificaciones');
 const dMon = doc(db, 'config', 'moneda');
+// POS V1. Colecciones incrementales; ventas convive con documentos legacy.
+const cPro = collection(db, 'productos');
+const cMovSt = collection(db, 'movimientosStock');
+const cPagPos = collection(db, 'pagos');
+const cMovFin = collection(db, 'movimientosFinancieros');
+const dContVentas = doc(db, 'contadores', 'ventas');
 
 let authModo = 'login', bootstrapDisponible = false;
 let detenerNotificaciones = null;
@@ -543,6 +549,14 @@ onSnapshot(dCom, (snap) => {
 onSnapshot(dCfg, (snap) => {
   if (snap.exists() && typeof catLoadConfig === 'function') catLoadConfig(snap.data());
 }, () => {});
+onSnapshot(cPro, (snap) => {
+  window.PRODUCTOS_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data())).sort((a,b) => String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
+  if ((window.VIEW === 'pos' || window.VIEW === 'prod' || window.VIEW === 'inv') && typeof render === 'function') render();
+}, () => {});
+onSnapshot(cMovSt, (snap) => {
+  window.MOVIMIENTOS_STOCK_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data())).sort((a,b) => String(b.fechaHora||'').localeCompare(String(a.fechaHora||'')));
+  if (window.VIEW === 'inv' && typeof render === 'function') render();
+}, () => {});
 onSnapshot(dCot, (snap) => {
   if (typeof cotLoadConfig === 'function') cotLoadConfig(snap.exists() ? snap.data() : {});
 }, () => {});
@@ -608,6 +622,174 @@ window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo ad
 window.FB.addSt = (d, cb) => agregarAuditable('stock', 'stock', d).then(id => { cb(null); v21Sync('stock', id, d, 'stock_creado'); }).catch(e => cb(e.message));
 window.FB.updSt = (id, d, cb) => actualizarAuditable('stock', 'stock', id, d).then(() => { cb(null); v21Sync('stock', id, d, 'stock_actualizado'); }).catch(e => cb(e.message));
 window.FB.delSt = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
+
+// ── POS V1: productos, inventario y ventas atomicas ──
+window.FB.guardarProductoPos = async (data, cb) => {
+  if (!puede('gestionar_productos')) { cb('Solo administración puede gestionar productos'); return; }
+  try {
+    const id = data.id || doc(cPro).id, ref = doc(cPro, id);
+    const nombre = String(data.nombre || '').trim(), sku = String(data.sku || '').trim(), barcode = String(data.barcode || '').trim();
+    const stockInicial = Number(data.stockInicial || 0);
+    if (!nombre) throw new Error('El nombre es obligatorio');
+    if (![data.costo, data.precio, stockInicial].every(v => Number.isFinite(Number(v)) && Number(v) >= 0)) throw new Error('Costo, precio y stock deben ser números positivos');
+    const consultas = [];
+    if (sku) consultas.push(getDocs(query(cPro, where('sku', '==', sku))));
+    if (barcode) consultas.push(getDocs(query(cPro, where('barcode', '==', barcode))));
+    const duplicados = await Promise.all(consultas);
+    if (duplicados.some(s => s.docs.some(d => d.id !== id))) throw new Error('El SKU o código de barras ya pertenece a otro producto');
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const previoSnap = await tx.get(ref), previo = previoSnap.exists() ? previoSnap.data() : null;
+      const stockActual = previo ? Number(previo.stockActual || 0) : (data.controlaStock ? stockInicial : 0);
+      const guardar = { schemaVersion:1, nombre:nombre, categoria:String(data.categoria || '').trim(), subcategoria:String(data.subcategoria || '').trim(),
+        sku:sku, barcode:barcode, costo:Number(data.costo || 0), precio:Number(data.precio || 0), moneda:data.moneda || 'ARS',
+        controlaStock:!!data.controlaStock, stockActual:stockActual, activo:data.activo !== false,
+        proveedorId:data.proveedorId || null, ecommerce:{ publicado:false }, variantes:[], actualizadoPor:actor, actualizadoEn:serverTimestamp() };
+      if (!previo) guardar.creadoEn = serverTimestamp();
+      tx.set(ref, guardar, { merge:true });
+      if (!previo && guardar.controlaStock && stockInicial !== 0) {
+        tx.set(doc(cMovSt), { schemaVersion:1, productoId:id, productoNombre:nombre, tipo:'stock_inicial', cantidad:stockInicial,
+          stockAnterior:0, stockResultante:stockInicial, motivo:'Alta de producto', referenciaTipo:'producto', referenciaId:id,
+          usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      }
+      tx.set(doc(cAud), { entidad:'producto', entidadId:id, accion:previo?'actualizado':'creado', actor:actor,
+        cambios:cambiosAuditables(previo || {}, guardar), fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, id);
+  } catch (e) { cb(e.message); }
+};
+
+window.FB.ajustarStockPos = async (data, cb) => {
+  if (!puede('ajustar_stock_pos')) { cb('Solo administración puede ajustar stock'); return; }
+  try {
+    const ref = doc(cPro, data.productoId), cantidad = Number(data.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad === 0) throw new Error('La cantidad debe ser distinta de cero');
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('Producto inexistente');
+      const p = snap.data();
+      if (!p.controlaStock) throw new Error('Este producto no controla stock');
+      const anterior = Number(p.stockActual || 0), resultante = anterior + cantidad;
+      if (resultante < 0) throw new Error('El ajuste dejaría stock negativo');
+      tx.update(ref, { stockActual:resultante, actualizadoPor:actor, actualizadoEn:serverTimestamp() });
+      tx.set(doc(cMovSt), { schemaVersion:1, productoId:ref.id, productoNombre:p.nombre || '', tipo:data.tipo || (cantidad > 0 ? 'ajuste_positivo' : 'ajuste_negativo'),
+        cantidad:cantidad, stockAnterior:anterior, stockResultante:resultante, motivo:String(data.motivo || '').trim(),
+        referenciaTipo:'ajuste', referenciaId:null, usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      tx.set(doc(cAud), { entidad:'stock_producto', entidadId:ref.id, accion:'ajustado', actor:actor,
+        cambios:[{ campo:'stockActual', antes:anterior, despues:resultante }], fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null);
+  } catch (e) { cb(e.message); }
+};
+
+window.FB.crearVentaPos = async (data, cb) => {
+  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  try {
+    const items = Array.isArray(data.items) ? data.items : [], pagos = Array.isArray(data.pagos) ? data.pagos : [];
+    if (!items.length) throw new Error('La venta no tiene productos');
+    const total = Number(data.total || 0), totalPagos = pagos.reduce((s,p) => s + Number(p.monto || 0), 0);
+    if (!(total > 0) || Math.abs(totalPagos - total) > 0.01) throw new Error('Los pagos deben coincidir con el total');
+    if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta)) throw new Error('Cada pago necesita medio, cuenta e importe');
+    const refs = items.map(i => doc(cPro, i.productoId)), ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    let numero = 0;
+    await runTransaction(db, async tx => {
+      const contadorSnap = await tx.get(dContVentas), productosSnaps = [];
+      for (const ref of refs) productosSnaps.push(await tx.get(ref));
+      numero = Number(contadorSnap.exists() ? contadorSnap.data().ultimoNumero || 0 : 0) + 1;
+      const snapshots = [];
+      items.forEach((item, idx) => {
+        const snap = productosSnaps[idx];
+        if (!snap.exists()) throw new Error('Un producto ya no existe');
+        const p = snap.data(), cantidad = Number(item.cantidad || 0);
+        if (p.activo === false || !(cantidad > 0)) throw new Error('Producto inactivo o cantidad inválida: ' + (p.nombre || ''));
+        const anterior = Number(p.stockActual || 0);
+        if (p.controlaStock && anterior < cantidad) throw new Error('Stock insuficiente: ' + p.nombre);
+        snapshots.push({ ref:refs[idx], p:p, cantidad:cantidad, anterior:anterior });
+      });
+      let subtotalValidado = 0, descuentoItemsValidado = 0, costoValidado = 0;
+      const itemsVenta = snapshots.map((x, idx) => {
+        const solicitado = items[idx], precioLista = Number(x.p.precio || 0), costoUnitario = Number(x.p.costo || 0);
+        const porcentaje = Math.max(0, Math.min(100, Number(solicitado.descuentoPorcentaje || 0)));
+        const bruto = precioLista * x.cantidad, descuentoImporte = bruto * porcentaje / 100, subtotalFinal = bruto - descuentoImporte;
+        subtotalValidado += bruto; descuentoItemsValidado += descuentoImporte; costoValidado += costoUnitario * x.cantidad;
+        return { productoId:x.ref.id, nombre:x.p.nombre || '', sku:x.p.sku || '', barcode:x.p.barcode || '', cantidad:x.cantidad,
+          precioLista:precioLista, descuentoPorcentaje:porcentaje, descuentoImporte:descuentoImporte,
+          precioFinal:subtotalFinal / x.cantidad, costoUnitario:costoUnitario, costoTotal:costoUnitario*x.cantidad,
+          controlaStock:!!x.p.controlaStock, moneda:x.p.moneda || data.moneda || 'ARS' };
+      });
+      const baseGlobal = Math.max(0, subtotalValidado - descuentoItemsValidado);
+      const porcGlobal = Math.max(0, Math.min(100, Number(data.descuentoGlobal && data.descuentoGlobal.porcentaje || 0)));
+      const importePorcentaje = Math.min(baseGlobal, baseGlobal * porcGlobal / 100);
+      const importeFijo = Math.min(Math.max(0, baseGlobal - importePorcentaje), Math.max(0, Number(data.descuentoGlobal && data.descuentoGlobal.importeFijo || 0)));
+      const totalValidado = Math.max(0, baseGlobal - importePorcentaje - importeFijo);
+      if (Math.abs(totalValidado - total) > 0.01) throw new Error('El precio o descuento cambió; revisá la venta antes de cobrar');
+      tx.set(dContVentas, { ultimoNumero:numero, actualizadoEn:serverTimestamp() }, { merge:true });
+      const pagosVenta = pagos.map((p, idx) => Object.assign({}, p, { pagoId:pagoRefs[idx].id }));
+      const venta = Object.assign({}, data, { items:itemsVenta, pagos:pagosVenta, subtotal:subtotalValidado,
+        descuentoItems:descuentoItemsValidado, descuentoGlobal:{ porcentaje:porcGlobal, importePorcentaje:importePorcentaje, importeFijo:importeFijo },
+        descuentoTotal:descuentoItemsValidado+importePorcentaje+importeFijo, total:totalValidado,
+        costoTotal:costoValidado, margenBruto:totalValidado-costoValidado, schemaVersion:1, tipoRegistro:'pos', numeroVenta:numero,
+        numeroHumano:'Venta #' + String(numero).padStart(6, '0'), estado:'activa', usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      tx.set(ventaRef, venta);
+      snapshots.forEach(x => {
+        if (!x.p.controlaStock) return;
+        const resultante = x.anterior - x.cantidad;
+        tx.update(x.ref, { stockActual:resultante, actualizadoPor:actor, actualizadoEn:serverTimestamp() });
+        tx.set(doc(cMovSt), { schemaVersion:1, productoId:x.ref.id, productoNombre:x.p.nombre || '', tipo:'venta', cantidad:-x.cantidad,
+          stockAnterior:x.anterior, stockResultante:resultante, referenciaTipo:'venta', referenciaId:ventaRef.id,
+          numeroVenta:numero, usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      });
+      pagos.forEach((p, idx) => {
+        const pagoRef = pagoRefs[idx];
+        const pago = { schemaVersion:1, ventaId:ventaRef.id, numeroVenta:numero, medio:p.medio, cuenta:p.cuenta,
+          monto:Number(p.monto), moneda:p.moneda || data.moneda || 'ARS', cotizacion:Number(p.cotizacion || data.cotizacion || 0),
+          estado:'aplicado', usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() };
+        tx.set(pagoRef, pago);
+        tx.set(doc(cMovFin), Object.assign({}, pago, { pagoId:pagoRef.id, tipo:'ingreso_venta', referenciaTipo:'venta', referenciaId:ventaRef.id }));
+      });
+      tx.set(doc(cAud), { entidad:'venta_pos', entidadId:ventaRef.id, accion:'creada', actor:actor,
+        cambios:[], numeroVenta:numero, total:total, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, { id:ventaRef.id, numeroVenta:numero });
+  } catch (e) { cb(e.message); }
+};
+
+window.FB.anularVentaPos = async (id, motivo, cb) => {
+  if (!puede('anular_venta_pos')) { cb('Solo administración puede anular ventas'); return; }
+  try {
+    const ventaRef = doc(cVen, id), actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const ventaSnap = await tx.get(ventaRef);
+      if (!ventaSnap.exists()) throw new Error('Venta inexistente');
+      const v = ventaSnap.data();
+      if (v.tipoRegistro !== 'pos') throw new Error('La venta anterior debe anularse desde su flujo original');
+      if (v.estado !== 'activa') throw new Error('La venta ya no está activa');
+      const items = Array.isArray(v.items) ? v.items : [], refs = items.map(i => doc(cPro, i.productoId)), snaps = [];
+      for (const ref of refs) snaps.push(await tx.get(ref));
+      tx.update(ventaRef, { estado:'anulada', anulacion:{ motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora }, actualizadoEn:serverTimestamp() });
+      items.forEach((item, idx) => {
+        if (!item.controlaStock) return;
+        if (!snaps[idx].exists()) throw new Error('No se puede restituir un producto inexistente');
+        const anterior = Number(snaps[idx].data().stockActual || 0), cantidad = Number(item.cantidad || 0), resultante = anterior + cantidad;
+        tx.update(refs[idx], { stockActual:resultante, actualizadoPor:actor, actualizadoEn:serverTimestamp() });
+        tx.set(doc(cMovSt), { schemaVersion:1, productoId:item.productoId, productoNombre:item.nombre || '', tipo:'anulacion_venta', cantidad:cantidad,
+          stockAnterior:anterior, stockResultante:resultante, referenciaTipo:'venta', referenciaId:id, numeroVenta:v.numeroVenta,
+          motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      });
+      (v.pagos || []).forEach(p => {
+        if (p.pagoId) tx.update(doc(cPagPos, p.pagoId), { estado:'revertido', revertidoEn:serverTimestamp(), revertidoPor:actor, motivoReversion:String(motivo || '').trim() });
+        tx.set(doc(cMovFin), { schemaVersion:1, ventaId:id, numeroVenta:v.numeroVenta, tipo:'reversion_venta', medio:p.medio,
+          cuenta:p.cuenta, monto:-Number(p.monto || 0), moneda:p.moneda || v.moneda || 'ARS', referenciaTipo:'venta', referenciaId:id,
+          motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      });
+      tx.set(doc(cAud), { entidad:'venta_pos', entidadId:id, accion:'anulada', actor:actor, cambios:[], motivo:String(motivo || '').trim(),
+        numeroVenta:v.numeroVenta, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null);
+  } catch (e) { cb(e.message); }
+};
 
 // ── setUsados ──
 window.FB.setUsados = async (items, cb) => {

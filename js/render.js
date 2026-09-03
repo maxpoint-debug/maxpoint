@@ -7,7 +7,11 @@ function render() {
   if      (VIEW === 'reps') renderReps();
   else if (VIEW === 'rpus') renderRpus();
   else if (VIEW === 'seg')   renderSeg();
+  else if (VIEW === 'pos' && typeof renderPos === 'function') renderPos();
+  else if (VIEW === 'ven' && typeof renderPosHistorial === 'function') renderPosHistorial();
   else if (VIEW === 'ven')   renderVen();
+  else if (VIEW === 'prod' && typeof renderProductosPos === 'function') renderProductosPos();
+  else if (VIEW === 'inv' && typeof renderInventarioPos === 'function') renderInventarioPos();
   else if (VIEW === 'stock') renderStock();
   else if (VIEW === 'cot')  renderCot();
   else if (VIEW === 'cli')  renderCli();
