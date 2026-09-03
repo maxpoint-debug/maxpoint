@@ -641,8 +641,9 @@ window.FB.guardarProductoPos = async (data, cb) => {
     await runTransaction(db, async tx => {
       const previoSnap = await tx.get(ref), previo = previoSnap.exists() ? previoSnap.data() : null;
       const stockActual = previo ? Number(previo.stockActual || 0) : (data.controlaStock ? stockInicial : 0);
+      const moneda = data.moneda === 'USD' ? 'USD' : 'ARS';
       const guardar = { schemaVersion:1, nombre:nombre, categoria:String(data.categoria || '').trim(), subcategoria:String(data.subcategoria || '').trim(),
-        sku:sku, barcode:barcode, costo:Number(data.costo || 0), precio:Number(data.precio || 0), moneda:data.moneda || 'ARS',
+        sku:sku, barcode:barcode, costo:Number(data.costo || 0), precio:Number(data.precio || 0), moneda:moneda,
         controlaStock:!!data.controlaStock, stockActual:stockActual, activo:data.activo !== false,
         proveedorId:data.proveedorId || null, ecommerce:{ publicado:false }, variantes:[], actualizadoPor:actor, actualizadoEn:serverTimestamp() };
       if (!previo) guardar.creadoEn = serverTimestamp();
@@ -656,7 +657,7 @@ window.FB.guardarProductoPos = async (data, cb) => {
         cambios:cambiosAuditables(previo || {}, guardar), fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
     });
     cb(null, id);
-  } catch (e) { cb(e.message); }
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
 
 window.FB.ajustarStockPos = async (data, cb) => {
@@ -689,8 +690,9 @@ window.FB.crearVentaPos = async (data, cb) => {
     const items = Array.isArray(data.items) ? data.items : [], pagos = Array.isArray(data.pagos) ? data.pagos : [];
     if (!items.length) throw new Error('La venta no tiene productos');
     const total = Number(data.total || 0), totalPagos = pagos.reduce((s,p) => s + Number(p.monto || 0), 0);
+    const monedaVenta = data.moneda === 'USD' ? 'USD' : 'ARS';
     if (!(total > 0) || Math.abs(totalPagos - total) > 0.01) throw new Error('Los pagos deben coincidir con el total');
-    if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta)) throw new Error('Cada pago necesita medio, cuenta e importe');
+    if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || (p.moneda || monedaVenta) !== monedaVenta)) throw new Error('Cada pago necesita medio, cuenta, importe y la moneda de la venta');
     const refs = items.map(i => doc(cPro, i.productoId)), ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     let numero = 0;
@@ -704,6 +706,7 @@ window.FB.crearVentaPos = async (data, cb) => {
         if (!snap.exists()) throw new Error('Un producto ya no existe');
         const p = snap.data(), cantidad = Number(item.cantidad || 0);
         if (p.activo === false || !(cantidad > 0)) throw new Error('Producto inactivo o cantidad inválida: ' + (p.nombre || ''));
+        if ((p.moneda || 'ARS') !== monedaVenta) throw new Error('No se pueden mezclar productos ARS y USD');
         const anterior = Number(p.stockActual || 0);
         if (p.controlaStock && anterior < cantidad) throw new Error('Stock insuficiente: ' + p.nombre);
         snapshots.push({ ref:refs[idx], p:p, cantidad:cantidad, anterior:anterior });
@@ -753,7 +756,7 @@ window.FB.crearVentaPos = async (data, cb) => {
         cambios:[], numeroVenta:numero, total:total, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
     });
     cb(null, { id:ventaRef.id, numeroVenta:numero });
-  } catch (e) { cb(e.message); }
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
 
 window.FB.anularVentaPos = async (id, motivo, cb) => {
