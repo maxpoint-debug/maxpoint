@@ -684,17 +684,17 @@ window.enviarWA = function() {
     '',
     `Coticé mi ${r.modelo} en el cotizador de MaxPoint y quería consultar.`,
     '',
-    `\uD83D\uDCCA *Resultado de la cotización:*`,
-    `• Batería: ${r.bat}%`,
-    ...(r.descuentos.map(d => `• ${d.lbl}${d.repuesto ? ` (${d.repuesto})` : ''}: - USD ${d.usd}`)),
-    ...((r.revision || []).map(lbl => `• ${lbl}: requiere revisión presencial`)),
-    r.requiereRevision ? `• *Valor de toma sujeto a revisión presencial*` : `• *Valor de toma estimado: USD ${r.total}*`,
+    `*Resultado de la cotización:*`,
+    `- Batería: ${r.bat}%`,
+    ...(r.descuentos.map(d => `- ${d.lbl}${d.repuesto ? ` (${d.repuesto})` : ''}: - USD ${d.usd}`)),
+    ...((r.revision || []).map(lbl => `- ${lbl}: requiere revisión presencial`)),
+    r.requiereRevision ? `- *Valor de toma sujeto a revisión presencial*` : `- *Valor de toma estimado: USD ${r.total}*`,
     '',
     `Estoy buscando: *${intTexto[r.interes] || r.interes}*`,
     '',
     '¿Pueden ayudarme?',
   ];
-  const msg = lineas.join('\n');
+  const msg = lineas.join('\n').replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '').replace(/\uFFFD/g, '').replace(/[\u2600-\u27BF]/g, '');
   window.open('https://wa.me/542324522082?text=' + encodeURIComponent(msg), '_blank');
   cerrarModalWA();
 };
