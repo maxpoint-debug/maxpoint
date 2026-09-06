@@ -656,6 +656,39 @@ window.FB.crearVentaEquipo = async (data, cb) => {
     v21Sync('venta', ventaRef.id, data, 'venta_creada');
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
+window.FB.anularVentaEquipo = async (id, motivo, cb) => {
+  if (!puede('eliminar_operaciones')) { cb('Solo administración puede anular ventas de equipos'); return; }
+  try {
+    const ventaRef = doc(cVen, id), actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(ventaRef);
+      if (!snap.exists()) throw new Error('La venta ya no existe');
+      const venta = snap.data();
+      if (venta.tipoRegistro === 'pos') throw new Error('Las ventas de accesorios se anulan desde Operaciones de caja');
+      if (venta.estadoVenta === 'Anulada') throw new Error('La venta ya está anulada');
+      if (venta.estadoVenta === 'Devuelta') throw new Error('La venta ya figura como devuelta');
+      const anulacion = { motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora };
+      const cambiosVenta = { estadoVenta:'Anulada', anulacion:anulacion, actualizadoEn:serverTimestamp() };
+      if (venta.cajaRegistrada) {
+        cambiosVenta.cajaRevertida = true;
+        cambiosVenta.pagos = (venta.pagos || []).map(p => Object.assign({}, p, { estado:'revertido', revertidoEn:ahora, revertidoPor:actor }));
+      }
+      tx.update(ventaRef, cambiosVenta);
+      if (venta.cajaRegistrada) {
+        (venta.pagos || []).forEach(p => {
+          if (p.pagoId) tx.update(doc(cPagPos, p.pagoId), { estado:'revertido', revertidoEn:serverTimestamp(), revertidoPor:actor, motivoReversion:anulacion.motivo });
+          tx.set(doc(cMovFin), { schemaVersion:2, tipo:'reversion_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:id,
+            ventaId:id, pagoId:p.pagoId || '', clienteNombre:venta.nombre || '', equipoModelo:venta.modelo || '', medio:p.medio || '', cuenta:p.cuenta || '',
+            monto:-Number(p.monto || 0), moneda:p.moneda || 'USD', cotizacion:Number(p.cotizacion || 1), montoVentaUSD:-Number(p.montoVentaUSD || 0),
+            motivo:anulacion.motivo, usuario:actor, fecha:hoy(), fechaHora:ahora, creadoEn:serverTimestamp() });
+        });
+      }
+      tx.set(doc(cAud), { entidad:'venta_equipo', entidadId:id, accion:'anulada', actor:actor, cambios:[{campo:'estadoVenta',antes:venta.estadoVenta || 'Cobrada',despues:'Anulada'}],
+        motivo:anulacion.motivo, cajaRevertida:!!venta.cajaRegistrada, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null);
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
 window.FB.updV = (id, d, cb) => actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message));
 window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 

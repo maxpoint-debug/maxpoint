@@ -187,8 +187,9 @@ function openEditVenta(id) {
   }
   el('btnSaveVenta').disabled = false;
   el('btnSaveVenta').textContent = 'Guardar venta';
-  var integrada = !!v.cajaRegistrada;
-  ['vPrecio','vEstadoVenta','vPartePago','vPpMod','vPpImei','vPpValor'].forEach(function(campo){if(el(campo))el(campo).disabled=integrada;});
+  var integrada = !!v.cajaRegistrada, anulada = v.estadoVenta === 'Anulada';
+  ['vPrecio','vPartePago','vPpMod','vPpImei','vPpValor'].forEach(function(campo){if(el(campo))el(campo).disabled=integrada;});
+  el('vEstadoVenta').disabled=integrada||anulada;
   if (el('vPagosLegacyWrap')) el('vPagosLegacyWrap').style.display = integrada ? 'none' : '';
   if (el('vCajaRegistradaAviso')) el('vCajaRegistradaAviso').style.display = integrada ? '' : 'none';
   openM('mVen');
@@ -200,15 +201,14 @@ function togglePartePago() {
   actualizarResumenPagosVentaEquipo();
 }
 
-function eliminarVenta(id) {
-  if (!puede('eliminar_operaciones')) { toast('Solo administrador puede eliminar operaciones', 'var(--rd)'); return; }
-  var venta = VENTAS.find(function(x){return x.id===id;});
-  if (venta && venta.cajaRegistrada) { toast('Esta venta está asentada en Caja y no puede eliminarse. La reversión se implementará con un movimiento compensatorio.','var(--rd)'); return; }
-  if (!confirm('Eliminar esta venta?')) return;
-  FB.delV(id, function(err) {
-    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    toast('Venta eliminada', 'var(--rd)');
-  });
+function anularVentaEquipo(id) {
+  if (!puede('eliminar_operaciones')) { toast('Solo administración puede anular ventas','var(--rd)'); return; }
+  var venta=VENTAS.find(function(x){return x.id===id;}); if(!venta)return;
+  if (venta.estadoVenta==='Anulada'||venta.estadoVenta==='Devuelta') { toast('La venta ya no está activa','var(--rd)'); return; }
+  var motivo=prompt('Motivo de la anulación (opcional):'); if(motivo===null)return;
+  var aviso='La venta quedará anulada y seguirá visible en el historial.'+(venta.cajaRegistrada?' Sus pagos serán revertidos en Caja.':'')+(venta.parte_pago==='Si'?' El equipo recibido en parte de pago NO se quitará automáticamente del stock.':'');
+  if(!confirm(aviso+' ¿Continuar?'))return;
+  FB.anularVentaEquipo(id,motivo,function(err){if(err){toast('Error: '+err,'var(--rd)');return;}toast(venta.cajaRegistrada?'Venta anulada y Caja revertida':'Venta histórica anulada');});
 }
 
 // ── Comprobante de venta (imprimible A5) ──────────

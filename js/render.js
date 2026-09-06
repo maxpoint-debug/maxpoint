@@ -1084,10 +1084,11 @@ function renderVen() {
       card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:6px';
       var modelo = [v.modelo, v.capacidad, v.color].filter(Boolean).join(' ');
       var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
+      var anulada = v.estadoVenta === 'Anulada' ? '<span style="font-size:10px;background:rgba(255,80,80,.12);color:var(--rd);border:1px solid rgba(255,80,80,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Anulada</span>' : '';
       var gan = puede('ver_costos') && v.precio && v.costo && Number(v.costo) ? Number(v.precio) - Number(v.costo) : null;
       card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
         + '<div style="flex:1">'
-        + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + '</div>'
+        + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + anulada + '</div>'
         + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
         + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI / Serie: ' + esc(v.imei||'') + '</div>'
         + (v.vendedor ? '<div style="font-size:10px;color:var(--mu)">' + esc(v.vendedor) + (v.canal?' via '+esc(v.canal):'') + '</div>' : '')
@@ -1102,7 +1103,7 @@ function renderVen() {
         + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
-        + (puede('eliminar_operaciones') && !v.cajaRegistrada ? '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>' : '')
+        + (puede('eliminar_operaciones') && v.estadoVenta!=='Anulada' && v.estadoVenta!=='Devuelta' ? '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="anularVentaEquipo(this.dataset.vid)">Anular</button>' : '')
         + '</div>';
       sec.appendChild(card);
     });
