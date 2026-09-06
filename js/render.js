@@ -1091,6 +1091,7 @@ function renderVen() {
         + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
         + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI / Serie: ' + esc(v.imei||'') + '</div>'
         + (v.vendedor ? '<div style="font-size:10px;color:var(--mu)">' + esc(v.vendedor) + (v.canal?' via '+esc(v.canal):'') + '</div>' : '')
+        + (v.cajaRegistrada ? '<div style="font-size:10px;color:var(--bl);margin-top:2px">Caja · ' + esc((v.pagos||[]).map(function(p){return p.medio+' '+p.moneda;}).join(' + ') || 'Pendiente') + (Number(v.saldoUSD||0)>0?' · saldo '+ccUsd(v.saldoUSD):'') + '</div>' : '')
         + '</div>'
         + '<div style="text-align:right;flex-shrink:0">'
         + '<div style="font-size:16px;font-weight:900;color:var(--gr)">' + ccUsd(v.precio||0) + '</div>'
@@ -1101,7 +1102,7 @@ function renderVen() {
         + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
-        + (puede('eliminar_operaciones') ? '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>' : '')
+        + (puede('eliminar_operaciones') && !v.cajaRegistrada ? '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="eliminarVenta(this.dataset.vid)">&#128465;</button>' : '')
         + '</div>';
       sec.appendChild(card);
     });

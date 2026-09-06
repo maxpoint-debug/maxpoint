@@ -621,6 +621,41 @@ window.FB.actualizarAjusteComision = (id, d, cb) => {
 
 // ── CRUD ventas ──
 window.FB.addV = (d, cb) => agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message));
+window.FB.crearVentaEquipo = async (data, cb) => {
+  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  try {
+    const pagos = Array.isArray(data.pagos) ? data.pagos : [];
+    const precio = Number(data.precio || 0), partePago = data.parte_pago === 'Si' ? Number(data.pp_valor || 0) : 0;
+    const requerido = Math.max(0, precio - partePago), pagado = pagos.reduce((s,p) => s + Number(p.montoVentaUSD || 0), 0);
+    if (!(precio > 0)) throw new Error('El precio debe ser mayor a cero');
+    if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || !['ARS','USD'].includes(p.moneda) || (p.moneda === 'ARS' && !(Number(p.cotizacion) > 0)))) throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
+    if (data.estadoVenta === 'Cobrada' && Math.abs(pagado - requerido) > 0.01) throw new Error('Los pagos deben cubrir exactamente el saldo de la venta');
+    if (pagado > requerido + 0.01) throw new Error('Los pagos superan el saldo de la venta');
+    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    const venta = Object.assign({}, data, {
+      tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:true,
+      pagos:pagos.map((p,i) => Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),
+      totalPagadoUSD:pagado, saldoUSD:Math.max(0,requerido-pagado), usuario:actor,
+      fechaHora:ahora, creadoEn:serverTimestamp()
+    });
+    await runTransaction(db, async tx => {
+      tx.set(ventaRef, venta);
+      pagos.forEach((p,i) => {
+        const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,
+          ventaId:ventaRef.id, clienteNombre:data.nombre || '', equipoModelo:data.modelo || '', medio:p.medio, cuenta:p.cuenta,
+          monto:Number(p.monto), moneda:p.moneda, cotizacion:Number(p.cotizacion || 1), montoVentaUSD:Number(p.montoVentaUSD || 0),
+          estado:'aplicado', usuario:actor, fecha:data.fecha || hoy(), fechaHora:ahora, creadoEn:serverTimestamp() };
+        tx.set(pagoRefs[i], pago);
+        tx.set(doc(cMovFin), Object.assign({}, pago, { tipo:'ingreso_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:ventaRef.id }));
+      });
+      tx.set(doc(cAud), { entidad:'venta_equipo', entidadId:ventaRef.id, accion:'creada', actor:actor,
+        cambios:[], totalUSD:precio, totalPagadoUSD:pagado, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, { id:ventaRef.id });
+    v21Sync('venta', ventaRef.id, data, 'venta_creada');
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
 window.FB.updV = (id, d, cb) => actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message));
 window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
