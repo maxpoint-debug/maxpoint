@@ -100,6 +100,7 @@ window.FB = {
   guardarProductoPos:function(d, cb) { cb('Firebase no conectado todavía'); },
   ajustarStockPos:function(d, cb) { cb('Firebase no conectado todavía'); },
   crearVentaPos:function(d, cb) { cb('Firebase no conectado todavía'); },
+  crearVentaEquipo:function(d, cb) { cb('Firebase no conectado todavía'); },
   anularVentaPos:function(id, motivo, cb) { cb('Firebase no conectado todavía'); },
   registrarCobroReparacion:function(id, pagos, cb) { cb('Firebase no conectado todavía'); },
 };
