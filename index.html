@@ -7,6 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css?v=2">
   <link rel="stylesheet" href="css/pos.css?v=1">
+  <style>.venta-equipo-pago{grid-template-columns:1fr 1.2fr .6fr 1fr auto}@media(max-width:900px){.venta-equipo-pago{grid-template-columns:1fr 1fr}}@media(max-width:600px){.venta-equipo-pago{grid-template-columns:1fr}}</style>
 </head>
 <body>
 
@@ -375,20 +376,23 @@
       <div class="f full"><label>IMEI / número de serie *</label><input id="vImei" type="text" autocomplete="off" placeholder="IMEI de iPhone o serie alfanumérica de iPad/MacBook"/></div>
     </div>
     <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
-      <div class="f"><label>Precio de venta *</label><input id="vPrecio" type="number" placeholder="0"/></div>
+      <div class="f"><label>Precio de venta (USD) *</label><input id="vPrecio" type="number" placeholder="0" oninput="actualizarResumenPagosVentaEquipo()"/></div>
       <div class="f" id="wVCosto"><label>Costo del equipo ($)</label><input id="vCosto" type="number" placeholder="0"/></div>
       <div class="f"><label>Vendedor</label><select id="vVendedor"><option value="">Sin asignar</option></select></div>
       <div class="f"><label>Canal de venta</label>
         <select id="vCanal"><option value="">—</option><option>Mostrador</option><option>Instagram</option><option>WhatsApp</option><option>Otro</option></select>
       </div>
-      <div class="f"><label>Forma de pago</label>
-        <select id="vPago">
-          <option>Efectivo</option>
-          <option>Transferencia</option>
-          <option>Efectivo + Transferencia</option>
-        </select>
+      <div class="f full" id="vPagosLegacyWrap"><label>Forma de pago</label>
+        <select id="vPago"><option>Efectivo</option><option>Transferencia</option><option>Efectivo + Transferencia</option></select>
       </div>
       <div class="f"><label>Estado de venta</label><select id="vEstadoVenta"><option>Cobrada</option><option>Pendiente</option><option>Anulada</option><option>Devuelta</option></select></div>
+      <div class="f full" id="vPagosCajaWrap" style="display:none">
+        <label>Pagos y cuentas</label>
+        <div id="vPagosCaja"></div>
+        <button type="button" class="btn btn-g btn-sm" onclick="agregarPagoVentaEquipo()">+ Agregar otro pago</button>
+        <div id="vPagosResumen" style="font-size:11px;color:var(--mu);margin-top:8px"></div>
+      </div>
+      <div class="f full" id="vCajaRegistradaAviso" style="display:none;font-size:11px;color:var(--or)">Esta venta ya está asentada en Caja. Podés corregir cliente y datos del equipo; sus importes se conservan para no desbalancear los movimientos.</div>
     </div>
     <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:4px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -398,7 +402,7 @@
       <div id="vPartePagoWrap" style="display:none;margin-top:10px">
         <div class="f full"><label>Modelo equipo entregado</label><input id="vPpMod" placeholder="iPhone 12 128GB Negro"/></div>
         <div class="f"><label>IMEI</label><input id="vPpImei" placeholder="Opcional"/></div>
-        <div class="f"><label>Valor cotizado ($)</label><input id="vPpValor" type="number" placeholder="0"/></div>
+        <div class="f"><label>Valor cotizado (USD)</label><input id="vPpValor" type="number" placeholder="0" oninput="actualizarResumenPagosVentaEquipo()"/></div>
       </div>
     </div>
     <div class="f full"><label>Notas internas</label>
@@ -671,13 +675,13 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/comisiones.js?v=32"></script>
 <script src="js/seguimientos.js?v=23"></script>
 <script src="js/cotizador.js?v=36"></script>
-<script src="js/pos.js?v=3"></script>
-<script src="js/ventas.js?v=28"></script>
+<script src="js/pos.js?v=4"></script>
+<script src="js/ventas.js?v=29"></script>
 <script src="js/stock.js?v=27"></script>
 <script src="js/app.js?v=30"></script>
 <script src="js/buscador.js?v=1"></script>
 <script src="js/notificaciones.js?v=1"></script>
-<script type="module" src="js/firebase.js?v=41"></script>
+<script type="module" src="js/firebase.js?v=42"></script>
 
 </body>
 </html>
