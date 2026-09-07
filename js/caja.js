@@ -11,6 +11,8 @@ function cajaMapaHtml(t,m){var ks=Object.keys(m||{});return '<div class="pos-sec
 function renderCierresCaja(){
   if(!puede('ver_cierres_caja')){showView('reps');return;}
   var cnt=el('cnt'),lista=(window.CIERRES_CAJA||[]).filter(function(c){return c.estado==='cerrada';});
+  if(window.CIERRES_CAJA_CARGANDO){cnt.innerHTML='<div class="empty"><div class="ei">⏳</div>Cargando cierres de caja...</div>';return;}
+  if(window.CIERRES_CAJA_ERROR){cnt.innerHTML='<div class="empty"><div class="ei">⚠️</div>No se pudieron cargar los cierres de caja.<small style="display:block;margin-top:8px">'+esc(window.CIERRES_CAJA_ERROR)+'</small></div>';return;}
   cnt.innerHTML='<div class="toolbar"><select id="cfTipo" class="fsel" onchange="cajaFiltrarCierres()"><option value="mes">Mes</option><option value="dia">Día</option><option value="anio">Año</option><option value="rango">Rango personalizado</option></select><input id="cfDesde" type="date" aria-label="Desde" onchange="cajaFiltrarCierres()"><input id="cfHasta" type="date" aria-label="Hasta" onchange="cajaFiltrarCierres()"></div><div id="cierresLista"></div>';
   window._CIERRES_FILTRABLES=lista;
   var h=new Date(),desde=el('cfDesde'),hasta=el('cfHasta');
