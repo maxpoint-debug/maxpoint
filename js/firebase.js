@@ -63,6 +63,8 @@ const cMovSt = collection(db, 'movimientosStock');
 const cPagPos = collection(db, 'pagos');
 const cMovFin = collection(db, 'movimientosFinancieros');
 const dContVentas = doc(db, 'contadores', 'ventas');
+const cCajas = collection(db, 'cajas');
+const dCajaActual = doc(db, 'config', 'cajaActual');
 
 let authModo = 'login', bootstrapDisponible = false;
 let detenerNotificaciones = null;
@@ -75,6 +77,7 @@ function authUiSesion() {
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = puede('crear_usuario') ? '' : 'none';
   const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = puede('ver_balance') ? '' : 'none';
   const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = puede('ver_ventas_equipos') ? '' : 'none';
+  const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = puede('ver_cierres_caja') ? '' : 'none';
   const resumen = document.getElementById('financeSummary'); if (resumen) resumen.style.display = puede('ver_balance') ? '' : 'none';
   const info = document.getElementById('sesionInfo');
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
@@ -84,6 +87,7 @@ function authUiLogin() {
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'flex';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = 'none';
   const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = 'none';
+  const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = 'none';
 }
 async function verificarBootstrap() {
   try { bootstrapDisponible = (await getDocs(query(cUsr, limit(1)))).empty; }
@@ -561,7 +565,15 @@ onSnapshot(cMovSt, (snap) => {
 }, () => {});
 onSnapshot(query(cMovFin, orderBy('fechaHora','desc'), limit(250)), (snap) => {
   window.MOVIMIENTOS_FINANCIEROS_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
-  if (window.VIEW === 'ops' && typeof render === 'function') render();
+  if ((window.VIEW === 'ops' || window.VIEW === 'pos') && typeof render === 'function') render();
+}, () => {});
+onSnapshot(dCajaActual, (snap) => {
+  const d=snap.exists()?snap.data():null; window.CAJA_ACTUAL=d&&d.estado==='abierta'?Object.assign({id:d.cajaId},d):null;
+  if (window.VIEW==='pos') { if(typeof setTopActions==='function')setTopActions('pos'); if(typeof render==='function')render(); }
+}, () => {});
+onSnapshot(query(cCajas, orderBy('aperturaFechaHora','desc'), limit(500)), (snap) => {
+  window.CIERRES_CAJA=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+  if(window.VIEW==='cierres'&&typeof render==='function')render();
 }, () => {});
 onSnapshot(dCot, (snap) => {
   if (typeof cotLoadConfig === 'function') cotLoadConfig(snap.exists() ? snap.data() : {});
@@ -587,6 +599,27 @@ onSnapshot(cAj, (snap) => {
 
 // ── Config comisiones ──
 window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message));
+
+function fechaNegocioIso(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+window.FB.abrirCaja = async (data, cb) => {
+  if(!sesionActiva()){cb('Sesión no válida');return;}
+  try{const inicial=Number(data.efectivoInicial),moneda=data.moneda==='USD'?'USD':'ARS',actor=usuarioActualRegistro(),ahora=new Date().toISOString(),ref=doc(cCajas);
+    if(!Number.isFinite(inicial)||inicial<0)throw new Error('El efectivo inicial debe ser válido');
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(actual.exists()&&actual.data().estado==='abierta')throw new Error('Ya existe una caja abierta');const caja={schemaVersion:1,fechaNegocio:fechaNegocioIso(),aperturaFechaHora:ahora,usuarioApertura:actor,efectivoInicial:inicial,moneda:moneda,observacionApertura:String(data.observacion||'').trim(),estado:'abierta',creadoEn:serverTimestamp()};tx.set(ref,caja);tx.set(dCajaActual,Object.assign({cajaId:ref.id},caja));tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'abierta',actor:actor,cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null,ref.id);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
+};
+window.FB.movimientoManualCaja = async (data, cb) => {
+  if(!sesionActiva()){cb('Sesión no válida');return;}
+  try{const monto=Number(data.monto),actor=usuarioActualRegistro(),ahora=new Date().toISOString();if(!Number.isFinite(monto)||monto===0)throw new Error('Ingresá un importe válido');if(!data.medio||!data.cuenta||!data.categoria)throw new Error('Completá medio, cuenta y categoría');
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('No hay una caja abierta');const cajaId=actual.data().cajaId;const mov={schemaVersion:2,tipo:monto>0?'ingreso_manual':'egreso_manual',referenciaTipo:'caja_manual',referenciaId:cajaId,cajaId:cajaId,monto:monto,moneda:data.moneda==='USD'?'USD':'ARS',medio:String(data.medio),cuenta:String(data.cuenta),categoria:String(data.categoria).trim(),descripcion:String(data.descripcion||'').trim(),usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(doc(cMovFin),mov);tx.set(doc(cAud),{entidad:'caja',entidadId:cajaId,accion:monto>0?'ingreso_manual':'egreso_manual',actor:actor,cambios:[],monto:monto,moneda:mov.moneda,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
+};
+window.FB.cerrarCaja = async (data, cb) => {
+  if(!sesionActiva()){cb('Sesión no válida');return;}
+  try{const actor=usuarioActualRegistro(),ahora=new Date().toISOString(),r=data.resumen||{},contado=Number(data.efectivoContado),esperado=Number(r.efectivoEsperado||0),dif=contado-esperado;if(!Number.isFinite(contado)||contado<0)throw new Error('El efectivo contado debe ser válido');if(Math.abs(dif)>.009&&!String(data.observacion||'').trim())throw new Error('Indicá el motivo de la diferencia');
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('La caja ya está cerrada');const a=actual.data(),ref=doc(cCajas,a.cajaId),snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='abierta')throw new Error('La sesión de caja no está disponible');const cierre={estado:'cerrada',cierreFechaHora:ahora,usuarioCierre:actor,ingresosEfectivo:Number(r.ingresosEfectivo||0),egresosEfectivo:Number(r.egresosEfectivo||0),efectivoEsperado:esperado,efectivoContado:contado,diferencia:dif,totalesPorMedio:r.totalesPorMedio||{},totalesPorCuenta:r.totalesPorCuenta||{},totalIngresos:Number(r.totalIngresos||0),totalEgresos:Number(r.totalEgresos||0),cantidadMovimientos:Array.isArray(r.movimientos)?r.movimientos.length:0,observacionCierre:String(data.observacion||'').trim(),cerradoEn:serverTimestamp()};tx.update(ref,cierre);tx.set(dCajaActual,{estado:'cerrada',cajaId:null,ultimoCierreId:ref.id,ultimoEfectivoContado:contado,moneda:a.moneda||'ARS',actualizadoEn:serverTimestamp()});tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'cerrada',actor:actor,cambios:[],diferencia:dif,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
+};
 
 window.FB.setMoneda = async (d, cb) => {
   var actor = usuarioActualRegistro();
@@ -640,6 +673,9 @@ window.FB.crearVentaEquipo = async (data, cb) => {
       fechaHora:ahora, creadoEn:serverTimestamp()
     });
     await runTransaction(db, async tx => {
+      const cajaSnap=await tx.get(dCajaActual);
+      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
+      const cajaId=cajaSnap.data().cajaId;
       tx.set(ventaRef, venta);
       pagos.forEach((p,i) => {
         const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,
@@ -647,7 +683,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
           monto:Number(p.monto), moneda:p.moneda, cotizacion:Number(p.cotizacion || 1), montoVentaUSD:Number(p.montoVentaUSD || 0),
           estado:'aplicado', usuario:actor, fecha:data.fecha || hoy(), fechaHora:ahora, creadoEn:serverTimestamp() };
         tx.set(pagoRefs[i], pago);
-        tx.set(doc(cMovFin), Object.assign({}, pago, { tipo:'ingreso_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:ventaRef.id }));
+        tx.set(doc(cMovFin), Object.assign({}, pago, { cajaId:cajaId, tipo:'ingreso_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:ventaRef.id }));
       });
       tx.set(doc(cAud), { entidad:'venta_equipo', entidadId:ventaRef.id, accion:'creada', actor:actor,
         cambios:[], totalUSD:precio, totalPagadoUSD:pagado, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
@@ -664,6 +700,9 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
       const snap = await tx.get(ventaRef);
       if (!snap.exists()) throw new Error('La venta ya no existe');
       const venta = snap.data();
+      const cajaSnap = venta.cajaRegistrada ? await tx.get(dCajaActual) : null;
+      if (venta.cajaRegistrada && (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta')) throw new Error('Primero abrí la caja');
+      const cajaId = venta.cajaRegistrada ? cajaSnap.data().cajaId : null;
       if (venta.tipoRegistro === 'pos') throw new Error('Las ventas de accesorios se anulan desde Operaciones de caja');
       if (venta.estadoVenta === 'Anulada') throw new Error('La venta ya está anulada');
       if (venta.estadoVenta === 'Devuelta') throw new Error('La venta ya figura como devuelta');
@@ -677,7 +716,7 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
       if (venta.cajaRegistrada) {
         (venta.pagos || []).forEach(p => {
           if (p.pagoId) tx.update(doc(cPagPos, p.pagoId), { estado:'revertido', revertidoEn:serverTimestamp(), revertidoPor:actor, motivoReversion:anulacion.motivo });
-          tx.set(doc(cMovFin), { schemaVersion:2, tipo:'reversion_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:id,
+          tx.set(doc(cMovFin), { schemaVersion:2, cajaId:cajaId, tipo:'reversion_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:id,
             ventaId:id, pagoId:p.pagoId || '', clienteNombre:venta.nombre || '', equipoModelo:venta.modelo || '', medio:p.medio || '', cuenta:p.cuenta || '',
             monto:-Number(p.monto || 0), moneda:p.moneda || 'USD', cotizacion:Number(p.cotizacion || 1), montoVentaUSD:-Number(p.montoVentaUSD || 0),
             motivo:anulacion.motivo, usuario:actor, fecha:hoy(), fechaHora:ahora, creadoEn:serverTimestamp() });
@@ -768,7 +807,10 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
     let saldoFinal = 0;
     await runTransaction(db, async tx => {
       const snap = await tx.get(reparacionRef);
+      const cajaSnap = await tx.get(dCajaActual);
       if (!snap.exists()) throw new Error('La reparación ya no existe');
+      if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
+      const cajaId = cajaSnap.data().cajaId;
       const r = snap.data(), presupuesto = Number(r.presupuesto || 0);
       const existentes = Array.isArray(r.pagos) && r.pagos.length ? r.pagos.slice() : (Number(r.sena || 0) > 0 ? [{ monto:Number(r.sena), fecha:r.fecha || '', medio:'Registro previo', cuenta:'Sin especificar', moneda:'ARS', legacy:true }] : []);
       const cobradoAnterior = existentes.reduce((s,p) => s + Number(p.monto || 0), 0);
@@ -785,7 +827,7 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
         const pagoDoc = Object.assign({}, p, { schemaVersion:1, origenTipo:'reparacion', origenId:id, reparacionId:id,
           orden:r.orden || '', clienteNombre:r.nombre || '', creadoEn:serverTimestamp() });
         tx.set(pagoRefs[idx], pagoDoc);
-        tx.set(doc(cMovFin), Object.assign({}, pagoDoc, { tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
+        tx.set(doc(cMovFin), Object.assign({}, pagoDoc, { cajaId:cajaId, tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
       });
       tx.set(doc(cAud), { entidad:'reparacion', entidadId:id, accion:'cobro_registrado', actor:actor,
         cambios:[{campo:'totalCobrado',antes:cobradoAnterior,despues:totalCobrado},{campo:'saldo',antes:Math.max(0,presupuesto-cobradoAnterior),despues:saldoFinal}],
@@ -808,7 +850,9 @@ window.FB.crearVentaPos = async (data, cb) => {
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     let numero = 0;
     await runTransaction(db, async tx => {
-      const contadorSnap = await tx.get(dContVentas), productosSnaps = [];
+      const contadorSnap = await tx.get(dContVentas), cajaSnap = await tx.get(dCajaActual), productosSnaps = [];
+      if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
+      const cajaId = cajaSnap.data().cajaId;
       for (const ref of refs) productosSnaps.push(await tx.get(ref));
       numero = Number(contadorSnap.exists() ? contadorSnap.data().ultimoNumero || 0 : 0) + 1;
       const snapshots = [];
@@ -862,7 +906,7 @@ window.FB.crearVentaPos = async (data, cb) => {
           monto:Number(p.monto), moneda:p.moneda || data.moneda || 'ARS', cotizacion:Number(p.cotizacion || data.cotizacion || 0),
           estado:'aplicado', usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() };
         tx.set(pagoRef, pago);
-        tx.set(doc(cMovFin), Object.assign({}, pago, { pagoId:pagoRef.id, tipo:'ingreso_venta', referenciaTipo:'venta', referenciaId:ventaRef.id }));
+        tx.set(doc(cMovFin), Object.assign({}, pago, { cajaId:cajaId, pagoId:pagoRef.id, tipo:'ingreso_venta', referenciaTipo:'venta', referenciaId:ventaRef.id }));
       });
       tx.set(doc(cAud), { entidad:'venta_pos', entidadId:ventaRef.id, accion:'creada', actor:actor,
         cambios:[], numeroVenta:numero, total:total, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
@@ -879,6 +923,9 @@ window.FB.anularVentaPos = async (id, motivo, cb) => {
       const ventaSnap = await tx.get(ventaRef);
       if (!ventaSnap.exists()) throw new Error('Venta inexistente');
       const v = ventaSnap.data();
+      const cajaSnap = await tx.get(dCajaActual);
+      if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
+      const cajaId = cajaSnap.data().cajaId;
       if (v.tipoRegistro !== 'pos') throw new Error('La venta anterior debe anularse desde su flujo original');
       if (v.estado !== 'activa') throw new Error('La venta ya no está activa');
       const items = Array.isArray(v.items) ? v.items : [], refs = items.map(i => doc(cPro, i.productoId)), snaps = [];
@@ -895,7 +942,7 @@ window.FB.anularVentaPos = async (id, motivo, cb) => {
       });
       (v.pagos || []).forEach(p => {
         if (p.pagoId) tx.update(doc(cPagPos, p.pagoId), { estado:'revertido', revertidoEn:serverTimestamp(), revertidoPor:actor, motivoReversion:String(motivo || '').trim() });
-        tx.set(doc(cMovFin), { schemaVersion:1, ventaId:id, numeroVenta:v.numeroVenta, tipo:'reversion_venta', medio:p.medio,
+        tx.set(doc(cMovFin), { schemaVersion:1, cajaId:cajaId, ventaId:id, numeroVenta:v.numeroVenta, tipo:'reversion_venta', medio:p.medio,
           cuenta:p.cuenta, monto:-Number(p.monto || 0), moneda:p.moneda || v.moneda || 'ARS', referenciaTipo:'venta', referenciaId:id,
           motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
       });
