@@ -240,7 +240,11 @@ function catSubir() {
       syncErr('Error config');
       return;
     }
-    CFG_CAT = { usd: usd, mult: mult, desc: desc };
+    // Mutar la configuración existente evita colisiones con versiones legacy
+    // que declaraban CFG_CAT como const en una sesión todavía cacheada.
+    CFG_CAT.usd = usd;
+    CFG_CAT.mult = mult;
+    CFG_CAT.desc = desc;
 
     // Subir productos
     FB.setCat(_catItems, function(errCat, resumenServicios) {
