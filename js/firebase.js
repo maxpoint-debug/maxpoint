@@ -78,6 +78,7 @@ function authUiSesion() {
   const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = puede('ver_balance') ? '' : 'none';
   const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = puede('ver_ventas_equipos') ? '' : 'none';
   const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = puede('ver_cierres_caja') ? '' : 'none';
+  const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = puede('ver_balance') ? '' : 'none';
   const resumen = document.getElementById('financeSummary'); if (resumen) resumen.style.display = puede('ver_balance') ? '' : 'none';
   const info = document.getElementById('sesionInfo');
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
@@ -88,6 +89,7 @@ function authUiLogin() {
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = 'none';
   const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = 'none';
   const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = 'none';
+  const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = 'none';
 }
 async function verificarBootstrap() {
   try { bootstrapDisponible = (await getDocs(query(cUsr, limit(1)))).empty; }
@@ -567,6 +569,16 @@ onSnapshot(query(cMovFin, orderBy('fechaHora','desc'), limit(250)), (snap) => {
   window.MOVIMIENTOS_FINANCIEROS_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
   if ((window.VIEW === 'ops' || window.VIEW === 'pos') && typeof render === 'function') render();
 }, () => {});
+onSnapshot(query(cPagPos, orderBy('fechaHora','desc'), limit(2000)), (snap) => {
+  window.PAGOS_ADMIN=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+  window.PAGOS_ADMIN_LIMITADO=snap.size===2000;
+  if(window.VIEW==='admin'&&typeof render==='function')render();
+}, (err) => { console.error('Pagos administrativos:',err); });
+onSnapshot(query(cMovFin, orderBy('fechaHora','desc'), limit(2000)), (snap) => {
+  window.MOVIMIENTOS_FINANCIEROS_ADMIN=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+  window.MOVIMIENTOS_ADMIN_LIMITADO=snap.size===2000;
+  if(window.VIEW==='admin'&&typeof render==='function')render();
+}, (err) => { console.error('Movimientos administrativos:',err); });
 onSnapshot(dCajaActual, (snap) => {
   const d=snap.exists()?snap.data():null; window.CAJA_ACTUAL=d&&d.estado==='abierta'?Object.assign({id:d.cajaId},d):null;
   if (window.VIEW==='pos') { if(typeof setTopActions==='function')setTopActions('pos'); if(typeof render==='function')render(); }
@@ -617,7 +629,7 @@ window.FB.abrirCaja = async (data, cb) => {
 window.FB.movimientoManualCaja = async (data, cb) => {
   if(!sesionActiva()){cb('Sesión no válida');return;}
   try{const monto=Number(data.monto),actor=usuarioActualRegistro(),ahora=new Date().toISOString();if(!Number.isFinite(monto)||monto===0)throw new Error('Ingresá un importe válido');if(!data.medio||!data.cuenta||!data.categoria)throw new Error('Completá medio, cuenta y categoría');
-    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('No hay una caja abierta');const cajaId=actual.data().cajaId;const mov={schemaVersion:2,tipo:monto>0?'ingreso_manual':'egreso_manual',referenciaTipo:'caja_manual',referenciaId:cajaId,cajaId:cajaId,monto:monto,moneda:data.moneda==='USD'?'USD':'ARS',medio:String(data.medio),cuenta:String(data.cuenta),categoria:String(data.categoria).trim(),descripcion:String(data.descripcion||'').trim(),usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(doc(cMovFin),mov);tx.set(doc(cAud),{entidad:'caja',entidadId:cajaId,accion:monto>0?'ingreso_manual':'egreso_manual',actor:actor,cambios:[],monto:monto,moneda:mov.moneda,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('No hay una caja abierta');const cajaId=actual.data().cajaId;const mov={schemaVersion:2,tipo:monto>0?'ingreso_manual':'egreso_manual',tipoEgreso:monto<0?String(data.tipoEgreso||'gasto_operativo'):'',referenciaTipo:'caja_manual',referenciaId:cajaId,cajaId:cajaId,monto:monto,moneda:data.moneda==='USD'?'USD':'ARS',medio:String(data.medio),cuenta:String(data.cuenta),categoria:String(data.categoria).trim(),subcategoria:String(data.subcategoria||'').trim(),descripcion:String(data.descripcion||'').trim(),usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(doc(cMovFin),mov);tx.set(doc(cAud),{entidad:'caja',entidadId:cajaId,accion:monto>0?'ingreso_manual':'egreso_manual',actor:actor,cambios:[],monto:monto,moneda:mov.moneda,tipoEgreso:mov.tipoEgreso,categoria:mov.categoria,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 window.FB.cerrarCaja = async (data, cb) => {
