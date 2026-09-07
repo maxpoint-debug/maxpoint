@@ -8,6 +8,13 @@ function cajaCerrarModal(){var c=cajaActualAbierta();if(!c)return;var r=cajaResu
 function cajaDiferenciaDom(){var c=cajaActualAbierta(),e=el('ccDif');if(!c||!e)return;var d=Number(val('ccContado')||0)-cajaResumen(c).efectivoEsperado;e.textContent='Diferencia: '+posDinero(d,c.moneda);e.className='pos-diferencia '+(Math.abs(d)<.01?'ok':'error');}
 function cajaEstadoHtml(){var c=cajaActualAbierta();if(!c)return '<div class="pos-panel" style="margin-bottom:14px"><div class="pos-section-title">Caja cerrada</div><button class="btn btn-p" onclick="cajaAbrirModal()">Abrir caja</button></div>';var r=cajaResumen(c),u=c.usuarioApertura&&c.usuarioApertura.nombre||'Usuario';return '<div class="pos-panel" style="margin-bottom:14px"><div class="pos-section-title"><span>Estado: ABIERTA</span><span>'+posFecha(c.aperturaFechaHora)+'</span></div><div class="sc-row"><div class="sc"><div class="scl">Usuario</div><div class="scv" style="font-size:14px">'+esc(u)+'</div></div><div class="sc"><div class="scl">Efectivo inicial</div><div class="scv cb">'+posDinero(c.efectivoInicial,c.moneda)+'</div></div><div class="sc"><div class="scl">Efectivo esperado</div><div class="scv cg">'+posDinero(r.efectivoEsperado,c.moneda)+'</div></div></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-g btn-sm" onclick="cajaMovimientoModal(1)">+ Ingreso manual</button><button class="btn btn-g btn-sm" onclick="cajaMovimientoModal(-1)">- Egreso manual</button><button class="btn btn-d btn-sm" onclick="cajaCerrarModal()">Cerrar caja</button></div></div>';}
 function cajaMapaHtml(t,m){var ks=Object.keys(m||{});return '<div class="pos-section-title pos-mov-title">'+esc(t)+'</div><div class="pos-lista">'+(ks.map(function(k){var mo=k.slice(-3);return '<div class="pos-list-row"><span>'+esc(k)+'</span><b>'+posDinero(m[k],mo)+'</b></div>';}).join('')||'<div class="pos-vacio">Sin movimientos</div>')+'</div>';}
+// Entrada directa para no depender de que una versión anterior de render.js
+// conozca la vista "cierres". showView conserva navegación, título y sidebar.
+function abrirCierresCaja(navEl){
+  if(!puede('ver_cierres_caja')){toast('Solo administración puede ver los cierres','var(--rd)');return;}
+  showView('cierres',navEl);
+  renderCierresCaja();
+}
 function renderCierresCaja(){
   if(!puede('ver_cierres_caja')){showView('reps');return;}
   var cnt=el('cnt'),lista=(window.CIERRES_CAJA||[]).filter(function(c){return c.estado==='cerrada';});
@@ -30,3 +37,9 @@ function cajaDetalleHtml(c,movs){
   return '<div class="pos-ticket-preview"><div><span>Fecha</span><b>'+esc(c.fechaNegocio||'—')+'</b></div><div><span>Hora de apertura / cierre</span><b>'+cajaHora(c.aperturaFechaHora)+' / '+cajaHora(c.cierreFechaHora)+'</b></div><div><span>Efectivo inicial</span><b>'+posDinero(c.efectivoInicial,c.moneda)+'</b></div><div><span>Ingresos</span><b>'+posDinero(c.totalIngresos,c.moneda)+'</b></div><div><span>Egresos</span><b>'+posDinero(c.totalEgresos,c.moneda)+'</b></div><div><span>Esperado</span><b>'+posDinero(c.efectivoEsperado,c.moneda)+'</b></div><div><span>Contado</span><b>'+posDinero(c.efectivoContado,c.moneda)+'</b></div><div class="total"><span>Diferencia</span><b>'+posDinero(c.diferencia,c.moneda)+'</b></div><small>Abrió: '+esc(c.usuarioApertura&&c.usuarioApertura.nombre||'—')+' · Cerró: '+esc(c.usuarioCierre&&c.usuarioCierre.nombre||'—')+'</small><small>Observaciones: '+esc(obs)+'</small></div>'+cajaMovimientosCierreHtml(movs)+cajaMapaHtml('Totales por medio',c.totalesPorMedio)+cajaMapaHtml('Totales por cuenta',c.totalesPorCuenta);
 }
 function cajaVerCierre(id){var c=(window.CIERRES_CAJA||[]).find(function(x){return x.id===id;});if(!c)return;posModal('Cierre '+(c.fechaNegocio||''),cajaDetalleHtml(c,[]),posCerrarModal,'Cerrar');if(!window.FB||typeof FB.cargarMovimientosCaja!=='function')return;FB.cargarMovimientosCaja(id,function(err,movs){if(err){toast('No se pudo cargar el detalle: '+err,'var(--rd)');return;}var body=document.querySelector('#posModal .mb');if(body)body.innerHTML=cajaDetalleHtml(c,movs);});}
+
+// Handlers usados desde HTML inline (Safari/iOS y publicaciones con caché mixto).
+window.abrirCierresCaja=abrirCierresCaja;
+window.renderCierresCaja=renderCierresCaja;
+window.cajaFiltrarCierres=cajaFiltrarCierres;
+window.cajaVerCierre=cajaVerCierre;

@@ -10,6 +10,7 @@ function render() {
   else if (VIEW === 'pos' && typeof renderPos === 'function') renderPos();
   else if (VIEW === 'ops' && typeof renderPosHistorial === 'function') renderPosHistorial();
   else if (VIEW === 'ven')   renderVen();
+  else if (VIEW === 'cierres' && typeof renderCierresCaja==='function') renderCierresCaja();
   else if (VIEW === 'prod' && typeof renderProductosPos === 'function') renderProductosPos();
   else if (VIEW === 'inv' && typeof renderInventarioPos === 'function') renderInventarioPos();
   else if (VIEW === 'stock') renderStock();
