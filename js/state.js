@@ -125,6 +125,7 @@ window.FB = {
   cargarMovimientosCaja:function(id, cb) { cb('Firebase no conectado todavía'); },
   guardarServicioMaestro:function(d, cb) { cb('Firebase no conectado todavía'); },
   guardarPoliticasReparacion:function(d, cb) { cb('Firebase no conectado todavía'); },
+  borrarListaMaestra:function(cb) { cb('Firebase no conectado todavía'); },
 };
 
 // ===================== CONSTANTES =====================
