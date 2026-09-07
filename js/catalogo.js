@@ -242,9 +242,17 @@ function catSubir() {
     }
     // Mutar la configuración existente evita colisiones con versiones legacy
     // que declaraban CFG_CAT como const en una sesión todavía cacheada.
-    CFG_CAT.usd = usd;
-    CFG_CAT.mult = mult;
-    CFG_CAT.desc = desc;
+    try {
+      CFG_CAT.usd = usd;
+      CFG_CAT.mult = mult;
+      CFG_CAT.desc = desc;
+    } catch (errLocal) {
+      console.error('No se pudo actualizar la configuración local del catálogo:', errLocal);
+      toast('Error en configuración local: ' + errLocal.message, 'var(--rd)');
+      syncErr('Error configuración local');
+      btn.disabled = false; btn.textContent = 'Actualizar listas';
+      return;
+    }
 
     // Subir productos
     FB.setCat(_catItems, function(errCat, resumenServicios) {
