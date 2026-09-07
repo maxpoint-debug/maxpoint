@@ -11,6 +11,7 @@ function render() {
   else if (VIEW === 'ops' && typeof renderPosHistorial === 'function') renderPosHistorial();
   else if (VIEW === 'ven')   renderVen();
   else if (VIEW === 'cierres' && typeof renderCierresCaja==='function') renderCierresCaja();
+  else if (VIEW === 'admin' && typeof renderAdminDashboard==='function') renderAdminDashboard();
   else if (VIEW === 'prod' && typeof renderProductosPos === 'function') renderProductosPos();
   else if (VIEW === 'inv' && typeof renderInventarioPos === 'function') renderInventarioPos();
   else if (VIEW === 'stock') renderStock();
