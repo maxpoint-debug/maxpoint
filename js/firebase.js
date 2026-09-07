@@ -573,8 +573,14 @@ onSnapshot(dCajaActual, (snap) => {
 }, () => {});
 onSnapshot(query(cCajas, orderBy('aperturaFechaHora','desc'), limit(500)), (snap) => {
   window.CIERRES_CAJA=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+  window.CIERRES_CAJA_CARGANDO=false; window.CIERRES_CAJA_ERROR='';
   if(window.VIEW==='cierres'&&typeof render==='function')render();
-}, () => {});
+}, (err) => {
+  window.CIERRES_CAJA_CARGANDO=false;
+  window.CIERRES_CAJA_ERROR=(err.code ? err.code + ': ' : '') + (err.message || 'No se pudieron cargar los cierres');
+  console.error('Cierres de caja:', err);
+  if(window.VIEW==='cierres'&&typeof render==='function')render();
+});
 onSnapshot(dCot, (snap) => {
   if (typeof cotLoadConfig === 'function') cotLoadConfig(snap.exists() ? snap.data() : {});
 }, () => {});
