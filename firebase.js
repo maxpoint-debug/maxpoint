@@ -1,0 +1,1051 @@
+// ===================== FIREBASE MODULE =====================
+// ES module — corre despues de que los scripts regulares definieron window.FB.
+// Sobreescribe los metodos de window.FB con las funciones reales de Firestore.
+
+import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, setPersistence, browserLocalPersistence, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  writeBatch,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  limit,
+  runTransaction,
+  serverTimestamp,
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey:            'AIzaSyCw76jqobNfGKt4aH7ygv4iVz9ZAHxTiko',
+  authDomain:        'maxpoint-taller.firebaseapp.com',
+  projectId:         'maxpoint-taller',
+  storageBucket:     'maxpoint-taller.firebasestorage.app',
+  messagingSenderId: '591043101786',
+  appId:             '1:591043101786:web:b18f78627738a22d008463',
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+const db  = getFirestore(app);
+const cR   = collection(db, 'reparaciones');
+const cRp  = collection(db, 'repuestos');
+const cCat = collection(db, 'catalogo');
+const cUsa = collection(db, 'usados');
+const cVen = collection(db, 'ventas');
+const cSt  = collection(db, 'stock');
+const dCfg  = doc(db, 'config', 'catalogo');
+const dCom  = doc(db, 'config', 'comisiones');
+const dCot  = doc(db, 'config', 'cotizador');
+
+// V2.1 — entidades base. Conviven con las colecciones actuales.
+const cCli = collection(db, 'clientes');
+const cEq  = collection(db, 'equipos');
+const cMov = collection(db, 'movimientos');
+const cUsr = collection(db, 'usuarios');
+const cAud = collection(db, 'auditoria');
+const cFx  = collection(db, 'tiposCambio');
+const cLiq = collection(db, 'liquidacionesComisiones');
+const cAj  = collection(db, 'ajustesComisiones');
+const cNot = collection(db, 'notificaciones');
+const dMon = doc(db, 'config', 'moneda');
+// POS V1. Colecciones incrementales; ventas convive con documentos legacy.
+const cPro = collection(db, 'productos');
+const cMovSt = collection(db, 'movimientosStock');
+const cPagPos = collection(db, 'pagos');
+const cMovFin = collection(db, 'movimientosFinancieros');
+const dContVentas = doc(db, 'contadores', 'ventas');
+const cCajas = collection(db, 'cajas');
+const dCajaActual = doc(db, 'config', 'cajaActual');
+const cServicios = collection(db, 'serviciosMaestros');
+const dPoliticasRep = doc(db, 'config', 'politicasReparacion');
+
+let authModo = 'login', bootstrapDisponible = false;
+let detenerNotificaciones = null;
+function authMensaje(msg, color) { const e = document.getElementById('authErr'); if (e) { e.textContent = msg || ''; e.style.color = color || 'var(--rd)'; } }
+function authError(msg) { authMensaje(msg, 'var(--rd)'); }
+function authUiSesion() {
+  if (!sesionActiva()) { authUiLogin(); return; }
+  const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'flex';
+  const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'none';
+  const nav = document.getElementById('nav-users'); if (nav) nav.style.display = puede('crear_usuario') ? '' : 'none';
+  const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = puede('ver_balance') ? '' : 'none';
+  const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = puede('ver_ventas_equipos') ? '' : 'none';
+  const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = puede('ver_cierres_caja') ? '' : 'none';
+  const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = puede('ver_balance') ? '' : 'none';
+  const serviciosNav = document.getElementById('nav-servicios-maestros'); if (serviciosNav) serviciosNav.style.display = puede('gestionar_servicios_maestros') ? '' : 'none';
+  const resumen = document.getElementById('financeSummary'); if (resumen) resumen.style.display = puede('ver_balance') ? '' : 'none';
+  const info = document.getElementById('sesionInfo');
+  if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
+}
+function authUiLogin() {
+  const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'none';
+  const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'flex';
+  const nav = document.getElementById('nav-users'); if (nav) nav.style.display = 'none';
+  const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = 'none';
+  const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = 'none';
+  const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = 'none';
+  const serviciosNav = document.getElementById('nav-servicios-maestros'); if (serviciosNav) serviciosNav.style.display = 'none';
+}
+async function verificarBootstrap() {
+  try { bootstrapDisponible = (await getDocs(query(cUsr, limit(1)))).empty; }
+  catch (e) { bootstrapDisponible = false; }
+  const b = document.getElementById('authBootstrap'); if (b) b.style.display = bootstrapDisponible ? '' : 'none';
+}
+window.authMostrarLogin = function() {
+  authModo = 'login'; authError('');
+  document.getElementById('authTitle').textContent = 'Ingresar al sistema';
+  document.getElementById('authNombreWrap').style.display = 'none';
+  document.getElementById('authSubmit').textContent = 'Ingresar';
+  document.getElementById('authRecuperar').style.display = '';
+  document.getElementById('authVolver').style.display = 'none'; verificarBootstrap();
+};
+window.authMostrarBootstrap = function() {
+  if (!bootstrapDisponible) return;
+  authModo = 'bootstrap'; authError('');
+  document.getElementById('authTitle').textContent = 'Crear primer administrador';
+  document.getElementById('authNombreWrap').style.display = '';
+  document.getElementById('authSubmit').textContent = 'Crear administrador';
+  document.getElementById('authRecuperar').style.display = 'none';
+  document.getElementById('authBootstrap').style.display = 'none';
+  document.getElementById('authVolver').style.display = '';
+};
+window.authEnviar = async function() {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass = document.getElementById('authPass').value;
+  const nombre = document.getElementById('authNombre').value.trim();
+  if (!email || !pass || (authModo === 'bootstrap' && !nombre)) { authError('Completá los datos requeridos.'); return; }
+  authError('');
+  try {
+    if (authModo === 'bootstrap') {
+      if (!bootstrapDisponible) throw new Error('El administrador inicial ya fue creado.');
+      const cred = await createUserWithEmailAndPassword(auth, email, pass);
+      await setDoc(doc(cUsr, cred.user.uid), { uid: cred.user.uid, nombre: nombre, email: email, rol: 'administrador', activo: true, createdAt: serverTimestamp() });
+    } else await signInWithEmailAndPassword(auth, email, pass);
+  } catch (e) { authError(e.message || 'No se pudo iniciar sesión.'); }
+};
+window.authTecla = function(e, input) {
+  var visibles = ['authNombre', 'authEmail', 'authPass'].map(function(id) { return document.getElementById(id); })
+    .filter(function(campo) { return campo && campo.offsetParent !== null; });
+  var indice = visibles.indexOf(input);
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (indice < visibles.length - 1) visibles[indice + 1].focus();
+    else window.authEnviar();
+  } else if (e.key === 'ArrowDown' && indice < visibles.length - 1) {
+    e.preventDefault(); visibles[indice + 1].focus();
+  } else if (e.key === 'ArrowUp' && indice > 0) {
+    e.preventDefault(); visibles[indice - 1].focus();
+  }
+};
+window.authSalir = function() { signOut(auth); };
+window.authRecuperarClave = async function() {
+  const email = document.getElementById('authEmail').value.trim();
+  if (!email) { authError('Ingresá tu email para recibir el enlace.'); return; }
+  const boton = document.getElementById('authRecuperar');
+  if (boton) { boton.disabled = true; boton.textContent = 'Enviando…'; }
+  try { await sendPasswordResetEmail(auth, email); authMensaje('Si existe una cuenta para este email, enviamos el enlace de recuperación.', 'var(--gr)'); }
+  catch (e) { authError(e.message || 'No se pudo enviar el enlace.'); }
+  finally { if (boton) { boton.disabled = false; boton.textContent = 'Olvidé mi contraseña'; } }
+};
+window.openPerfil = function() {
+  if (!SESION.usuario || !SESION.perfil) return;
+  setVal('pfNombre', SESION.perfil.nombre || ''); setVal('pfEmail', SESION.perfil.email || SESION.usuario.email || '');
+  ['pfActual','pfNueva','pfNueva2'].forEach(function(id) { setVal(id, ''); }); openM('mPerfil');
+};
+window.authCambiarClave = async function() {
+  const actual = val('pfActual'), nueva = val('pfNueva'), repetir = val('pfNueva2');
+  if (!actual || !nueva || !repetir) { toast('Completá los tres campos de contraseña', 'var(--rd)'); return; }
+  if (nueva !== repetir) { toast('Las nuevas contraseñas no coinciden', 'var(--rd)'); return; }
+  if (nueva.length < 6) { toast('La nueva contraseña debe tener al menos 6 caracteres', 'var(--rd)'); return; }
+  try {
+    await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, actual));
+    await updatePassword(auth.currentUser, nueva);
+    closeM('mPerfil'); toast('Contraseña actualizada');
+  } catch (e) { toast('No se pudo cambiar la contraseña: ' + e.message, 'var(--rd)'); }
+};
+
+window.renderUsuarios = async function() {
+  if (!puede('crear_usuario')) { toast('Sin permiso para administrar usuarios', 'var(--rd)'); return; }
+  const cnt = document.getElementById('cnt');
+  cnt.innerHTML = '<div class="card" style="max-width:760px"><div class="ct">Usuarios</div><div class="mu" style="margin-bottom:16px">Alta de cuentas y roles del sistema.</div><div class="fgrid"><div class="f"><label>Nombre</label><input id="usrNom"/></div><div class="f"><label>Email</label><input id="usrEmail" type="email"/></div><div class="f"><label>Contraseña temporal</label><input id="usrPass" type="password"/></div><div class="f"><label>Rol</label><select id="usrRol"><option value="tecnico">Técnico</option><option value="recepcionista">Recepcionista</option><option value="administrador">Administrador</option></select></div></div><div class="fa"><button class="btn btn-p" onclick="authCrearUsuario()">Crear usuario</button></div><div id="usrLista" style="margin-top:18px"></div></div>';
+  try {
+    const snap = await getDocs(cUsr);
+    const lista = snap.docs.map(d => d.data()).sort((a,b) => String(a.nombre || '').localeCompare(String(b.nombre || '')));
+    document.getElementById('usrLista').innerHTML = lista.length ? lista.map(u => '<div style="padding:9px 0;border-top:1px solid var(--bd)"><b>' + esc(u.nombre || '') + '</b><span class="mu"> · ' + esc(u.email || '') + ' · ' + esc(u.rol || '') + (u.activo === false ? ' · inactivo' : '') + '</span></div>').join('') : '<div class="mu">Todavía no hay usuarios.</div>';
+  } catch (e) { document.getElementById('usrLista').textContent = 'No se pudieron cargar los usuarios: ' + e.message; }
+};
+window.authCrearUsuario = async function() {
+  if (!puede('crear_usuario')) { toast('Sin permiso para crear usuarios', 'var(--rd)'); return; }
+  const nombre = document.getElementById('usrNom').value.trim(), email = document.getElementById('usrEmail').value.trim(), pass = document.getElementById('usrPass').value, rol = document.getElementById('usrRol').value;
+  if (!nombre || !email || !pass) { toast('Completá nombre, email y contraseña', 'var(--rd)'); return; }
+  const provision = initializeApp(firebaseConfig, 'provision_' + Date.now());
+  try {
+    const cred = await createUserWithEmailAndPassword(getAuth(provision), email, pass);
+    await setDoc(doc(cUsr, cred.user.uid), { uid: cred.user.uid, nombre: nombre, email: email, rol: rol, activo: true, createdAt: serverTimestamp() });
+    await registrarAuditoria('usuario', cred.user.uid, 'creado', {}, { nombre: nombre, email: email, rol: rol, activo: true });
+    await signOut(getAuth(provision)); await deleteApp(provision);
+    toast('Usuario creado'); window.renderUsuarios();
+  } catch (e) { await deleteApp(provision); toast('Error creando usuario: ' + e.message, 'var(--rd)'); }
+};
+
+setPersistence(auth, browserLocalPersistence).catch(function() {});
+let revisionSesion = 0;
+onAuthStateChanged(auth, async function(user) {
+  const revisionActual = ++revisionSesion;
+  if (detenerNotificaciones) { detenerNotificaciones(); detenerNotificaciones = null; }
+  SESION.usuario = user || null; SESION.perfil = null; SESION.cargando = true;
+  if (!user) {
+    window.NOTIFICACIONES = [];
+    if (typeof window.notificacionesRender === 'function') window.notificacionesRender();
+    SESION.cargando = false; authUiLogin(); authMostrarLogin(); return;
+  }
+  try {
+    const perfil = (await getDoc(doc(cUsr, user.uid))).data();
+    if (revisionActual !== revisionSesion || !auth.currentUser || auth.currentUser.uid !== user.uid) return;
+    if (!perfil || perfil.activo === false) throw new Error(!perfil ? 'Tu cuenta no tiene un perfil habilitado.' : 'Tu usuario está inactivo.');
+    SESION.perfil = perfil; SESION.cargando = false; authUiSesion(); iniciarNotificaciones(user.uid);
+  } catch (e) {
+    if (revisionActual !== revisionSesion) return;
+    SESION.cargando = false; authUiLogin(); authError(e.message || 'No se pudo validar la sesión.'); await signOut(auth);
+  }
+});
+
+function iniciarNotificaciones(uid) {
+  if (detenerNotificaciones) { detenerNotificaciones(); detenerNotificaciones = null; }
+  if (!uid || !sesionActiva()) return;
+  // Se ordena localmente para no exigir un índice compuesto sólo para la V1.
+  detenerNotificaciones = onSnapshot(query(cNot, where('usuarioDestinoUid', '==', uid)), function(snap) {
+    if (!SESION.usuario || SESION.usuario.uid !== uid) return;
+    window.NOTIFICACIONES = snap.docs.map(function(d) { return Object.assign({ id:d.id }, d.data()); }).sort(function(a, b) {
+      var ta = a.creadaEn && a.creadaEn.toMillis ? a.creadaEn.toMillis() : 0;
+      var tb = b.creadaEn && b.creadaEn.toMillis ? b.creadaEn.toMillis() : 0;
+      return tb - ta;
+    });
+    if (typeof window.notificacionesRender === 'function') window.notificacionesRender();
+  }, function(err) { console.warn('Notificaciones:', err.message); });
+}
+
+function normKey(v) {
+  return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+}
+function phoneKey(v) { return String(v || '').replace(/\D/g, ''); }
+function safeId(prefix, key) { return prefix + '_' + (key || Math.random().toString(36).slice(2, 12)).slice(0, 80); }
+
+// Normaliza los campos V1 sin modificar los documentos de origen.
+// En reparaciones, `equipo` es el modelo comercial y `modelo` es IMEI/serie.
+function v22DatosEquipo(data, origen) {
+  return {
+    imei: origen === 'reparacion' ? (data.modelo || '') : (data.imei || ''),
+    modelo: origen === 'reparacion' ? (data.equipo || '') : (data.modelo || data.equipo || ''),
+    capacidad: data.capacidad || '',
+    color: data.color || '',
+    estadoActual: data.estado || '',
+  };
+}
+
+async function v22Upsert(ref, data) {
+  const previo = await getDoc(ref);
+  const meta = { schemaVersion: 2, updatedAt: serverTimestamp() };
+  if (!previo.exists() || !previo.data().createdAt) meta.createdAt = serverTimestamp();
+  await setDoc(ref, Object.assign({}, data, meta), { merge: true });
+}
+
+async function v21Cliente(data) {
+  const tel = phoneKey(data.telefono);
+  const key = tel || normKey(data.nombre);
+  if (!key) return null;
+  const id = safeId('cli', key);
+  await v22Upsert(doc(db, 'clientes', id), {
+    nombre: data.nombre || '', telefono: data.telefono || '', dni: data.dni || '',
+    direccion: data.direccion || '', email: data.email || ''
+  });
+  return id;
+}
+
+async function v21Equipo(data, origen, origenId, clienteId) {
+  const equipo = v22DatosEquipo(data, origen);
+  const imei = normKey(equipo.imei);
+  const key = imei || normKey(origen + '_' + origenId);
+  if (!key) return null;
+  const id = safeId('eq', key);
+  await v22Upsert(doc(db, 'equipos', id), Object.assign({}, equipo, {
+    origen: origen, origenId: origenId, clienteId: clienteId || ''
+  }));
+  return id;
+}
+
+async function v21Movimiento(tipo, origen, origenId, data, extra) {
+  await addDoc(cMov, {
+    schemaVersion: 2,
+    tipo: tipo, origen: origen, origenId: origenId,
+    clienteId: (extra && extra.clienteId) || '', equipoId: (extra && extra.equipoId) || '',
+    estado: data.estado || '', detalle: (extra && extra.detalle) || '',
+    fecha: serverTimestamp(),
+    createdAt: serverTimestamp()
+  });
+}
+
+async function v21Sync(origen, origenId, data, tipo, extra) {
+  try {
+    // Las actualizaciones parciales usan el documento actual para conservar
+    // clienteId y equipoId en cada movimiento V2.2.
+    const col = origen === 'reparacion' ? 'reparaciones' : (origen === 'venta' ? 'ventas' : 'stock');
+    const origenRef = doc(db, col, origenId);
+    const previo = await getDoc(origenRef);
+    const actual = previo.exists() ? previo.data() : {};
+    const completo = Object.assign({}, actual, data);
+    const tieneIdentidad = !!(completo.nombre || completo.telefono || completo.imei || completo.modelo || completo.equipo);
+    let clienteId = actual.clienteId || null;
+    let equipoId = actual.equipoId || null;
+    if (tieneIdentidad) {
+      clienteId = await v21Cliente(completo) || clienteId;
+      equipoId = await v21Equipo(completo, origen, origenId, clienteId) || equipoId;
+      const links = { _v2: 2 };
+      if (clienteId) links.clienteId = clienteId;
+      if (equipoId) links.equipoId = equipoId;
+      await updateDoc(origenRef, links);
+    }
+    await v21Movimiento(tipo, origen, origenId, completo, { clienteId, equipoId, detalle: extra && extra.detalle });
+  } catch (e) {
+    // V2.1 nunca debe impedir la operacion principal de V1.
+    console.warn('MaxPoint V2.1 sync:', e);
+  }
+}
+
+
+// --- Auditoría centralizada de operaciones con datos ---
+const CAMPOS_PRIVADOS = ['clave', 'pin', 'password', 'contrasena', 'contraseña'];
+function valorAuditable(valor) {
+  if (valor === undefined || valor === null || valor === '') return '—';
+  if (Array.isArray(valor)) return valor.length + ' elemento(s)';
+  if (typeof valor === 'object') return 'Actualizado';
+  return String(valor).slice(0, 180);
+}
+function cambiosAuditables(antes, despues) {
+  return Object.keys(despues || {}).filter(function(campo) {
+    return campo.charAt(0) !== '_' && campo !== 'timeline' && CAMPOS_PRIVADOS.indexOf(campo.toLowerCase()) === -1
+      && JSON.stringify((antes || {})[campo]) !== JSON.stringify(despues[campo]);
+  }).map(function(campo) {
+    return { campo: campo, antes: valorAuditable((antes || {})[campo]), despues: valorAuditable(despues[campo]) };
+  });
+}
+async function registrarAuditoria(entidad, entidadId, accion, antes, despues) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para registrar cambios');
+  await addDoc(cAud, {
+    entidad: entidad, entidadId: entidadId, accion: accion, actor: actor,
+    cambios: cambiosAuditables(antes, despues), fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp()
+  });
+}
+async function agregarAuditable(coleccion, entidad, datos, id) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para guardar');
+  var ref = id ? doc(db, coleccion, id) : doc(collection(db, coleccion));
+  var batch = writeBatch(db);
+  batch.set(ref, Object.assign({}, datos, { _ts: serverTimestamp() }));
+  batch.set(doc(cAud), { entidad: entidad, entidadId: ref.id, accion: 'creado', actor: actor, cambios: [], fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+  await batch.commit(); return ref.id;
+}
+async function actualizarAuditable(coleccion, entidad, id, datos) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para guardar');
+  var ref = doc(db, coleccion, id), previo = await getDoc(ref);
+  var batch = writeBatch(db);
+  var existe = previo.exists(), anteriores = existe ? previo.data() : {};
+  if (existe) batch.update(ref, Object.assign({}, datos, { _upd: serverTimestamp() }));
+  else batch.set(ref, Object.assign({}, datos, { _ts: serverTimestamp() }));
+  batch.set(doc(cAud), { entidad: entidad, entidadId: id, accion: existe ? 'actualizado' : 'creado', actor: actor, cambios: cambiosAuditables(anteriores, datos), fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+  await batch.commit();
+}
+async function eliminarAuditable(coleccion, entidad, id) {
+  var actor = usuarioActualRegistro();
+  if (!actor) throw new Error('Sesión activa requerida para eliminar');
+  var ref = doc(db, coleccion, id), previo = await getDoc(ref);
+  var batch = writeBatch(db); batch.delete(ref);
+  batch.set(doc(cAud), { entidad: entidad, entidadId: id, accion: 'eliminado', actor: actor, cambios: [], fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+  await batch.commit();
+}
+
+// --- Notificaciones internas -------------------------------------------------
+// Se persiste un documento por destinatario. La clave de evento determina la
+// idempotencia: reintentar la misma transición no duplica avisos.
+function notificacionId(clave, uid) { return safeId('not', normKey(clave + '_' + uid)); }
+async function destinatariosNotificacion(reglas, reparacion) {
+  var snap = await getDocs(cUsr);
+  var usuarios = snap.docs.map(function(d) { return Object.assign({ uid:d.id }, d.data()); }).filter(function(u) { return u.activo !== false; });
+  var salida = [];
+  if (reglas.tecnico && reparacion && reparacion.tecnico) {
+    // El campo legacy `tecnico` guarda nombre, no UID. Se normalizan acentos,
+    // espacios y mayúsculas para resolver el perfil activo correspondiente.
+    var tecnicoClave = normKey(reparacion.tecnico);
+    usuarios.filter(function(u) { return tecnicoClave && normKey(u.nombre) === tecnicoClave; }).forEach(function(u) { salida.push(u); });
+  }
+  if (reglas.administradores) usuarios.filter(function(u) { return u.rol === 'administrador'; }).forEach(function(u) { salida.push(u); });
+  if (reglas.recepcionistas) usuarios.filter(function(u) { return u.rol === 'recepcionista'; }).forEach(function(u) { salida.push(u); });
+  var excluirUid = reglas.excluirUid || '';
+  var vistos = {}; return salida.filter(function(u) { if (!u.uid || u.uid === excluirUid || vistos[u.uid]) return false; vistos[u.uid] = true; return true; });
+}
+async function crearNotificaciones(evento) {
+  if (!evento || !evento.clave) return;
+  var destinos = await destinatariosNotificacion(evento.destinos || {}, evento.reparacion);
+  if (!destinos.length) throw new Error('No se encontró un usuario activo destinatario para esta notificación');
+  await Promise.all(destinos.map(async function(u) {
+    var ref = doc(cNot, notificacionId(evento.clave, u.uid));
+    // La clave determinista conserva la lectura individual ante reintentos.
+    await runTransaction(db, async function(tx) {
+      if ((await tx.get(ref)).exists()) return;
+      tx.set(ref, {
+        tipo:evento.tipo, titulo:evento.titulo, mensaje:evento.mensaje,
+        usuarioDestinoUid:u.uid, usuarioDestinoNombre:u.nombre || '', usuarioDestinoRol:u.rol || '',
+        entidad:evento.entidad || 'reparacion', entidadId:evento.entidadId || '',
+        prioridad:evento.prioridad === 'importante' ? 'importante' : 'normal', origen:evento.origen || 'sistema',
+        leida:false, leidaEn:null, creadaEn:serverTimestamp(), creadaPor:usuarioActualRegistro() || null,
+        eventoClave:evento.clave
+      });
+    });
+  }));
+}
+function datosMensajeReparacion(r) { return (r.orden || 'Sin orden') + ' · ' + (r.equipo || 'Equipo') + ' · ' + (r.nombre || 'Cliente'); }
+function dispararNotificacionReparacion(tipo, r, opciones) {
+  if (!r || !r.id) return Promise.resolve();
+  var cfg = {
+    reparacion_asignada:{ titulo:'Nueva reparación asignada', prioridad:'normal', destinos:{ tecnico:true }, origen:'sistema', mensaje:'Te asignaron ' + datosMensajeReparacion(r) },
+    presupuesto_aprobado:{ titulo:'Presupuesto aprobado', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'portal_cliente', mensaje:(r.nombre || 'Cliente') + ' aprobó la reparación ' + (r.orden || '') + ' · ' + (r.equipo || '') },
+    presupuesto_rechazado:{ titulo:'Presupuesto rechazado', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'portal_cliente', mensaje:(r.nombre || 'Cliente') + ' rechazó la reparación ' + (r.orden || '') + ' · ' + (r.equipo || '') },
+    cliente_viene_retirar:{ titulo:'Cliente viene a retirar', prioridad:'importante', destinos:{ administradores:true, recepcionistas:true }, origen:'portal_cliente', mensaje:(r.nombre || 'Cliente') + ' avisó que va a retirar ' + (r.orden || '') + ' · ' + (r.equipo || '') },
+    garantia_nueva:{ titulo:'Nueva garantía', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'sistema', mensaje:'Se abrió una garantía para ' + datosMensajeReparacion(r) },
+    incidencia_nueva:{ titulo:'Nueva incidencia', prioridad:'importante', destinos:{ tecnico:true, administradores:true }, origen:'sistema', mensaje:'Se abrió una incidencia para ' + datosMensajeReparacion(r) }
+  }[tipo];
+  if (!cfg) return Promise.resolve();
+  if (opciones && opciones.excluirUid) cfg.destinos.excluirUid = opciones.excluirUid;
+  return crearNotificaciones(Object.assign(cfg, { tipo:tipo, reparacion:r, entidad:'reparacion', entidadId:r.id, clave:(opciones && opciones.clave) || (tipo + ':' + r.id) }));
+}
+function dispararNotificacionRepuesto(tipo, repuesto) {
+  var vinculadas = (window.REPS || []).filter(function(r) { return repuesto && repuesto.orden && r.orden === repuesto.orden; });
+  // La orden es el único enlace disponible; sólo se usa si es exacto y único.
+  if (vinculadas.length !== 1) return Promise.resolve(false);
+  var r = vinculadas[0], llego = tipo === 'repuesto_llego';
+  return crearNotificaciones({
+    tipo:tipo, titulo:llego ? 'Llegó un repuesto' : 'Repuesto encargado',
+    mensaje:(llego ? 'Llegó ' : 'Se encargó ') + (repuesto.nombre || 'un repuesto') + ' para ' + (r.orden || ''),
+    prioridad:llego ? 'importante' : 'normal', destinos:{ tecnico:true, administradores:true },
+    entidad:'reparacion', entidadId:r.id, origen:'sistema', reparacion:r,
+    clave:tipo + ':' + repuesto.id + ':' + Date.now()
+  }).then(function() { return true; });
+}
+window.notificarEventoReparacion = function(tipo, reparacion, opciones) { return dispararNotificacionReparacion(tipo, reparacion, opciones).catch(function(e) { console.error('Notificación no creada:', e); toast('No se pudo crear la notificación: ' + e.message, 'var(--rd)'); return false; }); };
+window.notificarEventoRepuesto = function(tipo, repuesto) { return dispararNotificacionRepuesto(tipo, repuesto).catch(function(e) { console.error('Notificación no creada:', e); toast('No se pudo crear la notificación: ' + e.message, 'var(--rd)'); return false; }); };
+// API preparada para el portal cliente. El portal deberá invocarla con el ID
+// real de reparación; la misma clave por evento evita avisos duplicados.
+window.notificarEventoPortal = async function(tipo, reparacionId) {
+  if (['presupuesto_aprobado','presupuesto_rechazado','cliente_viene_retirar'].indexOf(tipo) === -1) return false;
+  var snap = await getDoc(doc(cR, reparacionId)); if (!snap.exists()) return false;
+  await dispararNotificacionReparacion(tipo, Object.assign({ id:snap.id }, snap.data()), { clave:'portal:' + tipo + ':' + reparacionId }); return true;
+};
+window.FB.marcarNotificacionLeida = function(id, cb) {
+  var n = (window.NOTIFICACIONES || []).find(function(x) { return x.id === id; });
+  if (!n || n.usuarioDestinoUid !== (SESION.usuario && SESION.usuario.uid)) { if (cb) cb('Notificación no disponible'); return; }
+  updateDoc(doc(cNot, id), { leida:true, leidaEn:serverTimestamp() }).then(function() { if (cb) cb(null); }).catch(function(e) { if (cb) cb(e.message); });
+};
+
+// --- Sobreescribir FB con funciones reales ---
+window.FB.add = (d, cb) => agregarAuditable('reparaciones', 'reparacion', d).then(id => { cb(null, id); v21Sync('reparacion', id, d, 'reparacion_creada'); }).catch(e => cb(e.message));
+window.FB.addId = (id, d, cb) => agregarAuditable('reparaciones', 'reparacion', d, id).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.upd = (id, d, cb) => actualizarAuditable('reparaciones', 'reparacion', id, d).then(() => { cb(null); v21Sync('reparacion', id, d, 'reparacion_actualizada'); }).catch(e => cb(e.message));
+window.FB.del = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('reparaciones', 'reparacion', id).then(() => cb(null)).catch(e => cb(e.message)); };
+window.FB.addR = (d, cb) => agregarAuditable('repuestos', 'repuesto', d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.updR = (id, d, cb) => actualizarAuditable('repuestos', 'repuesto', id, d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.delR = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('repuestos', 'repuesto', id).then(() => cb(null)).catch(e => cb(e.message)); };
+
+// --- Catalogo y config ---
+window.FB.setConfig = (d, cb) => actualizarAuditable('config', 'config_catalogo', 'catalogo', d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.setCotizadorConfig = (d, cb) => {
+  if (!puede('actualizar_cotizador')) { cb('Solo administrador puede modificar el cotizador'); return; }
+  actualizarAuditable('config', 'config_cotizador', 'cotizador', d).then(() => cb(null)).catch(e => cb(e.message));
+};
+
+window.FB.setCat = async (items, cb) => {
+  let etapa = 'inicio';
+  try {
+    // Actualizacion incremental por codigo. Nunca borra el catalogo tecnico.
+    etapa = 'leer catálogo existente';
+    const codigos = new Set(items.map(item => String(item.cod || '')));
+    const existentes = await getDocs(cCat), porCodigo = new Map();
+    existentes.forEach(d => { const x=d.data(); if(x.cod) porCodigo.set(String(x.cod),d.ref); });
+    const chunkSize = 400;
+    etapa = 'guardar catálogo técnico';
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const batch2 = writeBatch(db);
+      items.slice(i, i + chunkSize).forEach(item => {
+        const ref=porCodigo.get(String(item.cod)) || doc(cCat,'cat_'+String(item.cod).replace(/[^a-zA-Z0-9_-]/g,'_'));
+        batch2.set(ref,Object.assign({},item,{disponibleFuente:true,actualizadoEn:serverTimestamp()}),{merge:true});
+      });
+      await batch2.commit();
+    }
+    etapa = 'marcar productos ausentes';
+    const ausentes=[]; existentes.forEach(d=>{const x=d.data();if(x.cod&&!codigos.has(String(x.cod)))ausentes.push(d.ref);});
+    for(let i=0;i<ausentes.length;i+=chunkSize){const batch=writeBatch(db);ausentes.slice(i,i+chunkSize).forEach(ref=>batch.set(ref,{disponibleFuente:false,ultimaAusenciaEn:serverTimestamp()},{merge:true}));await batch.commit();}
+    etapa = 'auditar catálogo';
+    await registrarAuditoria('catalogo','catalogo','base_actualizada_incremental',{}, { productos:items.length,ausentes:ausentes.length });
+    etapa = 'generar Lista Maestra';
+    const resumenServicios=window.FB.sincronizarServiciosDesdeCatalogo?await window.FB.sincronizarServiciosDesdeCatalogo(items,{cotizacion:Number(CFG_CAT.usd||0),archivo:items[0]&&items[0].archivoOrigen||''}):null;
+    cb(null,resumenServicios);
+  } catch(e) {
+    console.error('Actualización de catálogo falló en "'+etapa+'":',e);
+    cb('Etapa "'+etapa+'": '+(e && e.message ? e.message : String(e)));
+  }
+};
+
+// --- Listener reparaciones ---
+onSnapshot(
+  query(cR, orderBy('_ts', 'asc')),
+  (snap) => {
+    window.REPS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+    updSidebar();
+    syncOk();
+    // Si el modal de detalle esta abierto, refrescarlo con datos nuevos
+    if (window._detId && document.getElementById('mDet').classList.contains('open')) {
+      _renderDet();
+    }
+  },
+  (err) => syncErr('Firestore error: ' + err.message)
+);
+
+// Registro de auditoría: se mantiene separado de los documentos operativos.
+onSnapshot(cAud, (snap) => {
+  window.AUDITORIA = snap.docs.map(d => Object.assign({ id: d.id }, d.data(), {
+    _ordenAuditoria: d.data().creadoEn && d.data().creadoEn.toMillis ? d.data().creadoEn.toMillis() : 0
+  }));
+  if (window._detId && document.getElementById('mDet').classList.contains('open')) _renderDet();
+}, () => {});
+
+// --- Listener repuestos ---
+onSnapshot(query(cRp, orderBy('_ts','asc')), (snap) => {
+  window.RPUS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (window.VIEW === 'rpus') render();
+  if (typeof updSidebar === 'function') updSidebar();
+}, () => {});
+
+// --- Listener ventas ---
+onSnapshot(query(cVen, orderBy('fecha','desc')), (snap) => {
+  window.VENTAS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (window.VIEW === 'ven' || window.VIEW === 'ops') render();
+  if (typeof actualizarBadgeSeg === 'function') actualizarBadgeSeg();
+}, () => {});
+
+// --- Listener stock ---
+onSnapshot(query(cSt, orderBy('fecha','desc')), (snap) => {
+  window.STOCK = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (window.VIEW === 'stock') render();
+}, () => {});
+
+// --- Listener usados ---
+onSnapshot(cUsa, (snap) => {
+  window.USADOS = snap.docs.map(d => d.data());
+  if (typeof cotLoadUsados === 'function') cotLoadUsados(window.USADOS);
+}, () => {});
+
+// --- Listener catalogo ---
+onSnapshot(cCat, (snap) => {
+  window.CATALOGO = snap.docs.map(d => d.data());
+}, () => {});
+
+// --- Listener config comisiones ---
+onSnapshot(dCom, (snap) => {
+  if (snap.exists() && typeof comLoadCfg === 'function') comLoadCfg(snap.data());
+}, () => {});
+
+// --- Listener config catalogo ---
+onSnapshot(dCfg, (snap) => {
+  if (snap.exists() && typeof catLoadConfig === 'function') catLoadConfig(snap.data());
+}, () => {});
+onSnapshot(cPro, (snap) => {
+  window.PRODUCTOS_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data())).sort((a,b) => String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
+  if ((window.VIEW === 'pos' || window.VIEW === 'prod' || window.VIEW === 'inv') && typeof render === 'function') render();
+}, () => {});
+onSnapshot(cMovSt, (snap) => {
+  window.MOVIMIENTOS_STOCK_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data())).sort((a,b) => String(b.fechaHora||'').localeCompare(String(a.fechaHora||'')));
+  if (window.VIEW === 'inv' && typeof render === 'function') render();
+}, () => {});
+onSnapshot(query(cMovFin, orderBy('fechaHora','desc'), limit(250)), (snap) => {
+  window.MOVIMIENTOS_FINANCIEROS_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data()));
+  if ((window.VIEW === 'ops' || window.VIEW === 'pos') && typeof render === 'function') render();
+}, () => {});
+onSnapshot(query(cPagPos, orderBy('fechaHora','desc'), limit(2000)), (snap) => {
+  window.PAGOS_ADMIN=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+  window.PAGOS_ADMIN_LIMITADO=snap.size===2000;
+  if(window.VIEW==='admin'&&typeof render==='function')render();
+}, (err) => { console.error('Pagos administrativos:',err); });
+onSnapshot(query(cMovFin, orderBy('fechaHora','desc'), limit(2000)), (snap) => {
+  window.MOVIMIENTOS_FINANCIEROS_ADMIN=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+  window.MOVIMIENTOS_ADMIN_LIMITADO=snap.size===2000;
+  if(window.VIEW==='admin'&&typeof render==='function')render();
+}, (err) => { console.error('Movimientos administrativos:',err); });
+onSnapshot(dCajaActual, (snap) => {
+  const d=snap.exists()?snap.data():null; window.CAJA_ACTUAL=d&&d.estado==='abierta'?Object.assign({id:d.cajaId},d):null;
+  if (window.VIEW==='pos') { if(typeof setTopActions==='function')setTopActions('pos'); if(typeof render==='function')render(); }
+}, () => {});
+onSnapshot(query(cCajas, orderBy('aperturaFechaHora','desc'), limit(500)), (snap) => {
+  window.CIERRES_CAJA=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+  window.CIERRES_CAJA_CARGANDO=false; window.CIERRES_CAJA_ERROR='';
+  if(window.VIEW==='cierres'&&typeof render==='function')render();
+}, (err) => {
+  window.CIERRES_CAJA_CARGANDO=false;
+  window.CIERRES_CAJA_ERROR=(err.code ? err.code + ': ' : '') + (err.message || 'No se pudieron cargar los cierres');
+  console.error('Cierres de caja:', err);
+  if(window.VIEW==='cierres'&&typeof render==='function')render();
+});
+onSnapshot(cServicios,(snap)=>{
+  window.SERVICIOS_MAESTROS=snap.docs.map(d=>Object.assign({id:d.id},d.data())).sort((a,b)=>String(a.nombrePublico||'').localeCompare(String(b.nombrePublico||''),'es'));
+  window.SERVICIOS_CARGANDO=false; window.SERVICIOS_ERROR='';
+  if((window.VIEW==='servicios'||window.VIEW==='pos')&&typeof render==='function')render();
+},(err)=>{
+  window.SERVICIOS_CARGANDO=false;
+  window.SERVICIOS_ERROR=(err.code ? err.code + ': ' : '') + (err.message || 'No se pudo cargar la Lista Maestra');
+  console.error('Servicios maestros:',err);
+  if(window.VIEW==='servicios'&&typeof render==='function')render();
+});
+onSnapshot(dPoliticasRep,(snap)=>{
+  window.POLITICAS_REPARACION=snap.exists()?snap.data():{};
+  if(window.VIEW==='servicios'&&typeof render==='function')render();
+},(err)=>console.error('Políticas de reparación:',err));
+onSnapshot(dCot, (snap) => {
+  if (typeof cotLoadConfig === 'function') cotLoadConfig(snap.exists() ? snap.data() : {});
+}, () => {});
+
+// --- Tipo de cambio de referencia e historial ---
+onSnapshot(dMon, (snap) => {
+  if (snap.exists() && typeof monedaLoadConfig === 'function') monedaLoadConfig(snap.data());
+}, () => {});
+onSnapshot(cFx, (snap) => {
+  window.TIPOS_CAMBIO = snap.docs.map(d => Object.assign({ id: d.id }, d.data(), {
+    _ordenFx: d.data().createdAt && d.data().createdAt.toMillis ? d.data().createdAt.toMillis() : 0
+  }));
+}, () => {});
+onSnapshot(cLiq, (snap) => {
+  window.COM_LIQUIDACIONES = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  if (window.VIEW === 'bal' && typeof renderBal === 'function') renderBal();
+}, () => {});
+onSnapshot(cAj, (snap) => {
+  window.COM_AJUSTES = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  if (window.VIEW === 'bal' && typeof renderBal === 'function') renderBal();
+}, () => {});
+
+// ── Config comisiones ──
+window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message));
+
+function fechaNegocioIso(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+window.FB.abrirCaja = async (data, cb) => {
+  if(!sesionActiva()){cb('Sesión no válida');return;}
+  try{const inicial=Number(data.efectivoInicial),moneda=data.moneda==='USD'?'USD':'ARS',actor=usuarioActualRegistro(),ahora=new Date().toISOString(),ref=doc(cCajas);
+    if(!Number.isFinite(inicial)||inicial<0)throw new Error('El efectivo inicial debe ser válido');
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(actual.exists()&&actual.data().estado==='abierta')throw new Error('Ya existe una caja abierta');const caja={schemaVersion:1,fechaNegocio:fechaNegocioIso(),aperturaFechaHora:ahora,usuarioApertura:actor,efectivoInicial:inicial,moneda:moneda,observacionApertura:String(data.observacion||'').trim(),estado:'abierta',creadoEn:serverTimestamp()};tx.set(ref,caja);tx.set(dCajaActual,Object.assign({cajaId:ref.id},caja));tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'abierta',actor:actor,cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null,ref.id);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
+};
+
+window.FB.sincronizarServiciosDesdeCatalogo = async (items,meta) => {
+  if(!puede('gestionar_servicios_maestros'))throw new Error('El usuario actual no tiene permiso para gestionar la Lista Maestra');
+  if(typeof window.serviciosCandidatosCatalogo!=='function')throw new Error('No se cargó el módulo de Lista Maestra');
+  const candidatos=window.serviciosCandidatosCatalogo(items,meta);
+  if(!candidatos.length)throw new Error('El Excel no produjo servicios candidatos');
+  const snap=await getDocs(cServicios),existentes=new Map();
+  snap.forEach(d=>{const x=d.data();if(x.repuestoFuenteId)existentes.set(String(x.repuestoFuenteId),Object.assign({id:d.id},x));});
+  let nuevos=0,actualizados=0,revision=0;const chunk=350;
+  for(let i=0;i<candidatos.length;i+=chunk){const batch=writeBatch(db);candidatos.slice(i,i+chunk).forEach(c=>{const previo=existentes.get(c.repuestoFuenteId);let mezcla=Object.assign({},c);if(previo){['nombrePublico','calidadComercial','activo','recomendado','precioPublico','precioManual','modoPrecio','tipoReglaPrecio','markupUsdObjetivo','margenPorcentualObjetivo','incentivoTecnico','reservaGarantia','costoLogisticoDefault'].forEach(k=>{if(previo[k]!==undefined)mezcla[k]=previo[k];});mezcla.necesitaRevision=!!previo.necesitaRevision||Math.abs(Number(previo.costoRepuestoActual||0)-Number(c.costoRepuestoActual||0))>.01;actualizados++;}else nuevos++;if(mezcla.necesitaRevision)revision++;if(typeof window.servicioRecalcular==='function')mezcla=window.servicioRecalcular(mezcla,window.POLITICAS_REPARACION||{});mezcla.fechaUltimoCosto=serverTimestamp();batch.set(doc(cServicios,previo?previo.id:'srv_'+c.codigoProveedor.replace(/[^a-zA-Z0-9_-]/g,'_')),mezcla,{merge:true});});await batch.commit();}
+  // Los candidatos automáticos anteriores que ya no cumplen la regla comercial
+  // se conservan, pero dejan de ofrecerse. Nunca se eliminan servicios ni manuales.
+  const fuentesVigentes=new Set(candidatos.map(c=>String(c.repuestoFuenteId)));
+  const excluidos=snap.docs.filter(d=>{const x=d.data();return x.repuestoFuenteId&&x.origen!=='manual'&&!fuentesVigentes.has(String(x.repuestoFuenteId));});
+  for(let i=0;i<excluidos.length;i+=chunk){const batch=writeBatch(db);excluidos.slice(i,i+chunk).forEach(d=>batch.set(d.ref,{activo:false,excluidoPorReglaFuente:true,necesitaRevision:true,actualizadoEn:serverTimestamp()},{merge:true}));await batch.commit();}
+  await registrarAuditoria('servicios_maestros','sincronizacion_excel','actualizada',{}, {nuevos:nuevos,actualizados:actualizados,requierenRevision:revision,excluidosPorRegla:excluidos.length,archivo:meta&&meta.archivo||''});
+  const confirmacion=await getDocs(cServicios);
+  window.SERVICIOS_MAESTROS=confirmacion.docs.map(d=>Object.assign({id:d.id},d.data())).sort((a,b)=>String(a.nombrePublico||'').localeCompare(String(b.nombrePublico||''),'es'));
+  window.SERVICIOS_CARGANDO=false; window.SERVICIOS_ERROR='';
+  if(window.VIEW==='servicios'&&typeof render==='function')render();
+  return {nuevos:nuevos,actualizados:actualizados,requierenRevision:revision,excluidosPorRegla:excluidos.length,total:confirmacion.size};
+};
+window.FB.guardarServicioMaestro = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const id=data.id,guardar=Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()});delete guardar.id;if(id)await setDoc(doc(cServicios,id),guardar,{merge:true});else await addDoc(cServicios,Object.assign({creadoEn:serverTimestamp(),origen:'manual',repuestoFuenteId:null},guardar));cb(null);}catch(e){cb(e.message);}};
+window.FB.guardarPoliticasReparacion = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{await setDoc(dPoliticasRep,Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()}),{merge:true});if(typeof servicioRecalcular==='function'){const snap=await getDocs(cServicios),docs=snap.docs;for(let i=0;i<docs.length;i+=350){const batch=writeBatch(db);docs.slice(i,i+350).forEach(d=>{const r=servicioRecalcular(Object.assign({id:d.id},d.data()),data);batch.set(d.ref,{precioCalculado:r.precioCalculado,costoDirectoEstimado:r.costoDirectoEstimado,gananciaEstimada:r.gananciaEstimada,margenActual:r.margenActual,necesitaRevision:r.necesitaRevision,fechaUltimaRevisionPrecio:serverTimestamp()},{merge:true});});await batch.commit();}}cb(null);}catch(e){cb(e.message);}};
+window.FB.movimientoManualCaja = async (data, cb) => {
+  if(!sesionActiva()){cb('Sesión no válida');return;}
+  try{const monto=Number(data.monto),actor=usuarioActualRegistro(),ahora=new Date().toISOString();if(!Number.isFinite(monto)||monto===0)throw new Error('Ingresá un importe válido');if(!data.medio||!data.cuenta||!data.categoria)throw new Error('Completá medio, cuenta y categoría');
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('No hay una caja abierta');const cajaId=actual.data().cajaId;const mov={schemaVersion:2,tipo:monto>0?'ingreso_manual':'egreso_manual',tipoEgreso:monto<0?String(data.tipoEgreso||'gasto_operativo'):'',referenciaTipo:'caja_manual',referenciaId:cajaId,cajaId:cajaId,monto:monto,moneda:data.moneda==='USD'?'USD':'ARS',medio:String(data.medio),cuenta:String(data.cuenta),categoria:String(data.categoria).trim(),subcategoria:String(data.subcategoria||'').trim(),descripcion:String(data.descripcion||'').trim(),usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(doc(cMovFin),mov);tx.set(doc(cAud),{entidad:'caja',entidadId:cajaId,accion:monto>0?'ingreso_manual':'egreso_manual',actor:actor,cambios:[],monto:monto,moneda:mov.moneda,tipoEgreso:mov.tipoEgreso,categoria:mov.categoria,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
+};
+window.FB.cerrarCaja = async (data, cb) => {
+  if(!sesionActiva()){cb('Sesión no válida');return;}
+  try{const actor=usuarioActualRegistro(),ahora=new Date().toISOString(),r=data.resumen||{},contado=Number(data.efectivoContado),esperado=Number(r.efectivoEsperado||0),dif=contado-esperado;if(!Number.isFinite(contado)||contado<0)throw new Error('El efectivo contado debe ser válido');if(Math.abs(dif)>.009&&!String(data.observacion||'').trim())throw new Error('Indicá el motivo de la diferencia');
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('La caja ya está cerrada');const a=actual.data(),ref=doc(cCajas,a.cajaId),snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='abierta')throw new Error('La sesión de caja no está disponible');const cierre={estado:'cerrada',cierreFechaHora:ahora,usuarioCierre:actor,ingresosEfectivo:Number(r.ingresosEfectivo||0),egresosEfectivo:Number(r.egresosEfectivo||0),efectivoEsperado:esperado,efectivoContado:contado,diferencia:dif,totalesPorMedio:r.totalesPorMedio||{},totalesPorCuenta:r.totalesPorCuenta||{},totalIngresos:Number(r.totalIngresos||0),totalEgresos:Number(r.totalEgresos||0),cantidadMovimientos:Array.isArray(r.movimientos)?r.movimientos.length:0,observacionCierre:String(data.observacion||'').trim(),cerradoEn:serverTimestamp()};tx.update(ref,cierre);tx.set(dCajaActual,{estado:'cerrada',cajaId:null,ultimoCierreId:ref.id,ultimoEfectivoContado:contado,moneda:a.moneda||'ARS',actualizadoEn:serverTimestamp()});tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'cerrada',actor:actor,cambios:[],diferencia:dif,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
+};
+
+// Compatibilidad con cierres anteriores, que guardaban los totales pero no el
+// detalle dentro del documento de caja. La consulta no modifica datos.
+window.FB.cargarMovimientosCaja = async (cajaId, cb) => {
+  if (!puede('ver_cierres_caja')) { cb('Sin permiso para consultar cierres'); return; }
+  try {
+    const snap = await getDocs(query(cMovFin, where('cajaId', '==', cajaId)));
+    const movimientos = snap.docs.map(d => Object.assign({ id:d.id }, d.data()))
+      .sort((a, b) => String(a.fechaHora || '').localeCompare(String(b.fechaHora || '')));
+    cb(null, movimientos);
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
+window.FB.setMoneda = async (d, cb) => {
+  var actor = usuarioActualRegistro();
+  if (!actor || !puede('editar_tipo_cambio')) { cb('Sin permiso para actualizar la cotización'); return; }
+  try {
+    var previo = await getDoc(dMon);
+    var batch = writeBatch(db);
+    batch.set(dMon, Object.assign({}, d, { updatedAt: serverTimestamp(), updatedBy: actor }), { merge: true });
+    batch.set(doc(cFx), Object.assign({}, d, { usuario: actor, fecha: hoy(), hora: horaActual(), createdAt: serverTimestamp() }));
+    batch.set(doc(cAud), { entidad: 'tipo_cambio', entidadId: 'blue_venta', accion: 'actualizado', actor: actor,
+      cambios: cambiosAuditables(previo.exists() ? previo.data() : {}, d), fecha: hoy(), hora: horaActual(), creadoEn: serverTimestamp() });
+    await batch.commit(); cb(null);
+  } catch (e) { cb(e.message); }
+};
+
+window.FB.crearLiquidacionComision = (d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar comisiones'); return; }
+  agregarAuditable('liquidacionesComisiones', 'liquidacion_comision', d).then(id => cb(null, id)).catch(e => cb(e.message));
+};
+window.FB.actualizarLiquidacionComision = (id, d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar comisiones'); return; }
+  actualizarAuditable('liquidacionesComisiones', 'liquidacion_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
+};
+window.FB.crearAjusteComision = (d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar ajustes'); return; }
+  agregarAuditable('ajustesComisiones', 'ajuste_comision', d).then(id => cb(null, id)).catch(e => cb(e.message));
+};
+window.FB.actualizarAjusteComision = (id, d, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar ajustes'); return; }
+  actualizarAuditable('ajustesComisiones', 'ajuste_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
+};
+
+// ── CRUD ventas ──
+window.FB.addV = (d, cb) => agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message));
+window.FB.crearVentaEquipo = async (data, cb) => {
+  if (!puede('vender_equipo')) { cb('Sin permiso para vender equipos'); return; }
+  try {
+    const pagos = Array.isArray(data.pagos) ? data.pagos : [];
+    const precio = Number(data.precio || 0), partePago = data.parte_pago === 'Si' ? Number(data.pp_valor || 0) : 0;
+    const requerido = Math.max(0, precio - partePago), pagado = pagos.reduce((s,p) => s + Number(p.montoVentaUSD || 0), 0);
+    if (!(precio > 0)) throw new Error('El precio debe ser mayor a cero');
+    if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || !['ARS','USD'].includes(p.moneda) || (p.moneda === 'ARS' && !(Number(p.cotizacion) > 0)))) throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
+    if (data.estadoVenta === 'Cobrada' && Math.abs(pagado - requerido) > 0.01) throw new Error('Los pagos deben cubrir exactamente el saldo de la venta');
+    if (pagado > requerido + 0.01) throw new Error('Los pagos superan el saldo de la venta');
+    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    const venta = Object.assign({}, data, {
+      tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:true,
+      pagos:pagos.map((p,i) => Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),
+      totalPagadoUSD:pagado, saldoUSD:Math.max(0,requerido-pagado), usuario:actor,
+      fechaHora:ahora, creadoEn:serverTimestamp()
+    });
+    await runTransaction(db, async tx => {
+      const cajaSnap=await tx.get(dCajaActual);
+      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
+      const cajaId=cajaSnap.data().cajaId;
+      tx.set(ventaRef, venta);
+      pagos.forEach((p,i) => {
+        const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,
+          ventaId:ventaRef.id, clienteNombre:data.nombre || '', equipoModelo:data.modelo || '', medio:p.medio, cuenta:p.cuenta,
+          monto:Number(p.monto), moneda:p.moneda, cotizacion:Number(p.cotizacion || 1), montoVentaUSD:Number(p.montoVentaUSD || 0),
+          estado:'aplicado', usuario:actor, fecha:data.fecha || hoy(), fechaHora:ahora, creadoEn:serverTimestamp() };
+        tx.set(pagoRefs[i], pago);
+        tx.set(doc(cMovFin), Object.assign({}, pago, { cajaId:cajaId, tipo:'ingreso_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:ventaRef.id }));
+      });
+      tx.set(doc(cAud), { entidad:'venta_equipo', entidadId:ventaRef.id, accion:'creada', actor:actor,
+        cambios:[], totalUSD:precio, totalPagadoUSD:pagado, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, { id:ventaRef.id });
+    v21Sync('venta', ventaRef.id, data, 'venta_creada');
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+window.FB.anularVentaEquipo = async (id, motivo, cb) => {
+  if (!puede('eliminar_operaciones')) { cb('Solo administración puede anular ventas de equipos'); return; }
+  try {
+    const ventaRef = doc(cVen, id), actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(ventaRef);
+      if (!snap.exists()) throw new Error('La venta ya no existe');
+      const venta = snap.data();
+      const cajaSnap = venta.cajaRegistrada ? await tx.get(dCajaActual) : null;
+      if (venta.cajaRegistrada && (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta')) throw new Error('Primero abrí la caja');
+      const cajaId = venta.cajaRegistrada ? cajaSnap.data().cajaId : null;
+      if (venta.tipoRegistro === 'pos') throw new Error('Las ventas de accesorios se anulan desde Operaciones de caja');
+      if (venta.estadoVenta === 'Anulada') throw new Error('La venta ya está anulada');
+      if (venta.estadoVenta === 'Devuelta') throw new Error('La venta ya figura como devuelta');
+      const anulacion = { motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora };
+      const cambiosVenta = { estadoVenta:'Anulada', anulacion:anulacion, actualizadoEn:serverTimestamp() };
+      if (venta.cajaRegistrada) {
+        cambiosVenta.cajaRevertida = true;
+        cambiosVenta.pagos = (venta.pagos || []).map(p => Object.assign({}, p, { estado:'revertido', revertidoEn:ahora, revertidoPor:actor }));
+      }
+      tx.update(ventaRef, cambiosVenta);
+      if (venta.cajaRegistrada) {
+        (venta.pagos || []).forEach(p => {
+          if (p.pagoId) tx.update(doc(cPagPos, p.pagoId), { estado:'revertido', revertidoEn:serverTimestamp(), revertidoPor:actor, motivoReversion:anulacion.motivo });
+          tx.set(doc(cMovFin), { schemaVersion:2, cajaId:cajaId, tipo:'reversion_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:id,
+            ventaId:id, pagoId:p.pagoId || '', clienteNombre:venta.nombre || '', equipoModelo:venta.modelo || '', medio:p.medio || '', cuenta:p.cuenta || '',
+            monto:-Number(p.monto || 0), moneda:p.moneda || 'USD', cotizacion:Number(p.cotizacion || 1), montoVentaUSD:-Number(p.montoVentaUSD || 0),
+            motivo:anulacion.motivo, usuario:actor, fecha:hoy(), fechaHora:ahora, creadoEn:serverTimestamp() });
+        });
+      }
+      tx.set(doc(cAud), { entidad:'venta_equipo', entidadId:id, accion:'anulada', actor:actor, cambios:[{campo:'estadoVenta',antes:venta.estadoVenta || 'Cobrada',despues:'Anulada'}],
+        motivo:anulacion.motivo, cajaRevertida:!!venta.cajaRegistrada, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null);
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+window.FB.updV = (id, d, cb) => actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message));
+window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
+
+// ── CRUD stock ──
+window.FB.addSt = (d, cb) => agregarAuditable('stock', 'stock', d).then(id => { cb(null); v21Sync('stock', id, d, 'stock_creado'); }).catch(e => cb(e.message));
+window.FB.updSt = (id, d, cb) => actualizarAuditable('stock', 'stock', id, d).then(() => { cb(null); v21Sync('stock', id, d, 'stock_actualizado'); }).catch(e => cb(e.message));
+window.FB.delSt = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
+
+// ── POS V1: productos, inventario y ventas atomicas ──
+window.FB.guardarProductoPos = async (data, cb) => {
+  if (!puede('gestionar_productos')) { cb('Solo administración puede gestionar productos'); return; }
+  try {
+    const id = data.id || doc(cPro).id, ref = doc(cPro, id);
+    const nombre = String(data.nombre || '').trim(), sku = String(data.sku || '').trim(), barcode = String(data.barcode || '').trim();
+    const stockInicial = Number(data.stockInicial || 0);
+    if (!nombre) throw new Error('El nombre es obligatorio');
+    if (![data.costo, data.precio, stockInicial].every(v => Number.isFinite(Number(v)) && Number(v) >= 0)) throw new Error('Costo, precio y stock deben ser números positivos');
+    const consultas = [];
+    if (sku) consultas.push(getDocs(query(cPro, where('sku', '==', sku))));
+    if (barcode) consultas.push(getDocs(query(cPro, where('barcode', '==', barcode))));
+    const duplicados = await Promise.all(consultas);
+    if (duplicados.some(s => s.docs.some(d => d.id !== id))) throw new Error('El SKU o código de barras ya pertenece a otro producto');
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const previoSnap = await tx.get(ref), previo = previoSnap.exists() ? previoSnap.data() : null;
+      const stockActual = previo ? Number(previo.stockActual || 0) : (data.controlaStock ? stockInicial : 0);
+      const moneda = data.moneda === 'USD' ? 'USD' : 'ARS';
+      const guardar = { schemaVersion:1, nombre:nombre, categoria:String(data.categoria || '').trim(), subcategoria:String(data.subcategoria || '').trim(),
+        sku:sku, barcode:barcode, costo:Number(data.costo || 0), precio:Number(data.precio || 0), moneda:moneda,
+        controlaStock:!!data.controlaStock, stockActual:stockActual, activo:data.activo !== false,
+        proveedorId:data.proveedorId || null, ecommerce:{ publicado:false }, variantes:[], actualizadoPor:actor, actualizadoEn:serverTimestamp() };
+      if (!previo) guardar.creadoEn = serverTimestamp();
+      tx.set(ref, guardar, { merge:true });
+      if (!previo && guardar.controlaStock && stockInicial !== 0) {
+        tx.set(doc(cMovSt), { schemaVersion:1, productoId:id, productoNombre:nombre, tipo:'stock_inicial', cantidad:stockInicial,
+          stockAnterior:0, stockResultante:stockInicial, motivo:'Alta de producto', referenciaTipo:'producto', referenciaId:id,
+          usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      }
+      tx.set(doc(cAud), { entidad:'producto', entidadId:id, accion:previo?'actualizado':'creado', actor:actor,
+        cambios:cambiosAuditables(previo || {}, guardar), fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, id);
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
+window.FB.ajustarStockPos = async (data, cb) => {
+  if (!puede('ajustar_stock_pos')) { cb('Solo administración puede ajustar stock'); return; }
+  try {
+    const ref = doc(cPro, data.productoId), cantidad = Number(data.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad === 0) throw new Error('La cantidad debe ser distinta de cero');
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('Producto inexistente');
+      const p = snap.data();
+      if (!p.controlaStock) throw new Error('Este producto no controla stock');
+      const anterior = Number(p.stockActual || 0), resultante = anterior + cantidad;
+      if (resultante < 0) throw new Error('El ajuste dejaría stock negativo');
+      tx.update(ref, { stockActual:resultante, actualizadoPor:actor, actualizadoEn:serverTimestamp() });
+      tx.set(doc(cMovSt), { schemaVersion:1, productoId:ref.id, productoNombre:p.nombre || '', tipo:data.tipo || (cantidad > 0 ? 'ajuste_positivo' : 'ajuste_negativo'),
+        cantidad:cantidad, stockAnterior:anterior, stockResultante:resultante, motivo:String(data.motivo || '').trim(),
+        referenciaTipo:'ajuste', referenciaId:null, usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      tx.set(doc(cAud), { entidad:'stock_producto', entidadId:ref.id, accion:'ajustado', actor:actor,
+        cambios:[{ campo:'stockActual', antes:anterior, despues:resultante }], fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null);
+  } catch (e) { cb(e.message); }
+};
+
+window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
+  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  try {
+    const pagosEntrada = Array.isArray(nuevosPagos) ? nuevosPagos : [];
+    if (!pagosEntrada.length || pagosEntrada.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta)) throw new Error('Cada pago necesita medio, cuenta e importe');
+    const reparacionRef = doc(cR, id), pagoRefs = pagosEntrada.map(() => doc(cPagPos));
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    let saldoFinal = 0;
+    await runTransaction(db, async tx => {
+      const snap = await tx.get(reparacionRef);
+      const cajaSnap = await tx.get(dCajaActual);
+      if (!snap.exists()) throw new Error('La reparación ya no existe');
+      if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
+      const cajaId = cajaSnap.data().cajaId;
+      const r = snap.data(), presupuesto = Number(r.presupuesto || 0);
+      const existentes = Array.isArray(r.pagos) && r.pagos.length ? r.pagos.slice() : (Number(r.sena || 0) > 0 ? [{ monto:Number(r.sena), fecha:r.fecha || '', medio:'Registro previo', cuenta:'Sin especificar', moneda:'ARS', legacy:true }] : []);
+      const cobradoAnterior = existentes.reduce((s,p) => s + Number(p.monto || 0), 0);
+      const ingreso = pagosEntrada.reduce((s,p) => s + Number(p.monto || 0), 0);
+      if (presupuesto > 0 && cobradoAnterior + ingreso > presupuesto + 0.01) throw new Error('El cobro supera el saldo pendiente');
+      const embebidos = pagosEntrada.map((p,idx) => ({ pagoId:pagoRefs[idx].id, monto:Number(p.monto), fecha:p.fecha || hoy(),
+        medio:p.medio, cuenta:p.cuenta, moneda:'ARS', notas:String(p.notas || ''), estado:'aplicado', usuario:actor, fechaHora:ahora }));
+      const pagosFinales = existentes.concat(embebidos), totalCobrado = cobradoAnterior + ingreso;
+      saldoFinal = Math.max(0, presupuesto-totalCobrado);
+      const financieros = { pagos:pagosFinales, totalCobrado:totalCobrado, saldo:saldoFinal,
+        pago:presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente') };
+      tx.update(reparacionRef, Object.assign({}, financieros, { actualizadoEn:serverTimestamp() }));
+      embebidos.forEach((p,idx) => {
+        const pagoDoc = Object.assign({}, p, { schemaVersion:1, origenTipo:'reparacion', origenId:id, reparacionId:id,
+          orden:r.orden || '', clienteNombre:r.nombre || '', creadoEn:serverTimestamp() });
+        tx.set(pagoRefs[idx], pagoDoc);
+        tx.set(doc(cMovFin), Object.assign({}, pagoDoc, { cajaId:cajaId, tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
+      });
+      tx.set(doc(cAud), { entidad:'reparacion', entidadId:id, accion:'cobro_registrado', actor:actor,
+        cambios:[{campo:'totalCobrado',antes:cobradoAnterior,despues:totalCobrado},{campo:'saldo',antes:Math.max(0,presupuesto-cobradoAnterior),despues:saldoFinal}],
+        fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, { saldo:saldoFinal });
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
+window.FB.crearVentaPos = async (data, cb) => {
+  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  try {
+    const items = Array.isArray(data.items) ? data.items : [], pagos = Array.isArray(data.pagos) ? data.pagos : [];
+    if (!items.length) throw new Error('La venta no tiene productos');
+    const total = Number(data.total || 0), totalPagos = pagos.reduce((s,p) => s + Number(p.monto || 0), 0);
+    const monedaVenta = data.moneda === 'USD' ? 'USD' : 'ARS';
+    if (!(total > 0) || Math.abs(totalPagos - total) > 0.01) throw new Error('Los pagos deben coincidir con el total');
+    if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || (p.moneda || monedaVenta) !== monedaVenta)) throw new Error('Cada pago necesita medio, cuenta, importe y la moneda de la venta');
+    const refs = items.map(i => i.servicioMaestroId ? doc(cServicios,i.servicioMaestroId) : doc(cPro, i.productoId)), ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
+    const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    let numero = 0;
+    await runTransaction(db, async tx => {
+      const contadorSnap = await tx.get(dContVentas), cajaSnap = await tx.get(dCajaActual), productosSnaps = [];
+      if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
+      const cajaId = cajaSnap.data().cajaId;
+      for (const ref of refs) productosSnaps.push(await tx.get(ref));
+      numero = Number(contadorSnap.exists() ? contadorSnap.data().ultimoNumero || 0 : 0) + 1;
+      const snapshots = [];
+      items.forEach((item, idx) => {
+        const snap = productosSnaps[idx];
+        if (!snap.exists()) throw new Error('Un producto ya no existe');
+        const p = snap.data(), cantidad = Number(item.cantidad || 0),esServicio=!!item.servicioMaestroId;
+        if (p.activo === false || !(cantidad > 0)) throw new Error('Producto inactivo o cantidad inválida: ' + (p.nombre || ''));
+        if ((esServicio?'ARS':(p.moneda || 'ARS')) !== monedaVenta) throw new Error('No se pueden mezclar productos ARS y USD');
+        const anterior = Number(p.stockActual || 0);
+        if (p.controlaStock && anterior < cantidad) throw new Error('Stock insuficiente: ' + p.nombre);
+        snapshots.push({ ref:refs[idx], p:p, cantidad:cantidad, anterior:anterior, esServicio:esServicio, solicitado:item });
+      });
+      let subtotalValidado = 0, descuentoItemsValidado = 0, costoValidado = 0;
+      const itemsVenta = snapshots.map((x, idx) => {
+        const solicitado = items[idx], precioLista = Number(x.esServicio?x.p.precioPublico:x.p.precio || 0), costoUnitario = Number(x.esServicio?x.p.costoDirectoEstimado:x.p.costo || 0);
+        const porcentaje = Math.max(0, Math.min(100, Number(solicitado.descuentoPorcentaje || 0)));
+        const bruto = precioLista * x.cantidad, descuentoImporte = bruto * porcentaje / 100, subtotalFinal = bruto - descuentoImporte;
+        subtotalValidado += bruto; descuentoItemsValidado += descuentoImporte; costoValidado += costoUnitario * x.cantidad;
+        return { productoId:x.esServicio?null:x.ref.id, servicioMaestroId:x.esServicio?x.ref.id:null, servicioSnapshot:x.esServicio?solicitado.servicioSnapshot:null, nombre:x.esServicio?(x.p.nombrePublico||'Servicio'):x.p.nombre || '', sku:x.p.sku || '', barcode:x.p.barcode || '', cantidad:x.cantidad,
+          precioLista:precioLista, descuentoPorcentaje:porcentaje, descuentoImporte:descuentoImporte,
+          precioFinal:subtotalFinal / x.cantidad, costoUnitario:costoUnitario, costoTotal:costoUnitario*x.cantidad,
+          controlaStock:!!x.p.controlaStock, moneda:x.p.moneda || data.moneda || 'ARS' };
+      });
+      const baseGlobal = Math.max(0, subtotalValidado - descuentoItemsValidado);
+      const porcGlobal = Math.max(0, Math.min(100, Number(data.descuentoGlobal && data.descuentoGlobal.porcentaje || 0)));
+      const importePorcentaje = Math.min(baseGlobal, baseGlobal * porcGlobal / 100);
+      const importeFijo = Math.min(Math.max(0, baseGlobal - importePorcentaje), Math.max(0, Number(data.descuentoGlobal && data.descuentoGlobal.importeFijo || 0)));
+      const totalValidado = Math.max(0, baseGlobal - importePorcentaje - importeFijo);
+      if (Math.abs(totalValidado - total) > 0.01) throw new Error('El precio o descuento cambió; revisá la venta antes de cobrar');
+      tx.set(dContVentas, { ultimoNumero:numero, actualizadoEn:serverTimestamp() }, { merge:true });
+      const pagosVenta = pagos.map((p, idx) => Object.assign({}, p, { pagoId:pagoRefs[idx].id }));
+      const venta = Object.assign({}, data, { items:itemsVenta, pagos:pagosVenta, subtotal:subtotalValidado,
+        descuentoItems:descuentoItemsValidado, descuentoGlobal:{ porcentaje:porcGlobal, importePorcentaje:importePorcentaje, importeFijo:importeFijo },
+        descuentoTotal:descuentoItemsValidado+importePorcentaje+importeFijo, total:totalValidado,
+        costoTotal:costoValidado, margenBruto:totalValidado-costoValidado, schemaVersion:1, tipoRegistro:'pos', numeroVenta:numero,
+        numeroHumano:'Venta #' + String(numero).padStart(6, '0'), estado:'activa', usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      venta.fecha = hoy(); venta.hora = horaActual();
+      tx.set(ventaRef, venta);
+      snapshots.forEach(x => {
+        if (!x.p.controlaStock) return;
+        const resultante = x.anterior - x.cantidad;
+        tx.update(x.ref, { stockActual:resultante, actualizadoPor:actor, actualizadoEn:serverTimestamp() });
+        tx.set(doc(cMovSt), { schemaVersion:1, productoId:x.ref.id, productoNombre:x.p.nombre || '', tipo:'venta', cantidad:-x.cantidad,
+          stockAnterior:x.anterior, stockResultante:resultante, referenciaTipo:'venta', referenciaId:ventaRef.id,
+          numeroVenta:numero, usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      });
+      pagos.forEach((p, idx) => {
+        const pagoRef = pagoRefs[idx];
+        const pago = { schemaVersion:1, ventaId:ventaRef.id, numeroVenta:numero, medio:p.medio, cuenta:p.cuenta,
+          monto:Number(p.monto), moneda:p.moneda || data.moneda || 'ARS', cotizacion:Number(p.cotizacion || data.cotizacion || 0),
+          estado:'aplicado', usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() };
+        tx.set(pagoRef, pago);
+        tx.set(doc(cMovFin), Object.assign({}, pago, { cajaId:cajaId, pagoId:pagoRef.id, tipo:'ingreso_venta', referenciaTipo:'venta', referenciaId:ventaRef.id }));
+      });
+      tx.set(doc(cAud), { entidad:'venta_pos', entidadId:ventaRef.id, accion:'creada', actor:actor,
+        cambios:[], numeroVenta:numero, total:total, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null, { id:ventaRef.id, numeroVenta:numero });
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
+window.FB.anularVentaPos = async (id, motivo, cb) => {
+  if (!puede('anular_venta_pos')) { cb('Solo administración puede anular ventas'); return; }
+  try {
+    const ventaRef = doc(cVen, id), actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    await runTransaction(db, async tx => {
+      const ventaSnap = await tx.get(ventaRef);
+      if (!ventaSnap.exists()) throw new Error('Venta inexistente');
+      const v = ventaSnap.data();
+      const cajaSnap = await tx.get(dCajaActual);
+      if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
+      const cajaId = cajaSnap.data().cajaId;
+      if (v.tipoRegistro !== 'pos') throw new Error('La venta anterior debe anularse desde su flujo original');
+      if (v.estado !== 'activa') throw new Error('La venta ya no está activa');
+      const items = Array.isArray(v.items) ? v.items : [], refs = items.map(i => doc(cPro, i.productoId)), snaps = [];
+      for (const ref of refs) snaps.push(await tx.get(ref));
+      tx.update(ventaRef, { estado:'anulada', anulacion:{ motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora }, actualizadoEn:serverTimestamp() });
+      items.forEach((item, idx) => {
+        if (!item.controlaStock) return;
+        if (!snaps[idx].exists()) throw new Error('No se puede restituir un producto inexistente');
+        const anterior = Number(snaps[idx].data().stockActual || 0), cantidad = Number(item.cantidad || 0), resultante = anterior + cantidad;
+        tx.update(refs[idx], { stockActual:resultante, actualizadoPor:actor, actualizadoEn:serverTimestamp() });
+        tx.set(doc(cMovSt), { schemaVersion:1, productoId:item.productoId, productoNombre:item.nombre || '', tipo:'anulacion_venta', cantidad:cantidad,
+          stockAnterior:anterior, stockResultante:resultante, referenciaTipo:'venta', referenciaId:id, numeroVenta:v.numeroVenta,
+          motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      });
+      (v.pagos || []).forEach(p => {
+        if (p.pagoId) tx.update(doc(cPagPos, p.pagoId), { estado:'revertido', revertidoEn:serverTimestamp(), revertidoPor:actor, motivoReversion:String(motivo || '').trim() });
+        tx.set(doc(cMovFin), { schemaVersion:1, cajaId:cajaId, ventaId:id, numeroVenta:v.numeroVenta, tipo:'reversion_venta', medio:p.medio,
+          cuenta:p.cuenta, monto:-Number(p.monto || 0), moneda:p.moneda || v.moneda || 'ARS', referenciaTipo:'venta', referenciaId:id,
+          motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora, creadoEn:serverTimestamp() });
+      });
+      tx.set(doc(cAud), { entidad:'venta_pos', entidadId:id, accion:'anulada', actor:actor, cambios:[], motivo:String(motivo || '').trim(),
+        numeroVenta:v.numeroVenta, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
+    });
+    cb(null);
+  } catch (e) { cb(e.message); }
+};
+
+// ── setUsados ──
+window.FB.setUsados = async (items, cb) => {
+  if (!puede('actualizar_cotizador')) { cb('Sin permiso para actualizar la base del cotizador'); return; }
+  try {
+    const old = await getDocs(cUsa);
+    const b1 = writeBatch(db); old.docs.forEach(d => b1.delete(d.ref)); await b1.commit();
+    const b2 = writeBatch(db);
+    items.forEach(u => {
+      const clave = u.modeloClave || (window.MAXPOINT_COTIZADOR && window.MAXPOINT_COTIZADOR.modeloClave(u.modelo, true)) || u.modelo.replace(/[^a-zA-Z0-9]/g,'_');
+      const r = doc(cUsa, clave); b2.set(r, Object.assign({}, u, { modeloClave:clave }));
+    });
+    await b2.commit(); await registrarAuditoria('cotizador', 'usados', 'base_reemplazada', {}, { modelos: items.length }); cb(null);
+  } catch(e) { cb(e.message); }
+};
+
+// ── setCat ──
