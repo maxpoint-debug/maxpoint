@@ -655,7 +655,7 @@ window.FB.actualizarAjusteComision = (id, d, cb) => {
 // ── CRUD ventas ──
 window.FB.addV = (d, cb) => agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message));
 window.FB.crearVentaEquipo = async (data, cb) => {
-  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  if (!puede('vender_equipo')) { cb('Sin permiso para vender equipos'); return; }
   try {
     const pagos = Array.isArray(data.pagos) ? data.pagos : [];
     const precio = Number(data.precio || 0), partePago = data.parte_pago === 'Si' ? Number(data.pp_valor || 0) : 0;

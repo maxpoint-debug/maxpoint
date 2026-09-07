@@ -3,6 +3,7 @@
 
 // ── Formulario nueva venta ────────────────────────
 function openNewVenta(prefillCosto) {
+  if (!puede('vender_equipo')) { toast('No tenés permiso para vender equipos','var(--rd)'); return; }
   _ventaId = null;
   el('mVenT').textContent = 'Nueva venta';
   ['vNom','vTel','vDni','vDir','vEmail','vMod','vCap','vCol','vImei','vPrecio','vCosto','vNot'].forEach(function(id) {
@@ -16,6 +17,7 @@ function openNewVenta(prefillCosto) {
   el('vPartePago').checked = false;
   el('vPartePagoWrap').style.display = 'none';
   ['vPpMod','vPpImei','vPpValor'].forEach(function(id) { setVal(id, ''); });
+  setVal('vCotizacion', typeof cotizacionBlueVenta==='function' ? cotizacionBlueVenta() : '');
   ventaEquipoPrepararPagosNuevos();
   if (prefillCosto) setVal('vCosto', prefillCosto);
   var costoWrap = el('wVCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
@@ -52,7 +54,7 @@ function cambiarPagoVentaEquipo(i, campo, valor) {
   renderPagosVentaEquipo();
 }
 function ventaEquipoTotalPagosUsd() {
-  var cot = typeof cotizacionBlueVenta === 'function' ? Number(cotizacionBlueVenta()||0) : 0;
+  var cot = Number(val('vCotizacion')||0);
   return _pagosVentaEquipo.reduce(function(s,p){ return s + (p.moneda === 'ARS' ? (cot > 0 ? Number(p.monto||0)/cot : 0) : Number(p.monto||0)); }, 0);
 }
 function renderPagosVentaEquipo() {
@@ -93,7 +95,7 @@ function saveVenta() {
     costo:       costo,
     costoConfirmado: puedeCosto ? Number(costo) > 0 : !!(anterior && anterior.costoConfirmado),
     estadoVenta: el('vEstadoVenta').value,
-    cotizacionBlue: typeof cotizacionBlueVenta === 'function' ? cotizacionBlueVenta() : 0,
+    cotizacionBlue: _ventaId && anterior ? Number(anterior.cotizacionBlue||0) : Number(val('vCotizacion')||0),
     vendedor:    el('vVendedor') ? el('vVendedor').value : '',
     canal:       el('vCanal') ? el('vCanal').value : '',
     pago:        el('vPago').value,
@@ -169,6 +171,7 @@ function openEditVenta(id) {
   setVal('vImei',   v.imei      || '');
   setVal('vPrecio', v.precio    || '');
   setVal('vCosto',  v.costo     || '');
+  setVal('vCotizacion', v.cotizacionBlue || '');
   var costoWrap = el('wVCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   // Actualizar opciones del select antes de setear el valor
   var selVed = el('vVendedor');

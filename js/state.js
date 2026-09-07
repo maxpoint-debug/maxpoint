@@ -29,6 +29,8 @@ var STOCK      = [];   // stock de equipos
 var PRODUCTOS_POS = []; // catalogo comercial POS (productos y servicios)
 var MOVIMIENTOS_STOCK_POS = []; // trazabilidad del inventario POS
 var MOVIMIENTOS_FINANCIEROS_POS = []; // libro operativo de Caja
+var CAJA_ACTUAL = null;
+var CIERRES_CAJA = [];
 var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
 var COM_AJUSTES = []; // ajustes aprobables para períodos posteriores
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
@@ -53,7 +55,9 @@ var PERMISOS_BASE = {
   gestionar_productos: ['administrador'],
   ajustar_stock_pos: ['administrador'],
   anular_venta_pos: ['administrador'],
-  ver_ventas_equipos: ['administrador']
+  vender_equipo: ['administrador', 'recepcionista'],
+  ver_ventas_equipos: ['administrador'],
+  ver_cierres_caja: ['administrador']
 };
 
 function sesionActiva() {
@@ -104,6 +108,9 @@ window.FB = {
   anularVentaEquipo:function(id, motivo, cb) { cb('Firebase no conectado todavía'); },
   anularVentaPos:function(id, motivo, cb) { cb('Firebase no conectado todavía'); },
   registrarCobroReparacion:function(id, pagos, cb) { cb('Firebase no conectado todavía'); },
+  abrirCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
+  movimientoManualCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
+  cerrarCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
 };
 
 // ===================== CONSTANTES =====================
