@@ -103,8 +103,12 @@ function catLimpiar() {
 
 // ── Carga del Excel (admin) ───────────────────────────
 function openCatAdmin() {
-  var pin = prompt('PIN:');
-  if (pin !== PIN) { toast('PIN incorrecto', 'var(--rd)'); return; }
+  // El administrador autenticado ya fue validado por rol. Conservamos el PIN
+  // como compatibilidad para el acceso legacy desde Balance.
+  if (!puede('gestionar_servicios_maestros')) {
+    var pin = prompt('PIN:');
+    if (pin !== PIN) { toast('PIN incorrecto', 'var(--rd)'); return; }
+  }
   // Resetear estado
   _catItems = [];
   el('catUploadLabel').textContent = 'Tocar para seleccionar archivo Excel';
@@ -219,7 +223,7 @@ function catSubir() {
   var cfg = { usd: usd, mult: mult, desc: desc, updated: hoy() };
   FB.setConfig(cfg, function(errCfg) {
     if (errCfg) {
-      btn.disabled = false; btn.textContent = 'Subir catalogo';
+      btn.disabled = false; btn.textContent = 'Actualizar listas';
       toast('Error guardando config: ' + errCfg, 'var(--rd)');
       syncErr('Error config');
       return;
@@ -228,7 +232,7 @@ function catSubir() {
 
     // Subir productos
     FB.setCat(_catItems, function(errCat, resumenServicios) {
-      btn.disabled = false; btn.textContent = 'Subir catalogo';
+      btn.disabled = false; btn.textContent = 'Actualizar listas';
       if (errCat) {
         toast('Error subiendo catalogo: ' + errCat, 'var(--rd)');
         syncErr('Error catalogo');
