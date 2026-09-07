@@ -10,6 +10,7 @@ function mismoNombreUsuario(a, b) {
 }
 function openNewRep() {
   _eid = null;
+  window._servicioRecepcionSnapshot = null;
   window._garantiaOrigen = null;
   el('mFormT').textContent = 'Nuevo ingreso';
   ['fNom','fTel','fEq','fMod','fCla','fGar','fNot','fDiagnostico','fEstadoFisico','fEstadoFisicoFinal'].forEach(function(id) { setVal(id, ''); });
@@ -27,6 +28,7 @@ function openNewRep() {
   if (selT) selT.disabled = false;
   el('suggBanner').style.display = 'none';
   openM('mForm');
+  if(typeof serviciosPrepararRecepcion==='function')serviciosPrepararRecepcion();
 }
 
 function openEditRep(id) {
@@ -34,6 +36,7 @@ function openEditRep(id) {
   if (!r) { toast('Orden no encontrada', 'var(--rd)'); return; }
   window._garantiaOrigen = null;
   _eid = id;
+  window._servicioRecepcionSnapshot = r.servicioSnapshot || null;
   el('mFormT').textContent = 'Editar ' + r.orden;
   setVal('fNom',  r.nombre       || '');
   setVal('fTel',  r.telefono     || '');
@@ -59,6 +62,7 @@ function openEditRep(id) {
   var fGremio = el('fGremio'); if (fGremio) fGremio.checked = r.gremio === 'si';
   el('suggBanner').style.display = 'none';
   openM('mForm');
+  if(typeof serviciosPrepararRecepcion==='function')serviciosPrepararRecepcion();
 }
 
 function saveRep() {
@@ -104,6 +108,7 @@ function saveRep() {
     resultadoServicio: resultadoServicio,
     controlComisionV1: true,
   };
+  if(window._servicioRecepcionSnapshot)d.servicioSnapshot=Object.assign({},window._servicioRecepcionSnapshot,{precioPublicoUsado:presupuestoNumero});
   // Con presupuesto, el estado sale del dinero cobrado. pagos[] tiene
   // prioridad y sena conserva compatibilidad con registros anteriores.
   var baseFinanciera = Object.assign({}, anterior || {}, d);

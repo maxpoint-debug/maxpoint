@@ -35,6 +35,8 @@ var PAGOS_ADMIN_LIMITADO = false;
 var MOVIMIENTOS_ADMIN_LIMITADO = false;
 var CAJA_ACTUAL = null;
 var CIERRES_CAJA = [];
+var SERVICIOS_MAESTROS = [];
+var POLITICAS_REPARACION = {};
 var CIERRES_CAJA_CARGANDO = true;
 var CIERRES_CAJA_ERROR = '';
 var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
@@ -63,7 +65,8 @@ var PERMISOS_BASE = {
   anular_venta_pos: ['administrador'],
   vender_equipo: ['administrador', 'recepcionista'],
   ver_ventas_equipos: ['administrador'],
-  ver_cierres_caja: ['administrador']
+  ver_cierres_caja: ['administrador'],
+  gestionar_servicios_maestros: ['administrador']
 };
 
 function sesionActiva() {
@@ -118,6 +121,8 @@ window.FB = {
   movimientoManualCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
   cerrarCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
   cargarMovimientosCaja:function(id, cb) { cb('Firebase no conectado todavía'); },
+  guardarServicioMaestro:function(d, cb) { cb('Firebase no conectado todavía'); },
+  guardarPoliticasReparacion:function(d, cb) { cb('Firebase no conectado todavía'); },
 };
 
 // ===================== CONSTANTES =====================

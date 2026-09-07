@@ -23,7 +23,9 @@ function posResumenMonedas(ventas, campo) {
 }
 
 function posProductosActivos() {
-  return (window.PRODUCTOS_POS || []).filter(function(p) { return p.activo !== false; });
+  var productos=(window.PRODUCTOS_POS || []).filter(function(p) { return p.activo !== false; });
+  var servicios=(typeof serviciosActivos==='function'?serviciosActivos():[]).map(function(s){return {id:'servicio:'+s.id,servicioMaestroId:s.id,nombre:s.nombrePublico,sku:'',barcode:'',categoria:'Reparaciones',subcategoria:s.familia,precio:s.precioPublico,costo:s.costoDirectoEstimado,moneda:'ARS',controlaStock:false,activo:true,servicioSnapshot:servicioSnapshot(s,0),calidadComercial:s.calidadComercial,calidadTecnica:s.calidadTecnica};});
+  return productos.concat(servicios);
 }
 
 function posCalculos() {
@@ -53,7 +55,7 @@ function posAgregarProducto(id) {
     existente.cantidad++;
   } else {
     if (p.controlaStock && posNumero(p.stockActual) <= 0) { toast('Producto sin stock', 'var(--rd)'); return; }
-    POS_CARRITO.push({ productoId:p.id, nombre:p.nombre, sku:p.sku || '', barcode:p.barcode || '', cantidad:1,
+    POS_CARRITO.push({ productoId:p.id, servicioMaestroId:p.servicioMaestroId||null, servicioSnapshot:p.servicioSnapshot||null, nombre:p.nombre, sku:p.sku || '', barcode:p.barcode || '', cantidad:1,
       precio:posNumero(p.precio), costo:posNumero(p.costo), moneda:p.moneda || 'ARS', controlaStock:!!p.controlaStock,
       stockDisponible:posNumero(p.stockActual), descuentoPorcentaje:0 });
   }
@@ -149,7 +151,7 @@ function posCobrar(imprimir) {
   if(c.total<=0){toast('El total debe ser mayor a cero','var(--rd)');return;}
   if(Math.abs(c.total-pagado)>0.01){toast('Los pagos no coinciden con el total','var(--rd)');return;}
   var moneda=posMonedaCarrito();
-  var venta={ items:c.items.map(function(i){return {productoId:i.productoId,nombre:i.nombre,sku:i.sku,barcode:i.barcode,cantidad:i.cantidad,precioLista:i.precio,descuentoPorcentaje:i.descuentoPorcentaje,descuentoImporte:i.descuentoImporte,precioFinal:i.subtotalFinal/i.cantidad,costoUnitario:i.costo,costoTotal:i.costo*i.cantidad,controlaStock:i.controlaStock,moneda:i.moneda};}),
+  var venta={ items:c.items.map(function(i){return {productoId:i.servicioMaestroId?null:i.productoId,servicioMaestroId:i.servicioMaestroId||null,servicioSnapshot:i.servicioSnapshot||null,nombre:i.nombre,sku:i.sku,barcode:i.barcode,cantidad:i.cantidad,precioLista:i.precio,descuentoPorcentaje:i.descuentoPorcentaje,descuentoImporte:i.descuentoImporte,precioFinal:i.subtotalFinal/i.cantidad,costoUnitario:i.costo,costoTotal:i.costo*i.cantidad,controlaStock:i.controlaStock,moneda:i.moneda};}),
     pagos:POS_PAGOS.map(function(p){return {medio:p.medio,cuenta:p.cuenta,monto:posNumero(p.monto),moneda:moneda,cotizacion:0};}),
     cliente:{nombre:(POS_CLIENTE.nombre||'Consumidor final').trim()||'Consumidor final',telefono:(POS_CLIENTE.telefono||'').trim()},
     moneda:moneda,cotizacion:0,subtotal:c.subtotalLista,descuentoItems:c.descuentoItems,
