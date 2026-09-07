@@ -176,7 +176,10 @@ function catCargarExcel(input) {
       if (!items.length) throw new Error('No se encontraron productos validos');
 
       _catItems = items;
-      el('catUploadLabel').textContent = file.name + ' — ' + items.length + ' productos OK';
+      var candidatos = typeof window.serviciosCandidatosCatalogo === 'function'
+        ? window.serviciosCandidatosCatalogo(items, { cotizacion:Number(el('catUsdVal').value || CFG_CAT.usd), archivo:file.name })
+        : [];
+      el('catUploadLabel').textContent = file.name + ' — ' + items.length + ' productos · ' + candidatos.length + ' servicios candidatos';
       el('catUploadLabel').closest('.cat-upload-area').classList.add('loaded');
 
       // Preview: primeros 5 + resumen por tipo
@@ -209,6 +212,15 @@ function catCargarExcel(input) {
 
 function catSubir() {
   if (!_catItems.length) { toast('Carga un Excel primero', 'var(--rd)'); return; }
+  if (typeof window.serviciosCandidatosCatalogo !== 'function') {
+    toast('No se cargó el módulo de Lista Maestra. Recargá la página e intentá nuevamente.', 'var(--rd)');
+    return;
+  }
+  var candidatosServicios = window.serviciosCandidatosCatalogo(_catItems, { cotizacion:Number(el('catUsdVal').value || CFG_CAT.usd) });
+  if (!candidatosServicios.length) {
+    toast('El Excel no generó servicios candidatos. Revisá las columnas Producto, Modelo y Categoría.', 'var(--rd)');
+    return;
+  }
 
   var usd  = parseFloat(el('catUsdVal').value) || CFG_CAT.usd;
   var mult = parseFloat(el('catMult').value)   || CFG_CAT.mult;
@@ -238,8 +250,13 @@ function catSubir() {
         syncErr('Error catalogo');
         return;
       }
+      if (!resumenServicios || !Number(resumenServicios.total)) {
+        toast('El catálogo técnico se actualizó, pero la Lista Maestra no generó servicios.', 'var(--rd)');
+        syncErr('Lista Maestra sin servicios');
+        return;
+      }
       closeM('mCat');
-      var resumen=resumenServicios?' · Servicios: '+resumenServicios.nuevos+' nuevos, '+resumenServicios.actualizados+' actualizados, '+resumenServicios.requierenRevision+' a revisar':'';
+      var resumen=' · Servicios: '+resumenServicios.nuevos+' nuevos, '+resumenServicios.actualizados+' actualizados, '+resumenServicios.requierenRevision+' a revisar';
       toast('Catalogo actualizado — ' + _catItems.length + ' productos'+resumen, 'var(--gr)');
       syncOk('Catalogo actualizado');
       el('catBackupInfo').style.display = 'none';
