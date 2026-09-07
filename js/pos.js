@@ -15,6 +15,7 @@ function posNumero(v) {
 function posDinero(v, moneda) {
   return (moneda === 'USD' ? 'US$ ' : '$') + posNumero(v).toLocaleString('es-AR', { maximumFractionDigits:2 });
 }
+function posTextoClave(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();}
 
 function posMonedaCarrito() { return POS_CARRITO.length ? (POS_CARRITO[0].moneda || 'ARS') : 'ARS'; }
 function posResumenMonedas(ventas, campo) {
@@ -77,19 +78,20 @@ function posDescuentoGlobal(tipo, valor) { if(tipo==='porc')POS_DESC_PORC=Math.m
 function posSincronizarPagoSimple() { if (POS_PAGOS.length === 1) POS_PAGOS[0].monto = posCalculos().total; }
 
 function posBuscarInput(ev) {
-  var q = String(ev.target.value || '').trim().toLowerCase();
+  var q = posTextoClave(ev.target.value);
   if (ev.key === 'Enter') {
     ev.preventDefault();
-    var exacto = posProductosActivos().find(function(p) { return String(p.barcode||'').toLowerCase()===q || String(p.sku||'').toLowerCase()===q; });
+    var exacto = posProductosActivos().find(function(p) { return posTextoClave(p.barcode)===q || posTextoClave(p.sku)===q; });
     if (exacto) { posAgregarProducto(exacto.id); return; }
     var resultados = posFiltrarProductos(q); if (resultados.length === 1) posAgregarProducto(resultados[0].id);
   }
 }
 
 function posFiltrarProductos(q) {
-  q=String(q||'').trim().toLowerCase();
+  q=posTextoClave(q);var palabras=q.split(' ').filter(Boolean);
   return posProductosActivos().filter(function(p) {
-    return !q || [p.nombre,p.sku,p.barcode,p.categoria,p.subcategoria].some(function(v){return String(v||'').toLowerCase().includes(q);});
+    var texto=posTextoClave([p.nombre,p.sku,p.barcode,p.categoria,p.subcategoria,p.calidadComercial,p.calidadTecnica].join(' '));
+    return !palabras.length||palabras.every(function(w){return texto.indexOf(w)>=0;});
   }).slice(0,30);
 }
 
@@ -183,7 +185,7 @@ function renderProductosPos() {
   cnt.innerHTML='<div class="toolbar"><div class="si"><span class="si-ico">🔍</span><input placeholder="Buscar producto, SKU o barcode" oninput="posFiltrarTablaProductos(this.value)"></div></div><div id="posProductosTabla" class="pos-lista"></div>';
   posFiltrarTablaProductos('');
 }
-function posFiltrarTablaProductos(q){var box=el('posProductosTabla');if(!box)return;q=String(q||'').toLowerCase();var ps=(window.PRODUCTOS_POS||[]).filter(function(p){return [p.nombre,p.sku,p.barcode,p.categoria].some(function(x){return String(x||'').toLowerCase().includes(q);});});box.innerHTML=ps.map(function(p){return '<div class="pos-list-row"><span><b>'+esc(p.nombre)+'</b><small>'+esc([p.categoria,p.sku,p.barcode].filter(Boolean).join(' · '))+'</small></span><span><b>'+posDinero(p.precio,p.moneda)+'</b><small>'+(p.moneda||'ARS')+' · '+(p.controlaStock?'Stock '+posNumero(p.stockActual):'Sin control de stock')+(p.activo===false?' · Inactivo':'')+'</small></span>'+(puede('gestionar_productos')?'<button class="btn btn-g btn-sm" onclick="posAbrirProducto(\''+p.id+'\')">Editar</button>':'')+'</div>';}).join('')||'<div class="pos-vacio">Todavía no hay productos.</div>';}
+function posFiltrarTablaProductos(q){var box=el('posProductosTabla');if(!box)return;q=posTextoClave(q);var palabras=q.split(' ').filter(Boolean);var ps=(window.PRODUCTOS_POS||[]).filter(function(p){var texto=posTextoClave([p.nombre,p.sku,p.barcode,p.categoria].join(' '));return !palabras.length||palabras.every(function(w){return texto.indexOf(w)>=0;});});box.innerHTML=ps.map(function(p){return '<div class="pos-list-row"><span><b>'+esc(p.nombre)+'</b><small>'+esc([p.categoria,p.sku,p.barcode].filter(Boolean).join(' · '))+'</small></span><span><b>'+posDinero(p.precio,p.moneda)+'</b><small>'+(p.moneda||'ARS')+' · '+(p.controlaStock?'Stock '+posNumero(p.stockActual):'Sin control de stock')+(p.activo===false?' · Inactivo':'')+'</small></span>'+(puede('gestionar_productos')?'<button class="btn btn-g btn-sm" onclick="posAbrirProducto(\''+p.id+'\')">Editar</button>':'')+'</div>';}).join('')||'<div class="pos-vacio">Todavía no hay productos.</div>';}
 
 function posAbrirAjuste(id) {
   var conStock=(window.PRODUCTOS_POS||[]).filter(function(p){return p.controlaStock;});
