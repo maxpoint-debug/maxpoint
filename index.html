@@ -330,12 +330,12 @@
 <!-- Modal catalogo admin -->
 <div class="ov" id="mCat"><div class="modal">
   <div class="mh">
-    <div class="mt">Actualizar catalogo</div>
+    <div class="mt">Actualizar catálogo y Lista Maestra</div>
     <button class="mc" onclick="closeM('mCat')">✕</button>
   </div>
   <div class="fgrid">
     <div class="f full">
-      <label>Lista de precios (.xlsx)</label>
+      <label>Lista técnica del proveedor (.xlsx)</label>
       <div class="cat-upload-area" onclick="document.getElementById('catFile').click()">
         <div id="catUploadLabel">Tocar para seleccionar archivo Excel</div>
         <input type="file" id="catFile" accept=".xlsx" style="display:none" onchange="catCargarExcel(this)"/>
@@ -344,6 +344,7 @@
     <div id="catPreview" style="display:none" class="f full">
       <div class="cat-preview-box" id="catPreviewContent"></div>
     </div>
+    <div class="f full"><div class="mu" style="font-size:11px">La importación actualiza el catálogo técnico por código y sincroniza la Lista Maestra. No elimina repuestos ni reemplaza precios públicos manuales.</div></div>
     <div class="f"><label>Dolar (auto del Excel)</label><input id="catUsdVal" type="number"/></div>
     <div class="f"><label>Multiplicador precio cliente</label><input id="catMult" type="number" step="0.1" value="3"/></div>
     <div class="f"><label>Descuento %</label><input id="catDesc" type="number" min="0" max="100" value="0"/></div>
@@ -351,7 +352,7 @@
   <div id="catBackupInfo" style="display:none;font-size:11px;color:var(--mu);padding:0 0 8px;text-align:center"></div>
   <div class="fa">
     <button class="btn btn-g" onclick="closeM('mCat')">Cancelar</button>
-    <button class="btn btn-p" id="btnSubirCat" onclick="catSubir()" disabled>Subir catalogo</button>
+    <button class="btn btn-p" id="btnSubirCat" onclick="catSubir()" disabled>Actualizar listas</button>
   </div>
 </div></div>
 
@@ -671,25 +672,25 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="js/data.js?v=22"></script>
 <script src="js/cotizador-core.js?v=3"></script>
-<script src="js/state.js?v=41"></script>
+<script src="js/state.js?v=42"></script>
 <script src="js/helpers.js?v=27"></script>
 <script src="js/moneda.js?v=2"></script>
 <script src="js/render.js?v=45"></script>
 <script src="js/modals.js?v=48"></script>
-<script src="js/catalogo.js?v=23"></script>
+<script src="js/catalogo.js?v=24"></script>
 <script src="js/comisiones.js?v=32"></script>
 <script src="js/seguimientos.js?v=23"></script>
 <script src="js/cotizador.js?v=36"></script>
 <script src="js/pos.js?v=7"></script>
 <script src="js/caja.js?v=6"></script>
-<script src="js/servicios.js?v=1"></script>
+<script src="js/servicios.js?v=2"></script>
 <script src="js/admin.js?v=1"></script>
 <script src="js/ventas.js?v=31"></script>
 <script src="js/stock.js?v=27"></script>
 <script src="js/app.js?v=35"></script>
 <script src="js/buscador.js?v=1"></script>
 <script src="js/notificaciones.js?v=1"></script>
-<script type="module" src="js/firebase.js?v=49"></script>
+<script type="module" src="js/firebase.js?v=50"></script>
 
 </body>
 </html>
