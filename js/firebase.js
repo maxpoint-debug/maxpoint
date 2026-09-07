@@ -598,8 +598,14 @@ onSnapshot(query(cCajas, orderBy('aperturaFechaHora','desc'), limit(500)), (snap
 });
 onSnapshot(cServicios,(snap)=>{
   window.SERVICIOS_MAESTROS=snap.docs.map(d=>Object.assign({id:d.id},d.data())).sort((a,b)=>String(a.nombrePublico||'').localeCompare(String(b.nombrePublico||''),'es'));
+  window.SERVICIOS_CARGANDO=false; window.SERVICIOS_ERROR='';
   if((window.VIEW==='servicios'||window.VIEW==='pos')&&typeof render==='function')render();
-},(err)=>console.error('Servicios maestros:',err));
+},(err)=>{
+  window.SERVICIOS_CARGANDO=false;
+  window.SERVICIOS_ERROR=(err.code ? err.code + ': ' : '') + (err.message || 'No se pudo cargar la Lista Maestra');
+  console.error('Servicios maestros:',err);
+  if(window.VIEW==='servicios'&&typeof render==='function')render();
+});
 onSnapshot(dPoliticasRep,(snap)=>{
   window.POLITICAS_REPARACION=snap.exists()?snap.data():{};
   if(window.VIEW==='servicios'&&typeof render==='function')render();
