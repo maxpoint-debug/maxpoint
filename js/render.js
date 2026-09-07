@@ -1008,12 +1008,10 @@ function renderVen() {
   var cnt = el('cnt'); cnt.innerHTML = '';
   // Registro administrativo separado: nunca mezcla documentos del POS.
   var ventasEquipos = VENTAS.filter(function(v) { return v.tipoRegistro !== 'pos'; });
+  var ventasEquiposActivas = ventasEquipos.filter(ventaValidaParaMetricas);
   var total        = ventasEquipos.length;
-  var totalPesos   = ventasEquipos.reduce(function(s,v) { return s + Number(v.precio||0); }, 0);
-  var totalCosto   = ventasEquipos.reduce(function(s,v) { return s + Number(v.costo||0); }, 0);
-  var totalGanancia = totalPesos - totalCosto;
   var ahoraVentas = new Date();
-  var ventasMesActual = ventasEquipos.filter(function(v) { var p=fechaVentaPartes(v.fecha); return p.valida && p.anio===ahoraVentas.getFullYear() && p.mes===ahoraVentas.getMonth()+1; });
+  var ventasMesActual = ventasEquiposActivas.filter(function(v) { var p=fechaVentaPartes(v.fecha); return p.valida && p.anio===ahoraVentas.getFullYear() && p.mes===ahoraVentas.getMonth()+1; });
   var facturacionMesActual = ventasMesActual.reduce(function(s,v){return s+Number(v.precio||0);},0);
   var margenMesActual = ventasMesActual.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
 
@@ -1069,14 +1067,15 @@ function renderVen() {
     return b.localeCompare(a);
   }).forEach(function(mesKey) {
     var vensMes = porMes[mesKey];
+    var vensMesActivas = vensMes.filter(ventaValidaParaMetricas);
     var pt = mesKey.split('-');
     var titulo = mesKey === 'sin-fecha' ? 'SIN FECHA' : (MN[parseInt(pt[1], 10)]||pt[1]) + ' ' + pt[0];
-    var totalMes = vensMes.reduce(function(s,v){return s+Number(v.precio||0);},0);
-    var ganMes   = vensMes.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
+    var totalMes = vensMesActivas.reduce(function(s,v){return s+Number(v.precio||0);},0);
+    var ganMes   = vensMesActivas.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
 
     var sec = document.createElement('div'); sec.style.cssText = 'margin-top:16px';
     sec.innerHTML = '<div style="margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bd)">'
-      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">' + titulo + ' — ' + vensMes.length + ' equipos · ' + ccUsd(totalMes) + ' · margen ' + ccUsd(ganMes) + '</div>'
+      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--acc)">' + titulo + ' — ' + vensMesActivas.length + ' equipos · ' + ccUsd(totalMes) + ' · margen ' + ccUsd(ganMes) + (vensMes.length!==vensMesActivas.length?' · '+(vensMes.length-vensMesActivas.length)+' anulada(s)':'') + '</div>'
       + '</div>';
 
     vensMes.forEach(function(v) {
