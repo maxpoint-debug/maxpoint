@@ -148,6 +148,7 @@ function catCargarExcel(input) {
         var modelo    = row[2];
         var color     = row[3];
         var tipo      = row[5];
+        var categoria = row[6];
         var costoUsd  = row[10];
         if (cod && prod && modelo && typeof costoUsd === 'number' && costoUsd > 0) {
           var label = String(prod) + ' ' + String(modelo) + (color ? ' ' + String(color) : '');
@@ -155,7 +156,15 @@ function catCargarExcel(input) {
             cod:       String(cod),
             label:     label.trim(),
             tipo:      String(tipo || ''),
+            categoria: String(categoria || ''),
+            producto:  String(prod || ''),
+            modelo:    String(modelo || ''),
+            color:     String(color || ''),
             costo_usd: costoUsd,
+            costo_ars: Number(row[11] || 0),
+            disponibilidad: String(row[15] || ''),
+            proveedor: 'LISTA CLIENTES',
+            archivoOrigen: file.name,
           });
         }
       });
@@ -218,7 +227,7 @@ function catSubir() {
     CFG_CAT = { usd: usd, mult: mult, desc: desc };
 
     // Subir productos
-    FB.setCat(_catItems, function(errCat) {
+    FB.setCat(_catItems, function(errCat, resumenServicios) {
       btn.disabled = false; btn.textContent = 'Subir catalogo';
       if (errCat) {
         toast('Error subiendo catalogo: ' + errCat, 'var(--rd)');
@@ -226,7 +235,8 @@ function catSubir() {
         return;
       }
       closeM('mCat');
-      toast('Catalogo actualizado — ' + _catItems.length + ' productos', 'var(--gr)');
+      var resumen=resumenServicios?' · Servicios: '+resumenServicios.nuevos+' nuevos, '+resumenServicios.actualizados+' actualizados, '+resumenServicios.requierenRevision+' a revisar':'';
+      toast('Catalogo actualizado — ' + _catItems.length + ' productos'+resumen, 'var(--gr)');
       syncOk('Catalogo actualizado');
       el('catBackupInfo').style.display = 'none';
     });

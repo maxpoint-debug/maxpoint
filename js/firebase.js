@@ -65,6 +65,8 @@ const cMovFin = collection(db, 'movimientosFinancieros');
 const dContVentas = doc(db, 'contadores', 'ventas');
 const cCajas = collection(db, 'cajas');
 const dCajaActual = doc(db, 'config', 'cajaActual');
+const cServicios = collection(db, 'serviciosMaestros');
+const dPoliticasRep = doc(db, 'config', 'politicasReparacion');
 
 let authModo = 'login', bootstrapDisponible = false;
 let detenerNotificaciones = null;
@@ -79,6 +81,7 @@ function authUiSesion() {
   const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = puede('ver_ventas_equipos') ? '' : 'none';
   const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = puede('ver_cierres_caja') ? '' : 'none';
   const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = puede('ver_balance') ? '' : 'none';
+  const serviciosNav = document.getElementById('nav-servicios-maestros'); if (serviciosNav) serviciosNav.style.display = puede('gestionar_servicios_maestros') ? '' : 'none';
   const resumen = document.getElementById('financeSummary'); if (resumen) resumen.style.display = puede('ver_balance') ? '' : 'none';
   const info = document.getElementById('sesionInfo');
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
@@ -90,6 +93,7 @@ function authUiLogin() {
   const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = 'none';
   const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = 'none';
   const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = 'none';
+  const serviciosNav = document.getElementById('nav-servicios-maestros'); if (serviciosNav) serviciosNav.style.display = 'none';
 }
 async function verificarBootstrap() {
   try { bootstrapDisponible = (await getDocs(query(cUsr, limit(1)))).empty; }
@@ -471,25 +475,24 @@ window.FB.setCotizadorConfig = (d, cb) => {
 
 window.FB.setCat = async (items, cb) => {
   try {
-    // 1. Backup: guardar config con timestamp de ultima actualizacion
-    const snap = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
-    const { getDocs, writeBatch } = snap;
-    const batch1 = writeBatch(db);
-    // Borrar catalogo viejo
-    const oldDocs = await getDocs(cCat);
-    oldDocs.forEach(d => batch1.delete(d.ref));
-    await batch1.commit();
-    // Subir nuevo catalogo en batches de 400
+    // Actualizacion incremental por codigo. Nunca borra el catalogo tecnico.
+    const codigos = new Set(items.map(item => String(item.cod || '')));
+    const existentes = await getDocs(cCat), porCodigo = new Map();
+    existentes.forEach(d => { const x=d.data(); if(x.cod) porCodigo.set(String(x.cod),d.ref); });
     const chunkSize = 400;
     for (let i = 0; i < items.length; i += chunkSize) {
       const batch2 = writeBatch(db);
       items.slice(i, i + chunkSize).forEach(item => {
-        batch2.set(doc(cCat), item);
+        const ref=porCodigo.get(String(item.cod)) || doc(cCat,'cat_'+String(item.cod).replace(/[^a-zA-Z0-9_-]/g,'_'));
+        batch2.set(ref,Object.assign({},item,{disponibleFuente:true,actualizadoEn:serverTimestamp()}),{merge:true});
       });
       await batch2.commit();
     }
-    await registrarAuditoria('catalogo', 'catalogo', 'base_reemplazada', {}, { productos: items.length });
-    cb(null);
+    const ausentes=[]; existentes.forEach(d=>{const x=d.data();if(x.cod&&!codigos.has(String(x.cod)))ausentes.push(d.ref);});
+    for(let i=0;i<ausentes.length;i+=chunkSize){const batch=writeBatch(db);ausentes.slice(i,i+chunkSize).forEach(ref=>batch.set(ref,{disponibleFuente:false,ultimaAusenciaEn:serverTimestamp()},{merge:true}));await batch.commit();}
+    await registrarAuditoria('catalogo','catalogo','base_actualizada_incremental',{}, { productos:items.length,ausentes:ausentes.length });
+    const resumenServicios=window.FB.sincronizarServiciosDesdeCatalogo?await window.FB.sincronizarServiciosDesdeCatalogo(items,{cotizacion:Number(CFG_CAT.usd||0),archivo:items[0]&&items[0].archivoOrigen||''}):null;
+    cb(null,resumenServicios);
   } catch(e) { cb(e.message); }
 };
 
@@ -593,6 +596,14 @@ onSnapshot(query(cCajas, orderBy('aperturaFechaHora','desc'), limit(500)), (snap
   console.error('Cierres de caja:', err);
   if(window.VIEW==='cierres'&&typeof render==='function')render();
 });
+onSnapshot(cServicios,(snap)=>{
+  window.SERVICIOS_MAESTROS=snap.docs.map(d=>Object.assign({id:d.id},d.data())).sort((a,b)=>String(a.nombrePublico||'').localeCompare(String(b.nombrePublico||''),'es'));
+  if((window.VIEW==='servicios'||window.VIEW==='pos')&&typeof render==='function')render();
+},(err)=>console.error('Servicios maestros:',err));
+onSnapshot(dPoliticasRep,(snap)=>{
+  window.POLITICAS_REPARACION=snap.exists()?snap.data():{};
+  if(window.VIEW==='servicios'&&typeof render==='function')render();
+},(err)=>console.error('Políticas de reparación:',err));
 onSnapshot(dCot, (snap) => {
   if (typeof cotLoadConfig === 'function') cotLoadConfig(snap.exists() ? snap.data() : {});
 }, () => {});
@@ -626,6 +637,18 @@ window.FB.abrirCaja = async (data, cb) => {
     await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(actual.exists()&&actual.data().estado==='abierta')throw new Error('Ya existe una caja abierta');const caja={schemaVersion:1,fechaNegocio:fechaNegocioIso(),aperturaFechaHora:ahora,usuarioApertura:actor,efectivoInicial:inicial,moneda:moneda,observacionApertura:String(data.observacion||'').trim(),estado:'abierta',creadoEn:serverTimestamp()};tx.set(ref,caja);tx.set(dCajaActual,Object.assign({cajaId:ref.id},caja));tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'abierta',actor:actor,cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null,ref.id);
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
+
+window.FB.sincronizarServiciosDesdeCatalogo = async (items,meta) => {
+  if(!puede('gestionar_servicios_maestros')||typeof serviciosCandidatosCatalogo!=='function')return;
+  const candidatos=serviciosCandidatosCatalogo(items,meta),snap=await getDocs(cServicios),existentes=new Map();
+  snap.forEach(d=>{const x=d.data();if(x.repuestoFuenteId)existentes.set(String(x.repuestoFuenteId),Object.assign({id:d.id},x));});
+  let nuevos=0,actualizados=0,revision=0;const chunk=350;
+  for(let i=0;i<candidatos.length;i+=chunk){const batch=writeBatch(db);candidatos.slice(i,i+chunk).forEach(c=>{const previo=existentes.get(c.repuestoFuenteId),mezcla=Object.assign({},c);if(previo){['nombrePublico','calidadComercial','activo','recomendado','precioPublico','precioManual','modoPrecio','tipoReglaPrecio','markupUsdObjetivo','margenPorcentualObjetivo','incentivoTecnico','reservaGarantia','costoLogisticoDefault'].forEach(k=>{if(previo[k]!==undefined)mezcla[k]=previo[k];});mezcla.necesitaRevision=!!previo.necesitaRevision||Math.abs(Number(previo.costoRepuestoActual||0)-Number(c.costoRepuestoActual||0))>.01;actualizados++;}else nuevos++;if(mezcla.necesitaRevision)revision++;if(typeof servicioRecalcular==='function')mezcla=servicioRecalcular(mezcla,window.POLITICAS_REPARACION||{});mezcla.fechaUltimoCosto=serverTimestamp();batch.set(doc(cServicios,previo?previo.id:'srv_'+c.codigoProveedor.replace(/[^a-zA-Z0-9_-]/g,'_')),mezcla,{merge:true});});await batch.commit();}
+  await registrarAuditoria('servicios_maestros','sincronizacion_excel','actualizada',{}, {nuevos:nuevos,actualizados:actualizados,requierenRevision:revision,archivo:meta&&meta.archivo||''});
+  return {nuevos:nuevos,actualizados:actualizados,requierenRevision:revision};
+};
+window.FB.guardarServicioMaestro = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const id=data.id,guardar=Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()});delete guardar.id;if(id)await setDoc(doc(cServicios,id),guardar,{merge:true});else await addDoc(cServicios,Object.assign({creadoEn:serverTimestamp(),origen:'manual',repuestoFuenteId:null},guardar));cb(null);}catch(e){cb(e.message);}};
+window.FB.guardarPoliticasReparacion = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{await setDoc(dPoliticasRep,Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()}),{merge:true});if(typeof servicioRecalcular==='function'){const snap=await getDocs(cServicios),docs=snap.docs;for(let i=0;i<docs.length;i+=350){const batch=writeBatch(db);docs.slice(i,i+350).forEach(d=>{const r=servicioRecalcular(Object.assign({id:d.id},d.data()),data);batch.set(d.ref,{precioCalculado:r.precioCalculado,costoDirectoEstimado:r.costoDirectoEstimado,gananciaEstimada:r.gananciaEstimada,margenActual:r.margenActual,necesitaRevision:r.necesitaRevision,fechaUltimaRevisionPrecio:serverTimestamp()},{merge:true});});await batch.commit();}}cb(null);}catch(e){cb(e.message);}};
 window.FB.movimientoManualCaja = async (data, cb) => {
   if(!sesionActiva()){cb('Sesión no válida');return;}
   try{const monto=Number(data.monto),actor=usuarioActualRegistro(),ahora=new Date().toISOString();if(!Number.isFinite(monto)||monto===0)throw new Error('Ingresá un importe válido');if(!data.medio||!data.cuenta||!data.categoria)throw new Error('Completá medio, cuenta y categoría');
@@ -876,7 +899,7 @@ window.FB.crearVentaPos = async (data, cb) => {
     const monedaVenta = data.moneda === 'USD' ? 'USD' : 'ARS';
     if (!(total > 0) || Math.abs(totalPagos - total) > 0.01) throw new Error('Los pagos deben coincidir con el total');
     if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || (p.moneda || monedaVenta) !== monedaVenta)) throw new Error('Cada pago necesita medio, cuenta, importe y la moneda de la venta');
-    const refs = items.map(i => doc(cPro, i.productoId)), ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
+    const refs = items.map(i => i.servicioMaestroId ? doc(cServicios,i.servicioMaestroId) : doc(cPro, i.productoId)), ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     let numero = 0;
     await runTransaction(db, async tx => {
@@ -889,20 +912,20 @@ window.FB.crearVentaPos = async (data, cb) => {
       items.forEach((item, idx) => {
         const snap = productosSnaps[idx];
         if (!snap.exists()) throw new Error('Un producto ya no existe');
-        const p = snap.data(), cantidad = Number(item.cantidad || 0);
+        const p = snap.data(), cantidad = Number(item.cantidad || 0),esServicio=!!item.servicioMaestroId;
         if (p.activo === false || !(cantidad > 0)) throw new Error('Producto inactivo o cantidad inválida: ' + (p.nombre || ''));
-        if ((p.moneda || 'ARS') !== monedaVenta) throw new Error('No se pueden mezclar productos ARS y USD');
+        if ((esServicio?'ARS':(p.moneda || 'ARS')) !== monedaVenta) throw new Error('No se pueden mezclar productos ARS y USD');
         const anterior = Number(p.stockActual || 0);
         if (p.controlaStock && anterior < cantidad) throw new Error('Stock insuficiente: ' + p.nombre);
-        snapshots.push({ ref:refs[idx], p:p, cantidad:cantidad, anterior:anterior });
+        snapshots.push({ ref:refs[idx], p:p, cantidad:cantidad, anterior:anterior, esServicio:esServicio, solicitado:item });
       });
       let subtotalValidado = 0, descuentoItemsValidado = 0, costoValidado = 0;
       const itemsVenta = snapshots.map((x, idx) => {
-        const solicitado = items[idx], precioLista = Number(x.p.precio || 0), costoUnitario = Number(x.p.costo || 0);
+        const solicitado = items[idx], precioLista = Number(x.esServicio?x.p.precioPublico:x.p.precio || 0), costoUnitario = Number(x.esServicio?x.p.costoDirectoEstimado:x.p.costo || 0);
         const porcentaje = Math.max(0, Math.min(100, Number(solicitado.descuentoPorcentaje || 0)));
         const bruto = precioLista * x.cantidad, descuentoImporte = bruto * porcentaje / 100, subtotalFinal = bruto - descuentoImporte;
         subtotalValidado += bruto; descuentoItemsValidado += descuentoImporte; costoValidado += costoUnitario * x.cantidad;
-        return { productoId:x.ref.id, nombre:x.p.nombre || '', sku:x.p.sku || '', barcode:x.p.barcode || '', cantidad:x.cantidad,
+        return { productoId:x.esServicio?null:x.ref.id, servicioMaestroId:x.esServicio?x.ref.id:null, servicioSnapshot:x.esServicio?solicitado.servicioSnapshot:null, nombre:x.esServicio?(x.p.nombrePublico||'Servicio'):x.p.nombre || '', sku:x.p.sku || '', barcode:x.p.barcode || '', cantidad:x.cantidad,
           precioLista:precioLista, descuentoPorcentaje:porcentaje, descuentoImporte:descuentoImporte,
           precioFinal:subtotalFinal / x.cantidad, costoUnitario:costoUnitario, costoTotal:costoUnitario*x.cantidad,
           controlaStock:!!x.p.controlaStock, moneda:x.p.moneda || data.moneda || 'ARS' };

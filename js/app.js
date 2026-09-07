@@ -11,7 +11,7 @@ function showView(v, navEl) {
   if (navEl) navEl.classList.add('active');
 
   // Titulo
-  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', seg: 'Seguimientos', pos: 'Caja', ops: 'Operaciones de caja', ven: 'Ventas de equipos', cierres:'Cierres de caja', admin:'Tablero administrativo', prod: 'Productos', inv: 'Inventario', stock: 'Stock de equipos', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Centro de Control', users: 'Usuarios' };
+  var titulos = { reps: 'Reparaciones', rpus: 'Repuestos', seg: 'Seguimientos', pos: 'Caja', ops: 'Operaciones de caja', ven: 'Ventas de equipos', cierres:'Cierres de caja', admin:'Tablero administrativo', servicios:'Lista Maestra de Reparaciones', prod: 'Productos', inv: 'Inventario', stock: 'Stock de equipos', cot: 'Cotizador', cli: 'Clientes', pag: 'Pagos', bal: 'Centro de Control', users: 'Usuarios' };
   el('topT').textContent = titulos[v] || v;
 
   // Botones topbar
