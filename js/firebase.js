@@ -474,12 +474,15 @@ window.FB.setCotizadorConfig = (d, cb) => {
 };
 
 window.FB.setCat = async (items, cb) => {
+  let etapa = 'inicio';
   try {
     // Actualizacion incremental por codigo. Nunca borra el catalogo tecnico.
+    etapa = 'leer catálogo existente';
     const codigos = new Set(items.map(item => String(item.cod || '')));
     const existentes = await getDocs(cCat), porCodigo = new Map();
     existentes.forEach(d => { const x=d.data(); if(x.cod) porCodigo.set(String(x.cod),d.ref); });
     const chunkSize = 400;
+    etapa = 'guardar catálogo técnico';
     for (let i = 0; i < items.length; i += chunkSize) {
       const batch2 = writeBatch(db);
       items.slice(i, i + chunkSize).forEach(item => {
@@ -488,12 +491,18 @@ window.FB.setCat = async (items, cb) => {
       });
       await batch2.commit();
     }
+    etapa = 'marcar productos ausentes';
     const ausentes=[]; existentes.forEach(d=>{const x=d.data();if(x.cod&&!codigos.has(String(x.cod)))ausentes.push(d.ref);});
     for(let i=0;i<ausentes.length;i+=chunkSize){const batch=writeBatch(db);ausentes.slice(i,i+chunkSize).forEach(ref=>batch.set(ref,{disponibleFuente:false,ultimaAusenciaEn:serverTimestamp()},{merge:true}));await batch.commit();}
+    etapa = 'auditar catálogo';
     await registrarAuditoria('catalogo','catalogo','base_actualizada_incremental',{}, { productos:items.length,ausentes:ausentes.length });
+    etapa = 'generar Lista Maestra';
     const resumenServicios=window.FB.sincronizarServiciosDesdeCatalogo?await window.FB.sincronizarServiciosDesdeCatalogo(items,{cotizacion:Number(CFG_CAT.usd||0),archivo:items[0]&&items[0].archivoOrigen||''}):null;
     cb(null,resumenServicios);
-  } catch(e) { cb(e.message); }
+  } catch(e) {
+    console.error('Actualización de catálogo falló en "'+etapa+'":',e);
+    cb('Etapa "'+etapa+'": '+(e && e.message ? e.message : String(e)));
+  }
 };
 
 // --- Listener reparaciones ---
