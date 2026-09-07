@@ -621,6 +621,18 @@ window.FB.cerrarCaja = async (data, cb) => {
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 
+// Compatibilidad con cierres anteriores, que guardaban los totales pero no el
+// detalle dentro del documento de caja. La consulta no modifica datos.
+window.FB.cargarMovimientosCaja = async (cajaId, cb) => {
+  if (!puede('ver_cierres_caja')) { cb('Sin permiso para consultar cierres'); return; }
+  try {
+    const snap = await getDocs(query(cMovFin, where('cajaId', '==', cajaId)));
+    const movimientos = snap.docs.map(d => Object.assign({ id:d.id }, d.data()))
+      .sort((a, b) => String(a.fechaHora || '').localeCompare(String(b.fechaHora || '')));
+    cb(null, movimientos);
+  } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
 window.FB.setMoneda = async (d, cb) => {
   var actor = usuarioActualRegistro();
   if (!actor || !puede('editar_tipo_cambio')) { cb('Sin permiso para actualizar la cotización'); return; }

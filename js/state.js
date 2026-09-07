@@ -111,6 +111,7 @@ window.FB = {
   abrirCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
   movimientoManualCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
   cerrarCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
+  cargarMovimientosCaja:function(id, cb) { cb('Firebase no conectado todavía'); },
 };
 
 // ===================== CONSTANTES =====================
