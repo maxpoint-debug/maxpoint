@@ -74,7 +74,7 @@
       <div class="ni" onclick="showView('pag',this)"><span class="ico">💰</span>Pagos</div>
       <div class="ns">Administración</div>
       <div class="ni" id="nav-ventas-equipos" style="display:none" onclick="showView('ven',this)"><span class="ico">📱</span>Ventas de equipos</div>
-      <div class="ni" id="nav-cierres-caja" style="display:none" onclick="showView('cierres',this)"><span class="ico">🧾</span>Cierres de caja</div>
+      <div class="ni" id="nav-cierres-caja" style="display:none" onclick="abrirCierresCaja(this)"><span class="ico">🧾</span>Cierres de caja</div>
       <div class="ni" id="nav-balance" onclick="openLock()"><span class="ico">📊</span>Balance</div>
       <div class="ni" id="nav-users" style="display:none" onclick="showView('users',this)"><span class="ico">👥</span>Usuarios</div>
     </nav>
@@ -678,7 +678,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="js/seguimientos.js?v=23"></script>
 <script src="js/cotizador.js?v=36"></script>
 <script src="js/pos.js?v=6"></script>
-<script src="js/caja.js?v=4"></script>
+<script src="js/caja.js?v=5"></script>
 <script src="js/ventas.js?v=31"></script>
 <script src="js/stock.js?v=27"></script>
 <script src="js/app.js?v=33"></script>
