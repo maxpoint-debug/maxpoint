@@ -154,6 +154,7 @@ function saveVenta() {
 }
 
 function openEditVenta(id) {
+  if (!puede('editar_ventas_equipos')) { toast('Sólo administración puede editar ventas anteriores','var(--rd)'); return; }
   var v = VENTAS.find(function(x) { return x.id === id; });
   if (!v) return;
   _ventaId = id;

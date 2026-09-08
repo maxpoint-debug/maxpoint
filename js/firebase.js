@@ -809,7 +809,7 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
     cb(null);
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
-window.FB.updV = (id, d, cb) => actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message));
+window.FB.updV = (id, d, cb) => { if (!puede('editar_ventas_equipos')) { cb('Sólo administración puede editar ventas anteriores'); return; } actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message)); };
 window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── CRUD stock ──

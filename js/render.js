@@ -1008,6 +1008,7 @@ function fallbackCopy(texto) {
 
 // ── RENDER VENTAS ────────────────────────────────────
 function renderVen() {
+  if (!puede('ver_ventas_equipos')) { showView('reps'); return; }
   var cnt = el('cnt'); cnt.innerHTML = '';
   // Registro administrativo separado: nunca mezcla documentos del POS.
   var ventasEquipos = VENTAS.filter(function(v) { return v.tipoRegistro !== 'pos'; });
@@ -1021,7 +1022,7 @@ function renderVen() {
   var sc = document.createElement('div'); sc.className = 'sc-row';
   sc.innerHTML = '<div class="sc"><div class="scl">Equipos este mes</div><div class="scv cb">' + ventasMesActual.length + '</div></div>'
     + '<div class="sc"><div class="scl">Facturación mes</div><div class="scv cg">' + ccUsd(facturacionMesActual) + '</div></div>'
-    + '<div class="sc"><div class="scl">Margen mes</div><div class="scv ' + (margenMesActual>=0?'cg':'cr') + '">' + ccUsd(margenMesActual) + '</div></div>'
+    + (puede('ver_costos') ? '<div class="sc"><div class="scl">Margen mes</div><div class="scv ' + (margenMesActual>=0?'cg':'cr') + '">' + ccUsd(margenMesActual) + '</div></div>' : '')
     + '<div class="sc"><div class="scl">Registro histórico</div><div class="scv cb">' + total + '</div></div>';
   cnt.appendChild(sc);
 
@@ -1104,7 +1105,7 @@ function renderVen() {
         + '</div></div>'
         + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
-        + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>'
+        + (puede('editar_ventas_equipos') ? '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>' : '')
         + (puede('eliminar_operaciones') && v.estadoVenta!=='Anulada' && v.estadoVenta!=='Devuelta' ? '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="anularVentaEquipo(this.dataset.vid)">Anular</button>' : '')
         + '</div>';
       sec.appendChild(card);
