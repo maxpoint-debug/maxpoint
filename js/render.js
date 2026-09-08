@@ -1019,12 +1019,14 @@ function renderVen() {
   var facturacionMesActual = ventasMesActual.reduce(function(s,v){return s+Number(v.precio||0);},0);
   var margenMesActual = ventasMesActual.reduce(function(s,v){return s+Number(v.precio||0)-Number(v.costo||0);},0);
 
-  var sc = document.createElement('div'); sc.className = 'sc-row';
-  sc.innerHTML = '<div class="sc"><div class="scl">Equipos este mes</div><div class="scv cb">' + ventasMesActual.length + '</div></div>'
-    + '<div class="sc"><div class="scl">Facturación mes</div><div class="scv cg">' + ccUsd(facturacionMesActual) + '</div></div>'
-    + (puede('ver_costos') ? '<div class="sc"><div class="scl">Margen mes</div><div class="scv ' + (margenMesActual>=0?'cg':'cr') + '">' + ccUsd(margenMesActual) + '</div></div>' : '')
-    + '<div class="sc"><div class="scl">Registro histórico</div><div class="scv cb">' + total + '</div></div>';
-  cnt.appendChild(sc);
+  if (puede('ver_costos')) {
+    var sc = document.createElement('div'); sc.className = 'sc-row';
+    sc.innerHTML = '<div class="sc"><div class="scl">Equipos este mes</div><div class="scv cb">' + ventasMesActual.length + '</div></div>'
+      + '<div class="sc"><div class="scl">Facturación mes</div><div class="scv cg">' + ccUsd(facturacionMesActual) + '</div></div>'
+      + '<div class="sc"><div class="scl">Margen mes</div><div class="scv ' + (margenMesActual>=0?'cg':'cr') + '">' + ccUsd(margenMesActual) + '</div></div>'
+      + '<div class="sc"><div class="scl">Registro histórico</div><div class="scv cb">' + total + '</div></div>';
+    cnt.appendChild(sc);
+  }
 
   if (!ventasEquipos.length) {
     var empty = document.createElement('div');
