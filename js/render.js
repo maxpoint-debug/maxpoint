@@ -1090,10 +1090,11 @@ function renderVen() {
       var modelo = [v.modelo, v.capacidad, v.color].filter(Boolean).join(' ');
       var pp = v.parte_pago === 'Si' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Parte pago</span>' : '';
       var anulada = v.estadoVenta === 'Anulada' ? '<span style="font-size:10px;background:rgba(255,80,80,.12);color:var(--rd);border:1px solid rgba(255,80,80,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Anulada</span>' : '';
+      var reservada = v.estadoVenta === 'Reservada' ? '<span style="font-size:10px;background:rgba(78,154,241,.12);color:var(--bl);border:1px solid rgba(78,154,241,.25);border-radius:10px;padding:2px 7px;margin-left:6px">Reservada</span>' : '';
       var gan = puede('ver_costos') && v.precio && v.costo && Number(v.costo) ? Number(v.precio) - Number(v.costo) : null;
       card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
         + '<div style="flex:1">'
-        + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + anulada + '</div>'
+        + '<div style="font-size:13px;font-weight:800;color:var(--tx)">' + esc(v.nombre||'') + pp + reservada + anulada + '</div>'
         + '<div style="font-size:12px;color:var(--mu);margin-top:2px">' + esc(modelo) + '</div>'
         + '<div style="font-size:10px;color:var(--mu);font-family:monospace;margin-top:2px">IMEI / Serie: ' + esc(v.imei||'') + '</div>'
         + (v.vendedor ? '<div style="font-size:10px;color:var(--mu)">' + esc(v.vendedor) + (v.canal?' via '+esc(v.canal):'') + '</div>' : '')
