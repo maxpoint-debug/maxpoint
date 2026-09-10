@@ -742,21 +742,23 @@ window.FB.crearVentaEquipo = async (data, cb) => {
     const precio = Number(data.precio || 0), partePago = data.parte_pago === 'Si' ? Number(data.pp_valor || 0) : 0;
     const requerido = Math.max(0, precio - partePago), pagado = pagos.reduce((s,p) => s + Number(p.montoVentaUSD || 0), 0);
     if (!(precio > 0)) throw new Error('El precio debe ser mayor a cero');
+    if (!['Cobrada','Reservada'].includes(data.estadoVenta)) throw new Error('El estado debe ser Cobrada o Reservada');
     if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || !['ARS','USD'].includes(p.moneda) || (p.moneda === 'ARS' && !(Number(p.cotizacion) > 0)))) throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
     if (data.estadoVenta === 'Cobrada' && Math.abs(pagado - requerido) > 0.01) throw new Error('Los pagos deben cubrir exactamente el saldo de la venta');
     if (pagado > requerido + 0.01) throw new Error('Los pagos superan el saldo de la venta');
     const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    const requiereCaja=pagos.length>0;
     const venta = Object.assign({}, data, {
-      tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:true,
+      tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:requiereCaja,
       pagos:pagos.map((p,i) => Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),
       totalPagadoUSD:pagado, saldoUSD:Math.max(0,requerido-pagado), usuario:actor,
       fechaHora:ahora, creadoEn:serverTimestamp()
     });
     await runTransaction(db, async tx => {
-      const cajaSnap=await tx.get(dCajaActual);
-      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
-      const cajaId=cajaSnap.data().cajaId;
+      const cajaSnap=requiereCaja?await tx.get(dCajaActual):null;
+      if(requiereCaja&&(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta'))throw new Error('Primero abrí la caja para registrar la seña');
+      const cajaId=requiereCaja?cajaSnap.data().cajaId:null;
       tx.set(ventaRef, venta);
       pagos.forEach((p,i) => {
         const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,

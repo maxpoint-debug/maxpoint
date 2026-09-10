@@ -12,7 +12,7 @@ function openNewVenta(prefillCosto) {
   el('vPago').value = 'Efectivo';
   el('vEstadoVenta').value = 'Cobrada';
   ['vPrecio','vPartePago','vPpMod','vPpImei','vPpValor'].forEach(function(campo){if(el(campo))el(campo).disabled=false;});
-  el('vEstadoVenta').disabled=true;
+  el('vEstadoVenta').disabled=false;
   if (el('vCajaRegistradaAviso')) el('vCajaRegistradaAviso').style.display = 'none';
   el('vPartePago').checked = false;
   el('vPartePagoWrap').style.display = 'none';
@@ -62,7 +62,7 @@ function renderPagosVentaEquipo() {
   lista.innerHTML=_pagosVentaEquipo.map(function(p,i){return '<div class="pos-pago venta-equipo-pago"><select onchange="cambiarPagoVentaEquipo('+i+',\'medio\',this.value)">'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(m){return '<option'+(m===p.medio?' selected':'')+'>'+m+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="cambiarPagoVentaEquipo('+i+',\'cuenta\',this.value)"><select onchange="cambiarPagoVentaEquipo('+i+',\'moneda\',this.value)"><option'+(p.moneda==='USD'?' selected':'')+'>USD</option><option'+(p.moneda==='ARS'?' selected':'')+'>ARS</option></select><input type="number" min="0" step="0.01" value="'+p.monto+'" placeholder="Importe" oninput="cambiarPagoVentaEquipo('+i+',\'monto\',this.value)">'+(_pagosVentaEquipo.length>1?'<button type="button" class="pos-remove" onclick="quitarPagoVentaEquipo('+i+')">×</button>':'')+'</div>';}).join('');
   actualizarResumenPagosVentaEquipo();
 }
-function actualizarResumenPagosVentaEquipo(){var e=el('vPagosResumen');if(!e)return;var precio=Number(val('vPrecio')||0),pp=el('vPartePago')&&el('vPartePago').checked?Number(val('vPpValor')||0):0,requerido=Math.max(0,precio-pp),pagado=ventaEquipoTotalPagosUsd(),dif=requerido-pagado;e.textContent='A cobrar: US$ '+requerido.toLocaleString('es-AR')+' · Pagos equivalentes: US$ '+pagado.toLocaleString('es-AR',{maximumFractionDigits:2})+(Math.abs(dif)<0.01?' · Total cubierto':dif>0?' · Faltan US$ '+dif.toLocaleString('es-AR',{maximumFractionDigits:2}):' · Excede US$ '+(-dif).toLocaleString('es-AR',{maximumFractionDigits:2}));e.style.color=Math.abs(dif)<0.01?'var(--gr)':(dif<0?'var(--rd)':'var(--or)');}
+function actualizarResumenPagosVentaEquipo(){var e=el('vPagosResumen');if(!e)return;var precio=Number(val('vPrecio')||0),pp=el('vPartePago')&&el('vPartePago').checked?Number(val('vPpValor')||0):0,requerido=Math.max(0,precio-pp),pagado=ventaEquipoTotalPagosUsd(),dif=requerido-pagado,reserva=el('vEstadoVenta')&&el('vEstadoVenta').value==='Reservada';e.textContent=reserva?'Reserva · seña registrada: US$ '+pagado.toLocaleString('es-AR',{maximumFractionDigits:2})+' · Saldo pendiente: US$ '+Math.max(0,dif).toLocaleString('es-AR',{maximumFractionDigits:2}):'A cobrar: US$ '+requerido.toLocaleString('es-AR')+' · Pagos equivalentes: US$ '+pagado.toLocaleString('es-AR',{maximumFractionDigits:2})+(Math.abs(dif)<0.01?' · Total cubierto':dif>0?' · Faltan US$ '+dif.toLocaleString('es-AR',{maximumFractionDigits:2}):' · Excede US$ '+(-dif).toLocaleString('es-AR',{maximumFractionDigits:2}));e.style.color=reserva?'var(--bl)':(Math.abs(dif)<0.01?'var(--gr)':(dif<0?'var(--rd)':'var(--or)'));}
 
 function saveVenta() {
   var nom = val('vNom');
@@ -70,8 +70,9 @@ function saveVenta() {
   var mod = val('vMod');
   var imei = val('vImei');
   var precio = val('vPrecio');
-  if (!nom || !mod || !imei || !precio) {
-    alert('Nombre, modelo, IMEI / número de serie y precio son obligatorios.');
+  var estadoNuevo = el('vEstadoVenta').value;
+  if (!nom || !mod || (!imei && estadoNuevo !== 'Reservada') || !precio) {
+    alert(estadoNuevo === 'Reservada' ? 'Nombre, modelo y precio son obligatorios para una reserva.' : 'Nombre, modelo, IMEI / número de serie y precio son obligatorios.');
     return;
   }
   var btn = el('btnSaveVenta');
@@ -122,7 +123,7 @@ function saveVenta() {
       closeM('mVen'); toast('Venta actualizada');
     });
   } else {
-    if (d.estadoVenta !== 'Cobrada') { btn.disabled=false; btn.textContent='Guardar venta'; toast('Las ventas nuevas se registran cobradas; los estados anteriores siguen disponibles al editar el historial','var(--rd)'); return; }
+    if (d.estadoVenta !== 'Cobrada' && d.estadoVenta !== 'Reservada') { btn.disabled=false; btn.textContent='Guardar venta'; toast('Una operación nueva debe registrarse como Cobrada o Reservada','var(--rd)'); return; }
     var cotizacion = Number(d.cotizacionBlue || 0), requerido = Math.max(0, Number(d.precio||0) - (partePago ? Number(d.pp_valor||0) : 0));
     var pagos = _pagosVentaEquipo.filter(function(p){return Number(p.monto)>0;}).map(function(p){return {medio:p.medio,cuenta:p.cuenta,moneda:p.moneda,monto:Number(p.monto),cotizacion:p.moneda==='ARS'?cotizacion:1,montoVentaUSD:p.moneda==='ARS'&&cotizacion>0?Number(p.monto)/cotizacion:Number(p.monto)};});
     var pagado = pagos.reduce(function(s,p){return s+Number(p.montoVentaUSD||0);},0);
@@ -133,7 +134,7 @@ function saveVenta() {
     FB.crearVentaEquipo(d, function(err) {
       btn.disabled = false; btn.textContent = 'Guardar venta';
       if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-      closeM('mVen'); toast('Venta registrada');
+      closeM('mVen'); toast(d.estadoVenta==='Reservada'?'Reserva registrada':'Venta registrada');
       // Si tiene parte de pago, agregar al stock automaticamente
       if (d.parte_pago === 'Si' && d.pp_modelo) {
         FB.addSt({
@@ -191,7 +192,7 @@ function openEditVenta(id) {
   }
   el('btnSaveVenta').disabled = false;
   el('btnSaveVenta').textContent = 'Guardar venta';
-  var integrada = !!v.cajaRegistrada, anulada = v.estadoVenta === 'Anulada';
+  var integrada = !!v.cajaRegistrada || Number(v.schemaVersion||0)>=2, anulada = v.estadoVenta === 'Anulada';
   ['vPrecio','vPartePago','vPpMod','vPpImei','vPpValor'].forEach(function(campo){if(el(campo))el(campo).disabled=integrada;});
   el('vEstadoVenta').disabled=integrada||anulada;
   if (el('vPagosLegacyWrap')) el('vPagosLegacyWrap').style.display = integrada ? 'none' : '';
@@ -222,6 +223,7 @@ function prtVenta(id) {
 
   var esc2 = function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
   var fmt  = function(n) { return 'US$\u202F' + Number(n||0).toLocaleString('es-AR'); };
+  var esReserva = v.estadoVenta === 'Reservada';
 
   var desc = esc2(v.modelo)
     + (v.capacidad ? ' ' + esc2(v.capacidad) : '')
@@ -247,7 +249,7 @@ function prtVenta(id) {
 
     // Banda amarilla
     + '<div style="background:#F0B429;padding:7px 18px;display:flex;justify-content:space-between;align-items:center">'
-    + '<div><div style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#7a5500">Comprobante de Venta</div>'
+    + '<div><div style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#7a5500">Comprobante de '+(esReserva?'Reserva':'Venta')+'</div>'
     + '<div style="font-size:18px;font-weight:900;color:#111">VTA-' + esc2(v.id ? v.id.slice(-5).toUpperCase() : '') + '</div></div>'
     + '<div style="text-align:right"><div style="font-size:8px;color:#7a5500">Fecha: <b>' + esc2(v.fecha||'') + '</b></div></div>'
     + '</div>'
@@ -278,6 +280,7 @@ function prtVenta(id) {
     + '<div style="font-size:22px;font-weight:900;color:#111">' + fmt(v.precio) + '</div></div>'
     + '<div style="font-size:10px;color:#555">' + esc2(v.pago||'Efectivo') + '</div>'
     + '</div>'
+    + (esReserva ? '<div style="background:#eef6ff;border:1px solid #93c5fd;border-radius:6px;padding:8px 12px;margin-bottom:10px"><b>Equipo reservado</b><br><span style="font-size:10px">Seña: '+fmt(v.totalPagadoUSD||0)+' · Saldo pendiente: '+fmt(v.saldoUSD||0)+'</span></div>' : '')
 
     // Parte de pago
     + (v.parte_pago === 'Si' && v.pp_modelo ?

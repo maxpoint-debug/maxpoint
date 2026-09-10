@@ -207,8 +207,8 @@ function resumenFinancieroReparacion(r) {
   };
 }
 
-// Los estados existentes son Cobrada, Pendiente, Anulada y Devuelta. Los
-// históricos sin estado se tratan como Cobrada para mantener compatibilidad.
+// Sólo Cobrada impacta en métricas. Reservada/Pendiente no son venta realizada;
+// los históricos sin estado se tratan como Cobrada para mantener compatibilidad.
 function ventaValidaParaMetricas(venta) {
   return (venta && venta.estadoVenta ? venta.estadoVenta : 'Cobrada') === 'Cobrada';
 }
