@@ -35,16 +35,16 @@ var _pagosVentaEquipo = [];
 function ventaEquipoCuentaSugerida(medio) {
   if (medio === 'Efectivo') return 'Caja efectivo';
   if (medio === 'Mercado Pago') return 'Mercado Pago';
-  return 'Santander MaxPoint';
+  return '';
 }
 function ventaEquipoPrepararPagosNuevos() {
-  _pagosVentaEquipo = [{ medio:'Efectivo', cuenta:'Caja efectivo', moneda:'USD', monto:'' }];
+  _pagosVentaEquipo = [{ medio:'', cuenta:'', moneda:'USD', monto:'' }];
   var nuevo = !_ventaId;
   if (el('vPagosLegacyWrap')) el('vPagosLegacyWrap').style.display = nuevo ? 'none' : '';
   if (el('vPagosCajaWrap')) el('vPagosCajaWrap').style.display = nuevo ? '' : 'none';
   renderPagosVentaEquipo();
 }
-function agregarPagoVentaEquipo() { _pagosVentaEquipo.push({ medio:'Transferencia', cuenta:'Santander MaxPoint', moneda:'ARS', monto:'' }); renderPagosVentaEquipo(); }
+function agregarPagoVentaEquipo() { _pagosVentaEquipo.push({ medio:'', cuenta:'', moneda:'ARS', monto:'' }); renderPagosVentaEquipo(); }
 function quitarPagoVentaEquipo(i) { if (_pagosVentaEquipo.length > 1) _pagosVentaEquipo.splice(i,1); renderPagosVentaEquipo(); }
 function cambiarPagoVentaEquipo(i, campo, valor) {
   if (!_pagosVentaEquipo[i]) return;
@@ -59,7 +59,7 @@ function ventaEquipoTotalPagosUsd() {
 }
 function renderPagosVentaEquipo() {
   var lista=el('vPagosCaja'), resumen=el('vPagosResumen'); if(!lista||!resumen)return;
-  lista.innerHTML=_pagosVentaEquipo.map(function(p,i){return '<div class="pos-pago venta-equipo-pago"><select onchange="cambiarPagoVentaEquipo('+i+',\'medio\',this.value)">'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(m){return '<option'+(m===p.medio?' selected':'')+'>'+m+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="cambiarPagoVentaEquipo('+i+',\'cuenta\',this.value)"><select onchange="cambiarPagoVentaEquipo('+i+',\'moneda\',this.value)"><option'+(p.moneda==='USD'?' selected':'')+'>USD</option><option'+(p.moneda==='ARS'?' selected':'')+'>ARS</option></select><input type="number" min="0" step="0.01" value="'+p.monto+'" placeholder="Importe" oninput="cambiarPagoVentaEquipo('+i+',\'monto\',this.value)">'+(_pagosVentaEquipo.length>1?'<button type="button" class="pos-remove" onclick="quitarPagoVentaEquipo('+i+')">×</button>':'')+'</div>';}).join('');
+  lista.innerHTML=_pagosVentaEquipo.map(function(p,i){return '<div class="pos-pago venta-equipo-pago"><select onchange="cambiarPagoVentaEquipo('+i+',\'medio\',this.value)"><option value="">Seleccionar medio…</option>'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(m){return '<option'+(m===p.medio?' selected':'')+'>'+m+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="cambiarPagoVentaEquipo('+i+',\'cuenta\',this.value)"><select onchange="cambiarPagoVentaEquipo('+i+',\'moneda\',this.value)"><option'+(p.moneda==='USD'?' selected':'')+'>USD</option><option'+(p.moneda==='ARS'?' selected':'')+'>ARS</option></select><input type="number" min="0" step="0.01" value="'+p.monto+'" placeholder="Importe" oninput="cambiarPagoVentaEquipo('+i+',\'monto\',this.value)">'+(_pagosVentaEquipo.length>1?'<button type="button" class="pos-remove" onclick="quitarPagoVentaEquipo('+i+')">×</button>':'')+'</div>';}).join('');
   actualizarResumenPagosVentaEquipo();
 }
 function actualizarResumenPagosVentaEquipo(){var e=el('vPagosResumen');if(!e)return;var precio=Number(val('vPrecio')||0),pp=el('vPartePago')&&el('vPartePago').checked?Number(val('vPpValor')||0):0,requerido=Math.max(0,precio-pp),pagado=ventaEquipoTotalPagosUsd(),dif=requerido-pagado,reserva=el('vEstadoVenta')&&el('vEstadoVenta').value==='Reservada';e.textContent=reserva?'Reserva · seña registrada: US$ '+pagado.toLocaleString('es-AR',{maximumFractionDigits:2})+' · Saldo pendiente: US$ '+Math.max(0,dif).toLocaleString('es-AR',{maximumFractionDigits:2}):'A cobrar: US$ '+requerido.toLocaleString('es-AR')+' · Pagos equivalentes: US$ '+pagado.toLocaleString('es-AR',{maximumFractionDigits:2})+(Math.abs(dif)<0.01?' · Total cubierto':dif>0?' · Faltan US$ '+dif.toLocaleString('es-AR',{maximumFractionDigits:2}):' · Excede US$ '+(-dif).toLocaleString('es-AR',{maximumFractionDigits:2}));e.style.color=reserva?'var(--bl)':(Math.abs(dif)<0.01?'var(--gr)':(dif<0?'var(--rd)':'var(--or)'));}

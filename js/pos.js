@@ -2,7 +2,7 @@
 // Convive con ventas y stock de equipos anteriores. No migra ni borra datos.
 
 var POS_CARRITO = [];
-var POS_PAGOS = [{ medio:'Efectivo', cuenta:'Caja efectivo', monto:0 }];
+var POS_PAGOS = [{ medio:'', cuenta:'', monto:0 }];
 var POS_DESC_PORC = 0;
 var POS_DESC_FIJO = 0;
 var POS_GUARDANDO = false;
@@ -103,8 +103,8 @@ function posActualizarResultados(q) {
   }).join('') || '<div class="pos-vacio">No se encontraron productos activos.</div>';
 }
 
-function posPagoCampo(indice, campo, valor) { POS_PAGOS[indice][campo]=campo==='monto'?Math.max(0,posNumero(valor)):valor; posActualizarTotalesDom(); }
-function posAgregarPago() { POS_PAGOS.push({medio:'Transferencia',cuenta:'Santander MaxPoint',monto:0}); renderPos(); }
+function posPagoCampo(indice, campo, valor) { POS_PAGOS[indice][campo]=campo==='monto'?Math.max(0,posNumero(valor)):valor;if(campo==='medio'){POS_PAGOS[indice].cuenta=valor==='Efectivo'?'Caja efectivo':(valor==='Mercado Pago'?'Mercado Pago':'');renderPos();return;}posActualizarTotalesDom(); }
+function posAgregarPago() { POS_PAGOS.push({medio:'',cuenta:'',monto:0}); renderPos(); }
 function posQuitarPago(i) { if(POS_PAGOS.length>1){POS_PAGOS.splice(i,1);posSincronizarPagoSimple();renderPos();} }
 function posActualizarTotalesDom() {
   var c=posCalculos(), pagado=POS_PAGOS.reduce(function(s,p){return s+posNumero(p.monto);},0), dif=c.total-pagado;
@@ -141,7 +141,7 @@ function renderPos() {
     +'<div class="pos-section-title">Pagos <button class="btn btn-g btn-sm" onclick="posAgregarPago()">+ Combinar</button></div><div id="posPagos"></div><div id="posPagoDiferencia"></div>'
     +'<div class="pos-cobrar"><button class="btn btn-g" '+(!POS_CARRITO.length?'disabled':'')+' onclick="posCobrar(false)">Cobrar</button><button class="btn btn-p" '+(!POS_CARRITO.length?'disabled':'')+' onclick="posCobrar(true)">Cobrar + imprimir</button></div></section></div>';
   el('posCarritoItems').innerHTML=c.items.map(function(i){return '<div class="pos-item"><div class="pos-item-main"><b>'+esc(i.nombre)+'</b><small>'+posDinero(i.precio,i.moneda)+' c/u'+(i.controlaStock?' · stock '+i.stockDisponible:' · servicio')+'</small></div><div class="pos-qty"><button onclick="posCambiarCantidad(\''+i.productoId+'\',-1)">−</button><b>'+i.cantidad+'</b><button onclick="posCambiarCantidad(\''+i.productoId+'\',1)">+</button></div><label class="pos-item-desc">Desc.%<input type="number" min="0" max="100" value="'+i.descuentoPorcentaje+'" onchange="posDescuentoItem(\''+i.productoId+'\',this.value)"></label><b>'+posDinero(i.subtotalFinal,i.moneda)+'</b><button class="pos-remove" onclick="posQuitar(\''+i.productoId+'\')">×</button></div>';}).join('') || '<div class="pos-vacio">Escaneá o elegí un producto para comenzar.</div>';
-  el('posPagos').innerHTML=POS_PAGOS.map(function(p,i){return '<div class="pos-pago"><select onchange="posPagoCampo('+i+',\'medio\',this.value)">'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(x){return '<option'+(x===p.medio?' selected':'')+'>'+x+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="posPagoCampo('+i+',\'cuenta\',this.value)"><input type="number" min="0" value="'+p.monto+'" onchange="posPagoCampo('+i+',\'monto\',this.value)">'+(POS_PAGOS.length>1?'<button class="pos-remove" onclick="posQuitarPago('+i+')">×</button>':'')+'</div>';}).join('');
+  el('posPagos').innerHTML=POS_PAGOS.map(function(p,i){return '<div class="pos-pago"><select onchange="posPagoCampo('+i+',\'medio\',this.value)"><option value="">Seleccionar medio…</option>'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(x){return '<option'+(x===p.medio?' selected':'')+'>'+x+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="posPagoCampo('+i+',\'cuenta\',this.value)"><input type="number" min="0" value="'+p.monto+'" onchange="posPagoCampo('+i+',\'monto\',this.value)">'+(POS_PAGOS.length>1?'<button class="pos-remove" onclick="posQuitarPago('+i+')">×</button>':'')+'</div>';}).join('');
   posActualizarResultados(''); posActualizarTotalesDom();
   requestAnimationFrame(function(){var q=el('posBuscar');if(q)q.focus();});
 }
@@ -151,6 +151,7 @@ function posCobrar(imprimir) {
   var c=posCalculos(), pagado=POS_PAGOS.reduce(function(s,p){return s+posNumero(p.monto);},0);
   if(!c.items.length){toast('Agregá al menos un producto','var(--rd)');return;}
   if(c.total<=0){toast('El total debe ser mayor a cero','var(--rd)');return;}
+  if(POS_PAGOS.some(function(p){return !p.medio||!p.cuenta||!(posNumero(p.monto)>0);})){toast('Completá medio, cuenta e importe de cada pago','var(--rd)');return;}
   if(Math.abs(c.total-pagado)>0.01){toast('Los pagos no coinciden con el total','var(--rd)');return;}
   var moneda=posMonedaCarrito();
   var venta={ items:c.items.map(function(i){return {productoId:i.servicioMaestroId?null:i.productoId,servicioMaestroId:i.servicioMaestroId||null,servicioSnapshot:i.servicioSnapshot||null,nombre:i.nombre,sku:i.sku,barcode:i.barcode,cantidad:i.cantidad,precioLista:i.precio,descuentoPorcentaje:i.descuentoPorcentaje,descuentoImporte:i.descuentoImporte,precioFinal:i.subtotalFinal/i.cantidad,costoUnitario:i.costo,costoTotal:i.costo*i.cantidad,controlaStock:i.controlaStock,moneda:i.moneda};}),
@@ -164,7 +165,7 @@ function posCobrar(imprimir) {
     POS_GUARDANDO=false;
     if(err){toast('No se pudo cobrar: '+err,'var(--rd)');renderPos();return;}
     var guardada=Object.assign({id:res.id,numeroVenta:res.numeroVenta,numeroHumano:'Venta #'+String(res.numeroVenta).padStart(6,'0'),fechaHora:new Date().toISOString(),estado:'activa',usuario:usuarioActualRegistro()},venta);
-    POS_CARRITO=[];POS_PAGOS=[{medio:'Efectivo',cuenta:'Caja efectivo',monto:0}];POS_DESC_PORC=0;POS_DESC_FIJO=0;POS_CLIENTE={nombre:'Consumidor final',telefono:''};
+    POS_CARRITO=[];POS_PAGOS=[{medio:'',cuenta:'',monto:0}];POS_DESC_PORC=0;POS_DESC_FIJO=0;POS_CLIENTE={nombre:'Consumidor final',telefono:''};
     toast('Venta #'+String(res.numeroVenta).padStart(6,'0')+' registrada');
     if(imprimir)posImprimirTicketVenta(guardada); renderPos();
   });

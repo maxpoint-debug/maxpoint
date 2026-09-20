@@ -268,7 +268,7 @@ function catSubir() {
         return;
       }
       closeM('mCat');
-      var resumen=' · Servicios: '+resumenServicios.nuevos+' nuevos, '+resumenServicios.actualizados+' actualizados, '+resumenServicios.requierenRevision+' a revisar';
+      var resumen=' · Servicios: '+resumenServicios.nuevos+' nuevos, '+resumenServicios.actualizados+' actualizados, '+resumenServicios.requierenRevision+' a revisar, '+Number(resumenServicios.excluidosPorRegla||0)+' anteriores desactivados';
       toast('Catalogo actualizado — ' + _catItems.length + ' productos'+resumen, 'var(--gr)');
       syncOk('Catalogo actualizado');
       el('catBackupInfo').style.display = 'none';

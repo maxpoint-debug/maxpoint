@@ -92,7 +92,7 @@
     var a = document.createElement('div'); a.className = 'gs-actions';
     if (r.telefono) a.appendChild(accion('btn-w btn-sm','WhatsApp',function(){ abrirWA2(r.id); }));
     a.appendChild(accion('btn-g btn-sm','Abrir',function(){ abrirDetalle(r.id); }));
-    if (saldo > 0 && estadoPagoReparacion(r) !== 'Pagado') a.appendChild(accion('btn-g btn-sm','Cobrar',function(){ cerrar(); openPago(r.id); }));
+    if (!reparacionEsSinCargo(r) && saldo > 0 && estadoPagoReparacion(r) !== 'Pagado') a.appendChild(accion('btn-g btn-sm','Cobrar',function(){ cerrar(); openPago(r.id); }));
     if (puede('editar_reparacion') && r.estado === 'Listo') a.appendChild(accion('btn-p btn-sm','Entregar',function(){ actualizarEstado(r.id,'Entregado'); }));
     else if (puede('editar_reparacion') && r.estado !== 'Entregado') a.appendChild(accion('btn-g btn-sm','Estado',function(){ abrirDetalle(r.id); }));
     a.appendChild(accion('btn-g btn-sm','Garantía',function(){ cerrar(); marcarGarantia(r.id); }));

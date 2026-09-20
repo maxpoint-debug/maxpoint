@@ -120,6 +120,7 @@ window.FB = {
   anularVentaEquipo:function(id, motivo, cb) { cb('Firebase no conectado todavía'); },
   anularVentaPos:function(id, motivo, cb) { cb('Firebase no conectado todavía'); },
   registrarCobroReparacion:function(id, pagos, cb) { cb('Firebase no conectado todavía'); },
+  revertirCobroReparacion:function(id, pagoId, motivo, cb) { cb('Firebase no conectado todavía'); },
   abrirCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
   movimientoManualCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
   cerrarCaja:function(d, cb) { cb('Firebase no conectado todavía'); },

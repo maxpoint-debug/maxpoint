@@ -17,7 +17,7 @@ function openNewRep() {
   el('fDiagWrap').style.display = 'none';
   setVal('fFal', ''); setVal('fPres', ''); setVal('fSen', '');
   el('fEst').value  = 'Ingresado';
-  el('fPag').value  = 'Pendiente';
+  el('fResolucionFinanciera').value = 'cobrable';
   el('fResultadoServicio').value = 'Pendiente de cierre';
   // Actualizar opciones de tecnico
   var selT = el('fTec');
@@ -47,7 +47,7 @@ function openEditRep(id) {
   setVal('fPres', r.presupuesto  || '');
   setVal('fSen',  r.sena         || '');
   el('fEst').value = r.estado    || 'Ingresado';
-  el('fPag').value = r.pago      || 'Pendiente';
+  el('fResolucionFinanciera').value = resolucionFinancieraReparacion(r);
   el('fResultadoServicio').value = r.resultadoServicio || 'Pendiente de cierre';
   el('fTec').value = r.tecnico   || '';
   // Estados terminales reales: Entregado y No aprobado. Garantia continúa
@@ -77,16 +77,23 @@ function saveRep() {
   var anterior = _eid ? REPS.find(function(x) { return x.id === _eid; }) : null;
   var est = el('fEst').value;
   var resultadoServicio = el('fResultadoServicio').value;
+  var resolucionFinanciera = el('fResolucionFinanciera').value;
+  if (resultadoServicio === 'Garantía / retrabajo') resolucionFinanciera = 'sin_cargo_garantia';
+  if (resultadoServicio === 'Presupuesto no aprobado' || resultadoServicio === 'Sin intervención / no era falla del equipo') resolucionFinanciera = 'no_corresponde';
+  if (resolucionFinanciera === 'sin_cargo_cortesia' && !puede('gestionar_comisiones')) {
+    btn.disabled = false; btn.textContent = 'Guardar'; toast('Sólo administración puede autorizar una cortesía sin cargo', 'var(--rd)'); return;
+  }
   if (est === 'Entregado' && (resultadoServicio === 'Pendiente de cierre' || !val('fEstadoFisicoFinal').trim())) {
     btn.disabled = false; btn.textContent = 'Guardar'; toast('Completá resultado y estado físico final antes de entregar la reparación', 'var(--rd)'); return;
   }
-  var pagoFormulario = estadoPagoReparacion(Object.assign({}, anterior || {}, {
-    presupuesto: val('fPres') || '0', sena: val('fSen') || '0', pago: el('fPag').value
-  }));
-  if (est === 'Entregado' && pagoFormulario !== 'Pagado') {
-    btn.disabled = false; btn.textContent = 'Guardar'; toast('La reparación debe estar pagada antes de entregar', 'var(--rd)'); return;
-  }
   var presupuestoNumero = Number(val('fPres') || 0);
+  var cobradoAnterior = totalCobradoReparacion(anterior || {});
+  if (['sin_cargo_garantia','sin_cargo_cortesia','no_corresponde'].indexOf(resolucionFinanciera)!==-1 && cobradoAnterior>0) {
+    btn.disabled = false; btn.textContent = 'Guardar'; toast('La reparación tiene cobros registrados. Primero revertí el cobro antes de definirla sin cargo.', 'var(--rd)'); return;
+  }
+  if (presupuestoNumero + 0.01 < cobradoAnterior) {
+    btn.disabled = false; btn.textContent = 'Guardar'; toast('El presupuesto no puede quedar por debajo de lo ya cobrado. Primero corregí o revertí el cobro.', 'var(--rd)'); return;
+  }
   var d = {
     nombre:       nom,
     equipo:       eq,
@@ -95,9 +102,11 @@ function saveRep() {
     clave:        val('fCla'),
     falla:        val('fFal'),
     presupuesto:  val('fPres') || '0',
-    sena:         val('fSen')  || '0',
+    // `sena` queda sólo para compatibilidad histórica. Todo dinero nuevo debe
+    // pasar por registrarCobroReparacion para generar pago + movimiento de Caja.
+    sena:         anterior ? (anterior.sena || '0') : '0',
     estado:       est,
-    pago:         el('fPag').value,
+    resolucionFinanciera: resolucionFinanciera,
     tecnico:      el('fTec').value,
     garantia_ref: val('fGar'),
     estadoFisicoRecepcion: val('fEstadoFisico'),
@@ -108,6 +117,9 @@ function saveRep() {
     resultadoServicio: resultadoServicio,
     controlComisionV1: true,
   };
+  if (anterior && anterior.controlComisionV1 !== true && (!Array.isArray(anterior.pagos) || !anterior.pagos.length) && Number(anterior.sena||0)>0) {
+    d.cobroHistoricoNoConciliado = Number(anterior.sena);
+  }
   if(window._servicioRecepcionSnapshot)d.servicioSnapshot=Object.assign({},window._servicioRecepcionSnapshot,{precioPublicoUsado:presupuestoNumero});
   // Con presupuesto, el estado sale del dinero cobrado. pagos[] tiene
   // prioridad y sena conserva compatibilidad con registros anteriores.
@@ -117,7 +129,12 @@ function saveRep() {
   d.totalCobrado = resumenFinanciero.totalCobrado;
   d.saldo = resumenFinanciero.saldo;
   if (window._garantiaOrigen) {
-    d.es_garantia = 'si'; d.garantiaOrigenId = window._garantiaOrigen.id; d.garantia_ref = window._garantiaOrigen.orden || '';
+    d.es_garantia = 'si'; d.resolucionFinanciera = 'sin_cargo_garantia'; d.garantiaOrigenId = window._garantiaOrigen.id; d.garantia_ref = window._garantiaOrigen.orden || '';
+    var resumenGarantia = resumenFinancieroReparacion(Object.assign({}, anterior || {}, d));
+    d.pago = resumenGarantia.pago; d.totalCobrado = resumenGarantia.totalCobrado; d.saldo = resumenGarantia.saldo;
+  }
+  if (est === 'Entregado' && !reparacionPuedeEntregarseFinancieramente(Object.assign({}, anterior || {}, d))) {
+    btn.disabled = false; btn.textContent = 'Guardar'; toast('Definí una resolución financiera válida o registrá el saldo antes de entregar', 'var(--rd)'); return;
   }
   // Las reparaciones chicas requieren una validación individual de administración.
   // Un cambio de resultado vuelve a exigir esa revisión.
@@ -175,8 +192,8 @@ function actualizarReparacion(id, datos, done) {
   if (prev.controlComisionV1 && estadoFinal === 'Entregado' && (!resultadoFinal || resultadoFinal === 'Pendiente de cierre' || !String(fisicoFinal || '').trim())) {
     done('Completá resultado y estado físico final antes de entregar la reparación'); return;
   }
-  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && pagoFinal !== 'Pagado' && !(prev.entregaExcepcion && prev.entregaExcepcion.autorizada)) {
-    done('La reparación debe estar pagada antes de entregar'); return;
+  if (prev.controlComisionV1 && estadoFinal === 'Entregado' && !reparacionPuedeEntregarseFinancieramente(Object.assign({}, prev, cambios)) && !(prev.entregaExcepcion && prev.entregaExcepcion.autorizada)) {
+    done('Definí una resolución financiera válida o registrá el saldo antes de entregar'); return;
   }
   if (Object.prototype.hasOwnProperty.call(cambios, 'presupuesto') || Object.prototype.hasOwnProperty.call(cambios, 'sena') || Object.prototype.hasOwnProperty.call(cambios, 'pagos') || Object.prototype.hasOwnProperty.call(cambios, 'pago')) {
     cambios.pago = financieroFinal.pago;
@@ -202,7 +219,7 @@ function autorizarEntregaSaldo(id) {
   if (!puede('gestionar_comisiones')) { toast('Solo administración puede autorizar una entrega con saldo', 'var(--rd)'); return; }
   var r = REPS.find(function(x) { return x.id === id; }); if (!r) return;
   var motivo = prompt('Motivo de la entrega con saldo pendiente:'); if (!motivo || !motivo.trim()) return;
-  FB.upd(id, { entregaExcepcion:{ autorizada:true, motivo:motivo.trim(), autorizadaPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() } }, function(err) {
+  FB.upd(id, { resolucionFinanciera:'saldo_autorizado', entregaExcepcion:{ autorizada:true, motivo:motivo.trim(), autorizadaPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() } }, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; } toast('Entrega con saldo autorizada');
   });
 }
@@ -214,6 +231,7 @@ function crearGarantiaVinculada(id) {
   setVal('fNom', r.nombre || ''); setVal('fTel', r.telefono || ''); setVal('fEq', r.equipo || ''); setVal('fMod', r.modelo || '');
   setVal('fGar', r.orden || ''); setVal('fEstadoFisico', r.estadoFisicoEntrega || r.estadoFisicoRecepcion || '');
   el('fTec').value = r.tecnico || ''; el('fEst').value = 'Garantia'; el('fResultadoServicio').value = 'Garantía / retrabajo';
+  el('fResolucionFinanciera').value = 'sin_cargo_garantia'; setVal('fPres', '0');
   setVal('fFal', 'Garantía vinculada a ' + (r.orden || 'orden original') + ': ');
 }
 
@@ -358,6 +376,7 @@ if (!r) return;
   ds3.innerHTML = '<div class="dst">Estado y pago</div>'
     + '<div class="dr"><span class="dl">Estado</span>' + badgeEst(r.estado) + '</div>'
     + '<div class="dr"><span class="dl">Pago</span>'   + badgePag(estadoPago)   + '</div>';
+  ds3.innerHTML += '<div class="dr"><span class="dl">Resolución financiera</span><span>' + esc(({cobrable:'Se cobra normalmente',sin_cargo_garantia:'Garantía sin cargo',sin_cargo_cortesia:'Cortesía / sin cargo',no_corresponde:'No corresponde cobrar',saldo_autorizado:'Entrega con saldo autorizado'})[resolucionFinancieraReparacion(r)] || resolucionFinancieraReparacion(r)) + '</span></div>';
   if (Number(r.presupuesto || 0)) {
     ds3.innerHTML += '<div class="dr"><span class="dl">Presupuesto</span><span class="mono">' + pesos(r.presupuesto) + '</span></div>';
   }
@@ -381,12 +400,16 @@ if (!r) return;
     }
   }
   // Historial de pagos registrados
-  if ((r.pagos || []).length) {
+  if (pagosReparacion(r).length) {
     var phDiv = document.createElement('div');
     phDiv.style.cssText = 'margin-top:6px;font-size:11px;color:var(--mu);border-top:1px solid var(--bd);padding-top:5px';
-    r.pagos.forEach(function(p) {
+    pagosReparacion(r).forEach(function(p) {
       var pRow = document.createElement('div');
-      pRow.textContent = '💳 ' + (p.medio || '') + ' ' + pesos(p.monto) + ' — ' + (p.fecha || '') + (p.notas ? ' (' + p.notas + ')' : '');
+      pRow.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px';
+      var pTexto=document.createElement('span'); pTexto.textContent = (p.legacy?'⚠ Cobro histórico no conciliado · ':'💳 ') + (p.medio || '') + ' ' + pesos(p.monto) + ' — ' + (p.fecha || '') + (p.notas ? ' (' + p.notas + ')' : ''); pRow.appendChild(pTexto);
+      if (p.pagoId && puede('gestionar_comisiones')) {
+        var pRevertir=mkBtn('btn-d btn-sm','Revertir',(function(repId,pagoId){return function(){revertirPagoReparacion(repId,pagoId);};})(r.id,p.pagoId)); pRow.appendChild(pRevertir);
+      }
       phDiv.appendChild(pRow);
     });
     ds3.appendChild(phDiv);
@@ -478,12 +501,12 @@ if (!r) return;
     });
   });
   fa.appendChild(estadoSel);
-  if (estadoPago !== 'Pagado') {
+  if (!reparacionEsSinCargo(r) && estadoPago !== 'Pagado') {
     fa.appendChild(mkBtn('btn-g', '💳 Registrar pago', (function(id) {
       return function() { closeM('mDet'); openPago(id); };
     })(r.id)));
   }
-  if (estadoPago !== 'Pagado' && puede('gestionar_comisiones')) fa.appendChild(mkBtn('btn-g btn-sm', 'Autorizar entrega con saldo', (function(id) { return function() { autorizarEntregaSaldo(id); }; })(r.id)));
+  if (!reparacionEsSinCargo(r) && estadoPago !== 'Pagado' && estadoPago !== 'Saldo autorizado' && puede('gestionar_comisiones')) fa.appendChild(mkBtn('btn-g btn-sm', 'Autorizar entrega con saldo', (function(id) { return function() { autorizarEntregaSaldo(id); }; })(r.id)));
   if (r.modelo) {
     fa.appendChild(mkBtn('btn-g btn-sm', 'Copiar IMEI / Serie', (function(serie) { return function() { copiarTexto(serie, 'IMEI / Serie copiado'); }; })(r.modelo)));
   }
@@ -521,15 +544,17 @@ var _pagosRepBorrador = [];
 function cuentaSugeridaPago(medio) {
   if (medio === 'Efectivo') return 'Caja efectivo';
   if (medio === 'Mercado Pago') return 'Mercado Pago';
-  return 'Santander MaxPoint';
+  return '';
 }
 
 function openPago(id) {
   var r = REPS.find(function(x) { return x.id === id; });
   if (!r) return;
+  if (reparacionEsSinCargo(r)) { toast('Esta reparación está definida sin cargo y no debe generar un cobro', 'var(--rd)'); return; }
+  if (!(saldoReparacion(r) > 0)) { toast('La reparación no tiene saldo pendiente para cobrar', 'var(--rd)'); return; }
   _pagoId  = id;
   var sal = saldoReparacion(r);
-  _pagosRepBorrador = [{ medio:'Efectivo', cuenta:'Caja efectivo', monto:sal > 0 ? sal : Number(r.presupuesto || 0) }];
+  _pagosRepBorrador = [{ medio:'', cuenta:'', monto:'' }];
   var c   = el('mPagoC'); c.innerHTML = '';
 
   // Info orden
@@ -538,6 +563,11 @@ function openPago(id) {
   var sub = document.createElement('div'); sub.className = 'mu'; sub.style.fontSize = '12px';
   sub.textContent = (r.orden || '') + ' · ' + (r.equipo || '');
   info.appendChild(nom); info.appendChild(sub); c.appendChild(info);
+  var caja = typeof cajaActualAbierta === 'function' ? cajaActualAbierta() : window.CAJA_ACTUAL;
+  var avisoCaja = document.createElement('div'); avisoCaja.style.cssText='padding:8px 10px;border-radius:7px;margin-bottom:10px;font-size:12px';
+  avisoCaja.style.background = caja ? 'rgba(45,206,137,.10)' : 'rgba(242,95,92,.10)';
+  avisoCaja.style.color = caja ? 'var(--gr)' : 'var(--rd)';
+  avisoCaja.textContent = caja ? 'Caja abierta · el cobro se asentará automáticamente' : 'Caja cerrada · abrila antes de registrar el cobro'; c.appendChild(avisoCaja);
 
   // Datos comunes del cobro
   var fg = document.createElement('div'); fg.className = 'fgrid';
@@ -552,16 +582,18 @@ function openPago(id) {
   var diferencia=document.createElement('div');diferencia.id='pgDiferencia';diferencia.style.cssText='text-align:right;font-size:11px;font-weight:700;margin-top:6px';c.appendChild(diferencia);
   renderPagosReparacion();
 
+  var confirmar=el('btnConfirmarPagoRep'); if(confirmar) confirmar.disabled=!caja;
+
   openM('mPago');
 }
 
 function renderPagosReparacion() {
   var lista=el('pgLista');if(!lista)return;
-  lista.innerHTML=_pagosRepBorrador.map(function(p,i){return '<div class="pos-pago"><select onchange="cambiarPagoReparacion('+i+',\'medio\',this.value)">'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(m){return '<option'+(m===p.medio?' selected':'')+'>'+m+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="cambiarPagoReparacion('+i+',\'cuenta\',this.value)"><input type="number" min="0" value="'+p.monto+'" onchange="cambiarPagoReparacion('+i+',\'monto\',this.value)">'+(_pagosRepBorrador.length>1?'<button class="pos-remove" onclick="quitarPagoReparacion('+i+')">×</button>':'')+'</div>';}).join('');
+  lista.innerHTML=_pagosRepBorrador.map(function(p,i){return '<div class="pos-pago"><select onchange="cambiarPagoReparacion('+i+',\'medio\',this.value)"><option value="">Seleccionar medio…</option>'+['Efectivo','Transferencia','Débito','Crédito','Mercado Pago','Otro'].map(function(m){return '<option'+(m===p.medio?' selected':'')+'>'+m+'</option>';}).join('')+'</select><input value="'+esc(p.cuenta)+'" placeholder="Cuenta destino" onchange="cambiarPagoReparacion('+i+',\'cuenta\',this.value)"><input type="number" min="0" value="'+p.monto+'" placeholder="Importe" onchange="cambiarPagoReparacion('+i+',\'monto\',this.value)">'+(_pagosRepBorrador.length>1?'<button class="pos-remove" onclick="quitarPagoReparacion('+i+')">×</button>':'')+'</div>';}).join('');
   actualizarDiferenciaPagoReparacion();
 }
 function cambiarPagoReparacion(i,campo,valor){if(campo==='monto')_pagosRepBorrador[i].monto=Math.max(0,Number(valor)||0);else{_pagosRepBorrador[i][campo]=valor;if(campo==='medio')_pagosRepBorrador[i].cuenta=cuentaSugeridaPago(valor);}renderPagosReparacion();}
-function agregarPagoReparacion(){_pagosRepBorrador.push({medio:'Transferencia',cuenta:'Santander MaxPoint',monto:0});renderPagosReparacion();}
+function agregarPagoReparacion(){_pagosRepBorrador.push({medio:'',cuenta:'',monto:''});renderPagosReparacion();}
 function quitarPagoReparacion(i){if(_pagosRepBorrador.length>1)_pagosRepBorrador.splice(i,1);renderPagosReparacion();}
 function actualizarDiferenciaPagoReparacion(){var r=REPS.find(function(x){return x.id===_pagoId;});if(!r)return;var total=_pagosRepBorrador.reduce(function(s,p){return s+Number(p.monto||0);},0),dif=saldoReparacion(r)-total,e=el('pgDiferencia');if(!e)return;e.textContent=Math.abs(dif)<0.01?'Saldo cubierto':(dif>0?'Quedará pendiente '+pesos(dif):'Excede el saldo '+pesos(-dif));e.style.color=dif<0?'var(--rd)':(Math.abs(dif)<0.01?'var(--gr)':'var(--or)');}
 
@@ -577,6 +609,16 @@ function confPago() {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
     closeM('mPago');
     toast('✓ Cobro registrado en Caja — saldo ' + pesos(resultado.saldo));
+  });
+}
+
+function revertirPagoReparacion(reparacionId,pagoId) {
+  if (!puede('gestionar_comisiones')) { toast('Sólo administración puede revertir cobros','var(--rd)'); return; }
+  if (!(typeof cajaActualAbierta === 'function' ? cajaActualAbierta() : window.CAJA_ACTUAL)) { toast('Abrí la caja para registrar la reversión','var(--rd)'); return; }
+  var motivo=prompt('Motivo obligatorio de la reversión:'); if(!motivo||!motivo.trim())return;
+  if(!confirm('Se registrará un movimiento compensatorio en la Caja actual. ¿Continuar?'))return;
+  FB.revertirCobroReparacion(reparacionId,pagoId,motivo.trim(),function(err){
+    if(err){toast('Error: '+err,'var(--rd)');return;} closeM('mDet'); toast('Cobro revertido y Caja compensada');
   });
 }
 
@@ -885,7 +927,7 @@ function abrirWA2(id) {
   if (r.presupuesto && r.presupuesto !== '0') {
     lineas.push('');
     lineas.push('Presupuesto: $' + Number(r.presupuesto).toLocaleString());
-    if (estadoPagoReparacion(r) !== 'Pagado') {
+    if (!reparacionEsSinCargo(r) && estadoPagoReparacion(r) !== 'Pagado') {
       var saldo = saldoReparacion(r);
       var cobrado = totalCobradoReparacion(r);
       if (cobrado > 0) {

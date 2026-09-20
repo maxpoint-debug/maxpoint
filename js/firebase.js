@@ -886,6 +886,7 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
     const pagosEntrada = Array.isArray(nuevosPagos) ? nuevosPagos : [];
     if (!pagosEntrada.length || pagosEntrada.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta)) throw new Error('Cada pago necesita medio, cuenta e importe');
     const reparacionRef = doc(cR, id), pagoRefs = pagosEntrada.map(() => doc(cPagPos));
+    const movimientoRefs = pagoRefs.map(p => doc(cMovFin, 'mov_rep_' + p.id));
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     let saldoFinal = 0;
     await runTransaction(db, async tx => {
@@ -894,12 +895,15 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
       if (!snap.exists()) throw new Error('La reparación ya no existe');
       if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
       const cajaId = cajaSnap.data().cajaId;
-      const r = snap.data(), presupuesto = Number(r.presupuesto || 0);
-      const existentes = Array.isArray(r.pagos) && r.pagos.length ? r.pagos.slice() : (Number(r.sena || 0) > 0 ? [{ monto:Number(r.sena), fecha:r.fecha || '', medio:'Registro previo', cuenta:'Sin especificar', moneda:'ARS', legacy:true }] : []);
+      const r = snap.data(), presupuesto = Number(r.presupuesto || 0),vistos=new Set();
+      if (typeof reparacionEsSinCargo === 'function' && reparacionEsSinCargo(r)) throw new Error('La reparación está definida sin cargo');
+      if (!(presupuesto > 0)) throw new Error('Definí el presupuesto antes de registrar un cobro');
+      const existentesRaw = Array.isArray(r.pagos) && r.pagos.length ? r.pagos.slice() : (r.controlComisionV1!==true&&Number(r.sena||0)>0 ? [{ monto:Number(r.sena), fecha:r.fecha || '', medio:'Registro previo', cuenta:'Sin especificar', moneda:'ARS', legacy:true }] : []);
+      const existentes=existentesRaw.filter(p=>{if(!(Number(p&&p.monto||0)>0)||p.estado==='revertido')return false;if(p.pagoId){if(vistos.has(p.pagoId))return false;vistos.add(p.pagoId);}return true;});
       const cobradoAnterior = existentes.reduce((s,p) => s + Number(p.monto || 0), 0);
       const ingreso = pagosEntrada.reduce((s,p) => s + Number(p.monto || 0), 0);
       if (presupuesto > 0 && cobradoAnterior + ingreso > presupuesto + 0.01) throw new Error('El cobro supera el saldo pendiente');
-      const embebidos = pagosEntrada.map((p,idx) => ({ pagoId:pagoRefs[idx].id, monto:Number(p.monto), fecha:p.fecha || hoy(),
+      const embebidos = pagosEntrada.map((p,idx) => ({ pagoId:pagoRefs[idx].id, movimientoFinancieroId:movimientoRefs[idx].id, monto:Number(p.monto), fecha:p.fecha || hoy(),
         medio:p.medio, cuenta:p.cuenta, moneda:'ARS', notas:String(p.notas || ''), estado:'aplicado', usuario:actor, fechaHora:ahora }));
       const pagosFinales = existentes.concat(embebidos), totalCobrado = cobradoAnterior + ingreso;
       saldoFinal = Math.max(0, presupuesto-totalCobrado);
@@ -907,17 +911,39 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
         pago:presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente') };
       tx.update(reparacionRef, Object.assign({}, financieros, { actualizadoEn:serverTimestamp() }));
       embebidos.forEach((p,idx) => {
-        const pagoDoc = Object.assign({}, p, { schemaVersion:1, origenTipo:'reparacion', origenId:id, reparacionId:id,
+        const pagoDoc = Object.assign({}, p, { schemaVersion:1, cajaId:cajaId, origenTipo:'reparacion', origenId:id, reparacionId:id,
           orden:r.orden || '', clienteNombre:r.nombre || '', creadoEn:serverTimestamp() });
         tx.set(pagoRefs[idx], pagoDoc);
-        tx.set(doc(cMovFin), Object.assign({}, pagoDoc, { cajaId:cajaId, tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
+        tx.set(movimientoRefs[idx], Object.assign({}, pagoDoc, { movimientoFinancieroId:movimientoRefs[idx].id, cajaId:cajaId, tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
       });
       tx.set(doc(cAud), { entidad:'reparacion', entidadId:id, accion:'cobro_registrado', actor:actor,
         cambios:[{campo:'totalCobrado',antes:cobradoAnterior,despues:totalCobrado},{campo:'saldo',antes:Math.max(0,presupuesto-cobradoAnterior),despues:saldoFinal}],
         fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
     });
-    cb(null, { saldo:saldoFinal });
+    cb(null, { saldo:saldoFinal, movimientosCreados:pagosEntrada.length });
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
+window.FB.revertirCobroReparacion = async (id, pagoId, motivo, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sólo administración puede revertir cobros'); return; }
+  try {
+    motivo=String(motivo||'').trim(); if(!motivo)throw new Error('El motivo es obligatorio');
+    const reparacionRef=doc(cR,id),pagoRef=doc(cPagPos,pagoId),reversionRef=doc(cMovFin),actor=usuarioActualRegistro(),ahora=new Date().toISOString();
+    await runTransaction(db,async tx=>{
+      const repSnap=await tx.get(reparacionRef),pagoSnap=await tx.get(pagoRef),cajaSnap=await tx.get(dCajaActual);
+      if(!repSnap.exists())throw new Error('La reparación ya no existe');
+      if(!pagoSnap.exists())throw new Error('El pago no existe o es histórico');
+      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
+      const r=repSnap.data(),p=pagoSnap.data(); if(p.estado==='revertido')throw new Error('El pago ya fue revertido');
+      if((p.reparacionId||p.origenId)!==id)throw new Error('El pago no pertenece a esta reparación');
+      const pagos=(Array.isArray(r.pagos)?r.pagos:[]).map(x=>x.pagoId===pagoId?Object.assign({},x,{estado:'revertido',revertidoEn:ahora,revertidoPor:actor,motivoReversion:motivo}):x);
+      const activos=pagos.filter(x=>x.estado!=='revertido'),total=activos.reduce((s,x)=>s+Number(x.monto||0),0),presupuesto=Number(r.presupuesto||0);
+      tx.update(pagoRef,{estado:'revertido',revertidoEn:serverTimestamp(),revertidoPor:actor,motivoReversion:motivo,reversionMovimientoId:reversionRef.id});
+      tx.update(reparacionRef,{pagos:pagos,totalCobrado:total,saldo:Math.max(0,presupuesto-total),pago:total>=presupuesto&&presupuesto>0?'Pagado':(total>0?'Parcial':'Pendiente'),actualizadoEn:serverTimestamp()});
+      tx.set(reversionRef,{schemaVersion:2,cajaId:cajaSnap.data().cajaId,tipo:'reversion_cobro_reparacion',referenciaTipo:'reparacion',referenciaId:id,reparacionId:id,pagoOriginalId:pagoId,orden:r.orden||'',clienteNombre:r.nombre||'',medio:p.medio||'',cuenta:p.cuenta||'',monto:-Number(p.monto||0),moneda:p.moneda||'ARS',motivo:motivo,usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()});
+      tx.set(doc(cAud),{entidad:'reparacion',entidadId:id,accion:'cobro_revertido',actor:actor,cambios:[{campo:'totalCobrado',antes:Number(r.totalCobrado||0),despues:total}],pagoId:pagoId,motivo:motivo,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    }); cb(null);
+  } catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 
 window.FB.crearVentaPos = async (data, cb) => {

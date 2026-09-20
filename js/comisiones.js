@@ -70,11 +70,11 @@ function comCalcularElegibles(mesKey) {
       return;
     }
     if (r.estado !== 'Entregado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'No entregada'); return; }
+    if (r.es_garantia === 'si' || resolucionFinancieraReparacion(r) === 'sin_cargo_garantia') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Garantía'); return; }
     if (estadoPagoReparacion(r) !== 'Pagado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Saldo pendiente'); return; }
     if (r.incidencia && r.incidencia.estado !== 'Resuelta') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Incidencia abierta'); return; }
     if (r.controlComisionV1 && r.resultadoServicio !== 'Reparación realizada') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Resultado sin comisión: ' + (r.resultadoServicio || 'pendiente')); return; }
     if (r.controlComisionV1 && Number(r.presupuesto || 0) < 100000 && !r.comisionVerificada) { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Pendiente de verificación administrativa'); return; }
-    if (r.es_garantia === 'si') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Garantía'); return; }
     if (r.gremio === 'si') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Excluida por gremio'); return; }
     if (bloqueadas[clave]) return;
     p.lineas.push({ clave:clave, tipo:'reparacion', origenId:r.id, referencia:r.orden || r.id, fecha:r.fecha, montoArs:Number(COM_CFG.com_rep || 0), detalle:'Reparación entregada y cobrada' });
@@ -353,7 +353,10 @@ function marcarGarantia(id) {
   if (!r) return;
   var esGar = r.es_garantia === 'si';
   var nuevo = esGar ? 'no' : 'si';
-  FB.upd(id, { es_garantia: nuevo }, function(err) {
+  if (nuevo === 'si' && totalCobradoReparacion(r) > 0) {
+    toast('Esta orden tiene cobros. Creá una garantía vinculada para no alterar su historial financiero', 'var(--rd)'); return;
+  }
+  FB.upd(id, { es_garantia: nuevo, resolucionFinanciera:nuevo === 'si' ? 'sin_cargo_garantia' : 'cobrable' }, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
     if (nuevo === 'si') comGenerarAjuste('reparacion', id, 'Garantía posterior a liquidación');
     if (nuevo === 'si' && typeof notificarEventoReparacion === 'function') notificarEventoReparacion('garantia_nueva', r);

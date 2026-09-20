@@ -42,6 +42,8 @@ var BADGE_PAGO = {
   'Pendiente': 'b-pendiente',
   'Parcial':   'b-parcial',
   'Pagado':    'b-pagado',
+  'Sin cargo': 'b-pagado',
+  'Saldo autorizado': 'b-parcial',
 };
 var COLOR_ESTADO = {
   'Ingresado':   'var(--bl)',
@@ -175,14 +177,33 @@ function ordenarPorModelo(items, campo) {
 // En reparaciones nuevas, pagos[] es la fuente de cobro. En registros legacy
 // sin pagos registrados, se conserva sena como importe ya cobrado.
 function pagosReparacion(r) {
-  var pagos = Array.isArray(r && r.pagos) ? r.pagos.filter(function(p) { return Number(p && p.monto || 0) > 0; }) : [];
+  var vistos={};
+  var pagos = Array.isArray(r && r.pagos) ? r.pagos.filter(function(p) {
+    if (!(Number(p && p.monto || 0) > 0) || p.estado === 'revertido') return false;
+    if (p.pagoId) { if (vistos[p.pagoId]) return false; vistos[p.pagoId]=true; }
+    return true;
+  }) : [];
   if (pagos.length) return pagos.slice();
-  var senaLegacy = Number(r && r.sena || 0);
+  // `sena` sólo es fuente en documentos realmente legacy. Las órdenes del
+  // esquema operativo deben tener pago estructurado para impactar saldo/Caja.
+  var senaLegacy = Number(r && r.cobroHistoricoNoConciliado || 0);
+  if (!senaLegacy && r && r.controlComisionV1 !== true) senaLegacy = Number(r.sena || 0);
   return senaLegacy > 0 ? [{ monto:senaLegacy, fecha:(r && r.fecha) || '', medio:'Registro previo', legacy:true }] : [];
 }
 
 function totalCobradoReparacion(r) {
   return pagosReparacion(r).reduce(function(total, pago) { return total + Number(pago.monto || 0); }, 0);
+}
+
+function resolucionFinancieraReparacion(r) {
+  if (r && r.resolucionFinanciera) return r.resolucionFinanciera;
+  if (r && (r.es_garantia === 'si' || r.resultadoServicio === 'Garantía / retrabajo')) return 'sin_cargo_garantia';
+  if (r && (r.resultadoServicio === 'Presupuesto no aprobado' || r.resultadoServicio === 'Sin intervención / no era falla del equipo')) return 'no_corresponde';
+  return 'cobrable';
+}
+
+function reparacionEsSinCargo(r) {
+  return ['sin_cargo_garantia','sin_cargo_cortesia','no_corresponde'].indexOf(resolucionFinancieraReparacion(r)) !== -1;
 }
 
 function saldoReparacion(r) {
@@ -191,9 +212,17 @@ function saldoReparacion(r) {
 
 function estadoPagoReparacion(r) {
   var presupuesto = Number(r && r.presupuesto || 0);
-  // Sin presupuesto no se infiere un cierre financiero: se mantiene el dato existente.
-  if (presupuesto <= 0) return (r && r.pago) || 'Pendiente';
-  return totalCobradoReparacion(r) >= presupuesto ? 'Pagado' : 'Pendiente';
+  var cobrado = totalCobradoReparacion(r), resolucion = resolucionFinancieraReparacion(r);
+  if (reparacionEsSinCargo(r)) return 'Sin cargo';
+  if (presupuesto <= 0) return cobrado > 0 ? 'Pagado' : 'Pendiente';
+  if (cobrado >= presupuesto) return 'Pagado';
+  if (resolucion === 'saldo_autorizado') return 'Saldo autorizado';
+  return cobrado > 0 ? 'Parcial' : 'Pendiente';
+}
+
+function reparacionPuedeEntregarseFinancieramente(r) {
+  var estado = estadoPagoReparacion(r);
+  return estado === 'Pagado' || estado === 'Sin cargo' || estado === 'Saldo autorizado';
 }
 
 // Campos derivados sin mezclar la seña legacy con el historial nuevo.
@@ -203,7 +232,7 @@ function resumenFinancieroReparacion(r) {
   return {
     totalCobrado: totalCobrado,
     saldo: Math.max(0, presupuesto - totalCobrado),
-    pago: presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : ((r && r.pago) || 'Pendiente')
+    pago: estadoPagoReparacion(r)
   };
 }
 

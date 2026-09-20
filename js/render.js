@@ -55,7 +55,7 @@ function renderReps() {
   // Stats
   var ac = REPS.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado'; }).length;
   var li = REPS.filter(function(r) { return r.estado === 'Listo'; }).length;
-  var cb = REPS.filter(function(r) { return estadoPagoReparacion(r) !== 'Pagado' && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; })
+  var cb = REPS.filter(function(r) { return !reparacionEsSinCargo(r) && saldoReparacion(r) > 0 && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; })
                .reduce(function(s, r) { return s + saldoReparacion(r); }, 0);
 
   cnt.innerHTML = '';
@@ -401,7 +401,7 @@ function renderCli() {
 function renderPag() {
   var cnt = el('cnt'); cnt.innerHTML = '';
 
-  var pnd = REPS.filter(function(r) { return estadoPagoReparacion(r) !== 'Pagado' && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; });
+  var pnd = REPS.filter(function(r) { return !reparacionEsSinCargo(r) && saldoReparacion(r) > 0; });
   var prc = pnd.filter(function(r) { return totalCobradoReparacion(r) > 0; });
   var cobrado = REPS.reduce(function(s, r) { return s + totalCobradoReparacion(r); }, 0);
   var porcobrar = pnd.reduce(function(s, r) { return s + saldoReparacion(r); }, 0);
@@ -443,7 +443,7 @@ function renderPag() {
         addTd(badgeEst(r.estado));
       } else {
         addTd(pesos(r.presupuesto || 0), 'mono');
-        addTd(pesos(r.sena || 0), 'mono cg');
+        addTd(pesos(totalCobradoReparacion(r)), 'mono cg');
         addTd(pesos(sal), 'mono co');
       }
       var tdAct = document.createElement('td');
@@ -457,7 +457,7 @@ function renderPag() {
   }
 
   mkTabla('Sin pago',  'var(--rd)', pnd, ['Orden','Cliente','Equipo','Presupuesto','Estado']);
-  mkTabla('Con sena', 'var(--or)', prc, ['Orden','Cliente','Equipo','Presupuesto','Sena','Saldo']);
+  mkTabla('Con cobro parcial', 'var(--or)', prc, ['Orden','Cliente','Equipo','Presupuesto','Cobrado','Saldo']);
 
   if (!pnd.length && !prc.length) {
     cnt.innerHTML += '<div class="empty"><div class="ei">🎉</div>Sin pagos pendientes. Todo al dia!</div>';
