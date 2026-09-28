@@ -739,6 +739,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
   if (!puede('vender_equipo')) { cb('Sin permiso para vender equipos'); return; }
   try {
     const pagos = Array.isArray(data.pagos) ? data.pagos : [];
+    const regalos=(Array.isArray(data.regalos)?data.regalos:[]).filter(r=>r&&r.productoId).map(r=>({productoId:String(r.productoId),nombre:String(r.nombre||''),cantidad:1}));
     const precio = Number(data.precio || 0), partePago = data.parte_pago === 'Si' ? Number(data.pp_valor || 0) : 0;
     const requerido = Math.max(0, precio - partePago), pagado = pagos.reduce((s,p) => s + Number(p.montoVentaUSD || 0), 0);
     if (!(precio > 0)) throw new Error('El precio debe ser mayor a cero');
@@ -746,7 +747,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
     if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || !['ARS','USD'].includes(p.moneda) || (p.moneda === 'ARS' && !(Number(p.cotizacion) > 0)))) throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
     if (data.estadoVenta === 'Cobrada' && Math.abs(pagado - requerido) > 0.01) throw new Error('Los pagos deben cubrir exactamente el saldo de la venta');
     if (pagado > requerido + 0.01) throw new Error('Los pagos superan el saldo de la venta');
-    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
+    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos)), regaloRefs=regalos.map(r=>doc(cPro,r.productoId));
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     const requiereCaja=pagos.length>0;
     const venta = Object.assign({}, data, {
@@ -757,8 +758,10 @@ window.FB.crearVentaEquipo = async (data, cb) => {
     });
     await runTransaction(db, async tx => {
       const cajaSnap=requiereCaja?await tx.get(dCajaActual):null;
+      const regaloSnaps=data.estadoVenta==='Cobrada'?await Promise.all(regaloRefs.map(ref=>tx.get(ref))):[];
       if(requiereCaja&&(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta'))throw new Error('Primero abrí la caja para registrar la seña');
       const cajaId=requiereCaja?cajaSnap.data().cajaId:null;
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
       tx.set(ventaRef, venta);
       pagos.forEach((p,i) => {
         const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,
@@ -768,6 +771,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
         tx.set(pagoRefs[i], pago);
         tx.set(doc(cMovFin), Object.assign({}, pago, { cajaId:cajaId, tipo:'ingreso_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:ventaRef.id }));
       });
+      regaloSnaps.forEach((s,i)=>{const antes=Number(s.data().stockActual||0),despues=antes-1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre,tipo:'regalo_venta_equipo',cantidad:-1,stockAnterior:antes,stockResultante:despues,motivo:'Regalo con venta de equipo',referenciaTipo:'venta_equipo',referenciaId:ventaRef.id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
       tx.set(doc(cAud), { entidad:'venta_equipo', entidadId:ventaRef.id, accion:'creada', actor:actor,
         cambios:[], totalUSD:precio, totalPagadoUSD:pagado, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
     });
@@ -784,6 +788,8 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
       if (!snap.exists()) throw new Error('La venta ya no existe');
       const venta = snap.data();
       const cajaSnap = venta.cajaRegistrada ? await tx.get(dCajaActual) : null;
+      const regalos=(Array.isArray(venta.regalos)?venta.regalos:[]).filter(r=>r&&r.productoId),regaloRefs=regalos.map(r=>doc(cPro,r.productoId));
+      const regaloSnaps=venta.estadoVenta==='Cobrada'?await Promise.all(regaloRefs.map(ref=>tx.get(ref))):[];
       if (venta.cajaRegistrada && (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta')) throw new Error('Primero abrí la caja');
       const cajaId = venta.cajaRegistrada ? cajaSnap.data().cajaId : null;
       if (venta.tipoRegistro === 'pos') throw new Error('Las ventas de accesorios se anulan desde Operaciones de caja');
@@ -795,6 +801,7 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
         cambiosVenta.cajaRevertida = true;
         cambiosVenta.pagos = (venta.pagos || []).map(p => Object.assign({}, p, { estado:'revertido', revertidoEn:ahora, revertidoPor:actor }));
       }
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())return;const antes=Number(s.data().stockActual||0),despues=antes+1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre||'',tipo:'reversion_regalo_venta_equipo',cantidad:1,stockAnterior:antes,stockResultante:despues,motivo:'Anulación de venta de equipo',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
       tx.update(ventaRef, cambiosVenta);
       if (venta.cajaRegistrada) {
         (venta.pagos || []).forEach(p => {
@@ -811,7 +818,7 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
     cb(null);
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
-window.FB.updV = (id, d, cb) => { if (!puede('editar_ventas_equipos')) { cb('Sólo administración puede editar ventas anteriores'); return; } actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message)); };
+window.FB.updV = (id, d, cb) => { if (!puede('editar_ventas_equipos')) { cb('No tenés permiso para editar ventas anteriores'); return; } actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message)); };
 window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── CRUD stock ──

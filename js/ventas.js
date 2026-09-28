@@ -19,6 +19,7 @@ function openNewVenta(prefillCosto) {
   ['vPpMod','vPpImei','vPpValor'].forEach(function(id) { setVal(id, ''); });
   setVal('vCotizacion', typeof cotizacionBlueVenta==='function' ? cotizacionBlueVenta() : '');
   ventaEquipoPrepararPagosNuevos();
+  _regalosVentaEquipo=[]; renderRegalosVenta();
   if (prefillCosto) setVal('vCosto', prefillCosto);
   var costoWrap = el('wVCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('btnSaveVenta').disabled = false;
@@ -31,6 +32,14 @@ function openNewVenta(prefillCosto) {
 
 var _ventaId = null;
 var _pagosVentaEquipo = [];
+var _regalosVentaEquipo = [];
+
+function productosRegaloVenta(){return (window.PRODUCTOS_POS||[]).filter(function(p){var t=String([p.nombre,p.categoria,p.subcategoria].join(' ')).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');return p.activo!==false&&p.controlaStock&&Number(p.stockActual)>0&&(/funda|templad|cable/.test(t));});}
+function agregarRegaloVenta(){_regalosVentaEquipo.push({productoId:'',cantidad:1});renderRegalosVenta();}
+function quitarRegaloVenta(i){_regalosVentaEquipo.splice(i,1);renderRegalosVenta();}
+function cambiarRegaloVenta(i,id){if(_regalosVentaEquipo[i])_regalosVentaEquipo[i].productoId=id;}
+function renderRegalosVenta(){var box=el('vRegalos');if(!box)return;var ps=productosRegaloVenta();box.innerHTML=_regalosVentaEquipo.map(function(g,i){return '<div class="pos-pago" style="grid-template-columns:1fr auto;margin-bottom:6px"><select onchange="cambiarRegaloVenta('+i+',this.value)"><option value="">Seleccionar producto…</option>'+ps.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===g.productoId?' selected':'')+'>'+esc(p.nombre)+' · stock '+Number(p.stockActual||0)+'</option>';}).join('')+'</select><button type="button" class="pos-remove" onclick="quitarRegaloVenta('+i+')">×</button></div>';}).join('');}
+function regalosVentaDatos(){var vistos={};return _regalosVentaEquipo.filter(function(g){return g.productoId&&!vistos[g.productoId]&&(vistos[g.productoId]=true);}).map(function(g){var p=productosRegaloVenta().find(function(x){return x.id===g.productoId;});return {productoId:g.productoId,nombre:p&&p.nombre||'',cantidad:1};});}
 
 function ventaEquipoCuentaSugerida(medio) {
   if (medio === 'Efectivo') return 'Caja efectivo';
@@ -108,11 +117,13 @@ function saveVenta() {
     fecha:       _ventaId ? (anterior||{}).fecha || hoy() : hoy(),
     garantia:    '6 meses',
     seguimiento: 'pendiente',
+    regalos: regalosVentaDatos(),
   };
   if (anterior && anterior.cajaRegistrada) {
     d.precio=anterior.precio; d.estadoVenta=anterior.estadoVenta; d.cotizacionBlue=anterior.cotizacionBlue;
     d.pago=anterior.pago; d.parte_pago=anterior.parte_pago; d.pp_modelo=anterior.pp_modelo;
     d.pp_imei=anterior.pp_imei; d.pp_valor=anterior.pp_valor;
+    d.regalos=anterior.regalos||[];
   }
 
   if (_ventaId) {
@@ -155,10 +166,11 @@ function saveVenta() {
 }
 
 function openEditVenta(id) {
-  if (!puede('editar_ventas_equipos')) { toast('Sólo administración puede editar ventas anteriores','var(--rd)'); return; }
+  if (!puede('editar_ventas_equipos')) { toast('No tenés permiso para editar ventas anteriores','var(--rd)'); return; }
   var v = VENTAS.find(function(x) { return x.id === id; });
   if (!v) return;
   _ventaId = id;
+  _regalosVentaEquipo=(v.regalos||[]).map(function(g){return {productoId:g.productoId,cantidad:1};});
   ventaEquipoPrepararPagosNuevos();
   el('mVenT').textContent = 'Editar venta';
   el('vEstadoVenta').value = v.estadoVenta || 'Cobrada';
@@ -197,6 +209,7 @@ function openEditVenta(id) {
   el('vEstadoVenta').disabled=integrada||anulada;
   if (el('vPagosLegacyWrap')) el('vPagosLegacyWrap').style.display = integrada ? 'none' : '';
   if (el('vCajaRegistradaAviso')) el('vCajaRegistradaAviso').style.display = integrada ? '' : 'none';
+  if(el('vAgregarRegalo'))el('vAgregarRegalo').style.display=integrada?'none':''; renderRegalosVenta();
   openM('mVen');
 }
 

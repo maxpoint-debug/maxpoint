@@ -67,7 +67,7 @@ var PERMISOS_BASE = {
   anular_venta_pos: ['administrador'],
   vender_equipo: ['administrador', 'tecnico', 'recepcionista'],
   ver_ventas_equipos: ['administrador', 'tecnico'],
-  editar_ventas_equipos: ['administrador'],
+  editar_ventas_equipos: ['administrador', 'tecnico'],
   ver_cierres_caja: ['administrador'],
   gestionar_servicios_maestros: ['administrador']
 };
