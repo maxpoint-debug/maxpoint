@@ -77,7 +77,7 @@ function authUiSesion() {
   const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'flex';
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'none';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = puede('crear_usuario') ? '' : 'none';
-  const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = puede('ver_balance') ? '' : 'none';
+  const bal = document.getElementById('nav-balance'); if (bal) bal.style.display = 'none';
   const ventasEquipos = document.getElementById('nav-ventas-equipos'); if (ventasEquipos) ventasEquipos.style.display = puede('ver_ventas_equipos') ? '' : 'none';
   const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = puede('ver_cierres_caja') ? '' : 'none';
   const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = puede('ver_balance') ? '' : 'none';

@@ -536,6 +536,9 @@ function renderCentroControl() {
     .reduce(function(s, r) { return s + saldoReparacion(r); }, 0);
   var abiertas = reps.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado'; });
   var listas = reps.filter(function(r) { return r.estado === 'Listo'; });
+  var reservasAbiertas = ventas.filter(function(v) { return v.estadoVenta === 'Reservada'; });
+  var cajaAbierta = window.CAJA_ACTUAL && window.CAJA_ACTUAL.estado === 'abierta' ? window.CAJA_ACTUAL : null;
+  var cierresConDiferencia = (window.CIERRES_CAJA || []).filter(function(c) { return ccEnPeriodo(c.cierreFechaHora || c.fechaNegocio) && Math.abs(Number(c.diferencia || 0)) > 0.009; });
   var costoVentas = ventasPeriodo.reduce(function(s, v) { return s + Number(v.costo || 0); }, 0);
   var margenVentas = ingresoVentas - costoVentas;
   var margenPct = ingresoVentas ? Math.round(margenVentas / ingresoVentas * 100) : null;
@@ -544,9 +547,10 @@ function renderCentroControl() {
   var stockVenta = stockActivo.reduce(function(s, i) { return s + Number(i.precio_venta || 0); }, 0);
 
   var cab = document.createElement('div'); cab.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px';
-  cab.innerHTML = '<div><div style="font-size:20px;font-weight:800">Centro de Control</div><div class="mu" style="font-size:12px;margin-top:3px">Estado operativo y financiero con datos registrados</div></div>'
+  cab.innerHTML = '<div><div style="font-size:20px;font-weight:800">Administración</div><div class="mu" style="font-size:12px;margin-top:3px">Prioridades operativas y resumen del negocio</div></div>'
     + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
-    + ['hoy','mes','30d'].map(function(p) { var t = p === 'hoy' ? 'Hoy' : (p === 'mes' ? 'Este mes' : '30 días'); return '<button class="btn btn-sm ' + (CC_PERIODO === p ? 'btn-p' : 'btn-g') + '" onclick="ccSetPeriodo(\'' + p + '\')">' + t + '</button>'; }).join('') + '</div>';
+    + ['hoy','mes','30d'].map(function(p) { var t = p === 'hoy' ? 'Hoy' : (p === 'mes' ? 'Este mes' : '30 días'); return '<button class="btn btn-sm ' + (CC_PERIODO === p ? 'btn-p' : 'btn-g') + '" onclick="ccSetPeriodo(\'' + p + '\')">' + t + '</button>'; }).join('')
+    + '<button class="btn btn-g btn-sm" onclick="showView(\'admin\')">Detalle financiero →</button></div>';
   cnt.appendChild(cab);
 
   var kpis = document.createElement('div'); kpis.className = 'sc-row';
@@ -554,11 +558,14 @@ function renderCentroControl() {
     + ccCard('Ventas de equipos', ccUsd(ingresoVentas), ventasPeriodo.length + ' venta(s) del período', 'var(--bl)')
     + ccCard('Saldo pendiente', pesos(pendientes), abiertas.length + ' órdenes abiertas · ' + ccArsReferenciaUsd(pendientes), 'var(--or)')
     + ccCard('Listos para entregar', listas.length, listas.length ? 'Requieren contacto o entrega' : 'Sin entregas pendientes', listas.length ? 'var(--acc)' : 'var(--gr)')
+    + ccCard('Reservas abiertas', reservasAbiertas.length, reservasAbiertas.length ? 'Pendientes de completar' : 'Sin reservas pendientes', reservasAbiertas.length ? 'var(--acc)' : 'var(--gr)')
+    + ccCard('Caja actual', cajaAbierta ? 'ABIERTA' : 'CERRADA', cajaAbierta ? 'Abierta por ' + ((cajaAbierta.usuarioApertura && cajaAbierta.usuarioApertura.nombre) || 'usuario no identificado') : 'Sin sesión de Caja activa', cajaAbierta ? 'var(--gr)' : 'var(--mu)')
+    + ccCard('Cierres con diferencia', cierresConDiferencia.length, 'En el período seleccionado', cierresConDiferencia.length ? 'var(--rd)' : 'var(--gr)')
     + ccCard('Margen de equipos', ccUsd(margenVentas), margenPct === null ? 'Sin costos suficientes' : margenPct + '% de margen bruto', margenVentas >= 0 ? 'var(--gr)' : 'var(--rd)')
     + ccCard('Capital en stock', ccUsd(stockCosto), 'Venta potencial ' + ccUsd(stockVenta), 'var(--pu)');
-  cnt.appendChild(kpis);
-
   var alertas = [];
+  if (reservasAbiertas.length) alertas.push({ color:'var(--acc)', texto:'Hay ' + reservasAbiertas.length + ' reserva(s) pendiente(s) de completar.' });
+  if (cierresConDiferencia.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + cierresConDiferencia.length + ' cierre(s) con diferencia en el período.' });
   if (listas.length) alertas.push({ color:'var(--acc)', texto:'Hay ' + listas.length + ' equipo(s) listo(s) para entregar.' });
   var repsCobro = reps.filter(function(r) { return r.estado !== 'Entregado' && r.estado !== 'No aprobado' && saldoReparacion(r) > 0; });
   if (repsCobro.length) alertas.push({ color:'var(--or)', texto:'Hay ' + repsCobro.length + ' reparación(es) con saldo pendiente.' });
@@ -566,8 +573,8 @@ function renderCentroControl() {
   if (antiguas.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + antiguas.length + ' orden(es) abierta(s) hace más de 30 días.' });
   var rpuPend = rpus.filter(function(r) { return r.estado === 'Esperando' || r.estado === 'Encargado'; });
   if (rpuPend.length) alertas.push({ color:'var(--pu)', texto:'Hay ' + rpuPend.length + ' repuesto(s) pendiente(s) de resolución.' });
-  var garantias = reps.filter(function(r) { return r.es_garantia === 'si' || r.estado === 'Garantia'; });
-  if (garantias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + garantias.length + ' garantía(s) marcada(s) para revisar.' });
+  var garantias = abiertas.filter(function(r) { return r.es_garantia === 'si' || r.estado === 'Garantia'; });
+  if (garantias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + garantias.length + ' garantía(s) abierta(s) para revisar.' });
   var incidencias = reps.filter(function(r) { return r.incidencia && r.incidencia.estado !== 'Resuelta'; });
   if (incidencias.length) alertas.push({ color:'var(--rd)', texto:'Hay ' + incidencias.length + ' incidencia(s) abierta(s) que requieren resolución.' });
   var garantiasAbiertas = reps.filter(function(r) { return r.garantiaOrigenId && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; });
@@ -581,6 +588,8 @@ function renderCentroControl() {
   if (alertas.length) alertas.slice(0, 6).forEach(function(a) { var x = document.createElement('div'); x.style.cssText = 'border-left:3px solid ' + a.color + ';background:var(--s1);padding:10px 12px;margin-bottom:6px;border-radius:0 7px 7px 0;font-size:12px'; x.textContent = '⚠ ' + a.texto; secAt.appendChild(x); });
   else secAt.innerHTML += '<div class="empty" style="padding:18px">Sin alertas operativas relevantes.</div>';
   cnt.appendChild(secAt);
+  var secResumen = document.createElement('div'); secResumen.className = 'ct'; secResumen.style.marginTop = '22px'; secResumen.style.marginBottom = '8px'; secResumen.textContent = 'RESUMEN DEL PERÍODO'; cnt.appendChild(secResumen);
+  cnt.appendChild(kpis);
 
   var postventa = garantiasAbiertas.map(function(r) { return { tipo:'Garantía', orden:r.orden || r.id, id:r.id, detalle:'Vinculada a ' + (r.garantia_ref || 'orden original'), color:'var(--pu)' }; })
     .concat(incidencias.map(function(r) { return { tipo:'Incidencia', orden:r.orden || r.id, id:r.id, detalle:(r.incidencia && r.incidencia.tipo) || 'Pendiente de resolución', color:'var(--rd)' }; }));
