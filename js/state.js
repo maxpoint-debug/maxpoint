@@ -132,6 +132,7 @@ window.FB = {
   cerrarCaja:function(d, cb) { cb('Firebase no conectado todavía'); },
   cargarMovimientosCaja:function(id, cb) { cb('Firebase no conectado todavía'); },
   guardarServicioMaestro:function(d, cb) { cb('Firebase no conectado todavía'); },
+  guardarServiciosMaestrosLote:function(items, cb) { cb('Firebase no conectado todavía'); },
   guardarPoliticasReparacion:function(d, cb) { cb('Firebase no conectado todavía'); },
   borrarListaMaestra:function(cb) { cb('Firebase no conectado todavía'); },
 };

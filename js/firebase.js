@@ -675,6 +675,19 @@ window.FB.sincronizarServiciosDesdeCatalogo = async (items,meta) => {
   return {nuevos:nuevos,actualizados:actualizados,requierenRevision:revision,excluidosPorRegla:excluidos.length,total:confirmacion.size};
 };
 window.FB.guardarServicioMaestro = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const id=data.id,guardar=Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()});delete guardar.id;if(id)await setDoc(doc(cServicios,id),guardar,{merge:true});else await addDoc(cServicios,Object.assign({creadoEn:serverTimestamp(),origen:'manual',repuestoFuenteId:null},guardar));cb(null);}catch(e){cb(e.message);}};
+window.FB.guardarServiciosMaestrosLote = async (items,cb) => {
+  if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}
+  try{
+    const lista=Array.isArray(items)?items:[];
+    if(!lista.length)throw new Error('No hay servicios para actualizar');
+    if(lista.length>450)throw new Error('El grupo supera 450 servicios; aplicá un filtro más específico');
+    const actor=usuarioActualRegistro(),permitidos=['tipoReglaPrecio','markupUsdObjetivo','margenPorcentualObjetivo','precioCalculado','precioPublico','precioManual','modoPrecio','gananciaEstimada','margenActual','precioParaRevisar','necesitaRevision'];
+    const batch=writeBatch(db);
+    lista.forEach(x=>{if(!x||!x.id)throw new Error('Hay un servicio sin identificador');const guardar={actualizadoEn:serverTimestamp(),actualizadoPor:actor};permitidos.forEach(k=>{if(Object.prototype.hasOwnProperty.call(x,k))guardar[k]=x[k];});batch.set(doc(cServicios,String(x.id)),guardar,{merge:true});});
+    batch.set(doc(cAud),{entidad:'servicios_maestros',entidadId:'actualizacion_grupal',accion:'precios_actualizados_en_lote',actor:actor,cantidad:lista.length,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    await batch.commit();cb(null,{cantidad:lista.length});
+  }catch(e){cb((e.code?e.code+': ':'')+(e.message||String(e)));}
+};
 window.FB.borrarListaMaestra = async (cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const snap=await getDocs(cServicios),docs=snap.docs,chunk=350;for(let i=0;i<docs.length;i+=chunk){const batch=writeBatch(db);docs.slice(i,i+chunk).forEach(d=>batch.delete(d.ref));await batch.commit();}window.SERVICIOS_MAESTROS=[];window.SERVICIOS_CARGANDO=false;window.SERVICIOS_ERROR='';try{await registrarAuditoria('servicios_maestros','lista_completa','eliminada',{}, {cantidad:docs.length,actor:usuarioActualRegistro()});}catch(auditErr){console.warn('La lista se borró pero no pudo registrarse la auditoría:',auditErr);}if(window.VIEW==='servicios'&&typeof render==='function')render();cb(null,docs.length);}catch(e){console.error('Borrar Lista Maestra:',e);cb((e.code?e.code+': ':'')+(e.message||String(e)));}};
 window.FB.guardarPoliticasReparacion = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{await setDoc(dPoliticasRep,Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()}),{merge:true});if(typeof servicioRecalcular==='function'){const snap=await getDocs(cServicios),docs=snap.docs;for(let i=0;i<docs.length;i+=350){const batch=writeBatch(db);docs.slice(i,i+350).forEach(d=>{const r=servicioRecalcular(Object.assign({id:d.id},d.data()),data);batch.set(d.ref,{precioCalculado:r.precioCalculado,costoDirectoEstimado:r.costoDirectoEstimado,gananciaEstimada:r.gananciaEstimada,margenActual:r.margenActual,necesitaRevision:r.necesitaRevision,fechaUltimaRevisionPrecio:serverTimestamp()},{merge:true});});await batch.commit();}}cb(null);}catch(e){cb(e.message);}};
 window.FB.movimientoManualCaja = async (data, cb) => {
