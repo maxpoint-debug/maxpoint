@@ -4,7 +4,9 @@
 var _stockId = null;
 
 function openNewStock(prefill) {
+  if (!puede('gestionar_stock_equipos')) { toast('Sin permiso para agregar equipos al stock', 'var(--rd)'); return; }
   _stockId = null;
+  var precioWrap = el('wSPrecioVenta'); if (precioWrap) precioWrap.style.display = puede('editar_costos') ? '' : 'none';
   var costoWrap = el('wSCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('mStockT').textContent = 'Agregar equipo';
   ['sMod','sCap','sCol','sDet','sPrecioVenta','sPrecioCosto','sNot','sImei'].forEach(function(id) {
@@ -24,9 +26,11 @@ function openNewStock(prefill) {
 }
 
 function openEditStock(id) {
+  if (!puede('gestionar_stock_equipos')) { toast('Sin permiso para editar equipos del stock', 'var(--rd)'); return; }
   var s = STOCK.find(function(x) { return x.id === id; });
   if (!s) return;
   _stockId = id;
+  var precioWrap = el('wSPrecioVenta'); if (precioWrap) precioWrap.style.display = puede('editar_costos') ? '' : 'none';
   var costoWrap = el('wSCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('mStockT').textContent = 'Editar equipo';
   setVal('sMod',         s.modelo        || '');
@@ -44,6 +48,7 @@ function openEditStock(id) {
 }
 
 function saveStock() {
+  if (!puede('gestionar_stock_equipos')) { toast('Sin permiso para editar equipos del stock', 'var(--rd)'); return; }
   var mod = val('sMod');
   if (!mod) { alert('El modelo es obligatorio.'); return; }
   var btn = el('btnSaveStock');
@@ -87,6 +92,7 @@ function eliminarStock(id) {
 }
 
 function cambiarEstadoStock(id, nuevoEst) {
+  if (!puede('gestionar_stock_equipos')) { toast('Sin permiso para cambiar el estado', 'var(--rd)'); return; }
   FB.updSt(id, { estado: nuevoEst }, function(err) {
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
     toast('Estado: ' + nuevoEst);

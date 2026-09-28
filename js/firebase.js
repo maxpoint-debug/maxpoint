@@ -646,7 +646,7 @@ window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisione
 
 function fechaNegocioIso(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 window.FB.abrirCaja = async (data, cb) => {
-  if(!sesionActiva()){cb('Sesión no válida');return;}
+  if(!puede('operar_caja')){cb('Sin permiso para abrir caja');return;}
   try{const inicial=Number(data.efectivoInicial),moneda=data.moneda==='USD'?'USD':'ARS',actor=usuarioActualRegistro(),ahora=new Date().toISOString(),ref=doc(cCajas);
     if(!Number.isFinite(inicial)||inicial<0)throw new Error('El efectivo inicial debe ser válido');
     await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(actual.exists()&&actual.data().estado==='abierta')throw new Error('Ya existe una caja abierta');const caja={schemaVersion:1,fechaNegocio:fechaNegocioIso(),aperturaFechaHora:ahora,usuarioApertura:actor,efectivoInicial:inicial,moneda:moneda,observacionApertura:String(data.observacion||'').trim(),estado:'abierta',creadoEn:serverTimestamp()};tx.set(ref,caja);tx.set(dCajaActual,Object.assign({cajaId:ref.id},caja));tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'abierta',actor:actor,cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null,ref.id);
@@ -678,13 +678,13 @@ window.FB.guardarServicioMaestro = async (data,cb) => {if(!puede('gestionar_serv
 window.FB.borrarListaMaestra = async (cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const snap=await getDocs(cServicios),docs=snap.docs,chunk=350;for(let i=0;i<docs.length;i+=chunk){const batch=writeBatch(db);docs.slice(i,i+chunk).forEach(d=>batch.delete(d.ref));await batch.commit();}window.SERVICIOS_MAESTROS=[];window.SERVICIOS_CARGANDO=false;window.SERVICIOS_ERROR='';try{await registrarAuditoria('servicios_maestros','lista_completa','eliminada',{}, {cantidad:docs.length,actor:usuarioActualRegistro()});}catch(auditErr){console.warn('La lista se borró pero no pudo registrarse la auditoría:',auditErr);}if(window.VIEW==='servicios'&&typeof render==='function')render();cb(null,docs.length);}catch(e){console.error('Borrar Lista Maestra:',e);cb((e.code?e.code+': ':'')+(e.message||String(e)));}};
 window.FB.guardarPoliticasReparacion = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{await setDoc(dPoliticasRep,Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()}),{merge:true});if(typeof servicioRecalcular==='function'){const snap=await getDocs(cServicios),docs=snap.docs;for(let i=0;i<docs.length;i+=350){const batch=writeBatch(db);docs.slice(i,i+350).forEach(d=>{const r=servicioRecalcular(Object.assign({id:d.id},d.data()),data);batch.set(d.ref,{precioCalculado:r.precioCalculado,costoDirectoEstimado:r.costoDirectoEstimado,gananciaEstimada:r.gananciaEstimada,margenActual:r.margenActual,necesitaRevision:r.necesitaRevision,fechaUltimaRevisionPrecio:serverTimestamp()},{merge:true});});await batch.commit();}}cb(null);}catch(e){cb(e.message);}};
 window.FB.movimientoManualCaja = async (data, cb) => {
-  if(!sesionActiva()){cb('Sesión no válida');return;}
-  try{const monto=Number(data.monto),actor=usuarioActualRegistro(),ahora=new Date().toISOString();if(!Number.isFinite(monto)||monto===0)throw new Error('Ingresá un importe válido');if(!data.medio||!data.cuenta||!data.categoria)throw new Error('Completá medio, cuenta y categoría');
+  if(!puede('registrar_movimiento_caja')){cb('Sin permiso para registrar movimientos de caja');return;}
+  try{const monto=Number(data.monto),actor=usuarioActualRegistro(),ahora=new Date().toISOString();if(!Number.isFinite(monto)||monto===0)throw new Error('Ingresá un importe válido');if(!data.medio||!data.cuenta||!data.categoria)throw new Error('Completá medio, cuenta y categoría');if(!String(data.descripcion||'').trim())throw new Error('Indicá el motivo del movimiento');
     await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('No hay una caja abierta');const cajaId=actual.data().cajaId;const mov={schemaVersion:2,tipo:monto>0?'ingreso_manual':'egreso_manual',tipoEgreso:monto<0?String(data.tipoEgreso||'gasto_operativo'):'',referenciaTipo:'caja_manual',referenciaId:cajaId,cajaId:cajaId,monto:monto,moneda:data.moneda==='USD'?'USD':'ARS',medio:String(data.medio),cuenta:String(data.cuenta),categoria:String(data.categoria).trim(),subcategoria:String(data.subcategoria||'').trim(),descripcion:String(data.descripcion||'').trim(),usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(doc(cMovFin),mov);tx.set(doc(cAud),{entidad:'caja',entidadId:cajaId,accion:monto>0?'ingreso_manual':'egreso_manual',actor:actor,cambios:[],monto:monto,moneda:mov.moneda,tipoEgreso:mov.tipoEgreso,categoria:mov.categoria,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 window.FB.cerrarCaja = async (data, cb) => {
-  if(!sesionActiva()){cb('Sesión no válida');return;}
+  if(!puede('operar_caja')){cb('Sin permiso para cerrar caja');return;}
   try{const actor=usuarioActualRegistro(),ahora=new Date().toISOString(),r=data.resumen||{},contado=Number(data.efectivoContado),esperado=Number(r.efectivoEsperado||0),dif=contado-esperado;if(!Number.isFinite(contado)||contado<0)throw new Error('El efectivo contado debe ser válido');if(Math.abs(dif)>.009&&!String(data.observacion||'').trim())throw new Error('Indicá el motivo de la diferencia');
     await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('La caja ya está cerrada');const a=actual.data(),ref=doc(cCajas,a.cajaId),snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='abierta')throw new Error('La sesión de caja no está disponible');const cierre={estado:'cerrada',cierreFechaHora:ahora,usuarioCierre:actor,ingresosEfectivo:Number(r.ingresosEfectivo||0),egresosEfectivo:Number(r.egresosEfectivo||0),efectivoEsperado:esperado,efectivoContado:contado,diferencia:dif,totalesPorMedio:r.totalesPorMedio||{},totalesPorCuenta:r.totalesPorCuenta||{},totalIngresos:Number(r.totalIngresos||0),totalEgresos:Number(r.totalEgresos||0),cantidadMovimientos:Array.isArray(r.movimientos)?r.movimientos.length:0,observacionCierre:String(data.observacion||'').trim(),cerradoEn:serverTimestamp()};tx.update(ref,cierre);tx.set(dCajaActual,{estado:'cerrada',cajaId:null,ultimoCierreId:ref.id,ultimoEfectivoContado:contado,moneda:a.moneda||'ARS',actualizadoEn:serverTimestamp()});tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'cerrada',actor:actor,cambios:[],diferencia:dif,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
@@ -747,7 +747,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
     if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || !['ARS','USD'].includes(p.moneda) || (p.moneda === 'ARS' && !(Number(p.cotizacion) > 0)))) throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
     if (data.estadoVenta === 'Cobrada' && Math.abs(pagado - requerido) > 0.01) throw new Error('Los pagos deben cubrir exactamente el saldo de la venta');
     if (pagado > requerido + 0.01) throw new Error('Los pagos superan el saldo de la venta');
-    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos)), regaloRefs=regalos.map(r=>doc(cPro,r.productoId));
+    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos)), regaloRefs=regalos.map(r=>doc(cPro,r.productoId)), partePagoRef=data.parte_pago==='Si'&&String(data.pp_modelo||'').trim()?doc(cSt):null;
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     const requiereCaja=pagos.length>0;
     const venta = Object.assign({}, data, {
@@ -763,6 +763,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
       const cajaId=requiereCaja?cajaSnap.data().cajaId:null;
       regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
       tx.set(ventaRef, venta);
+      if(partePagoRef)tx.set(partePagoRef,{modelo:String(data.pp_modelo).trim(),imei:String(data.pp_imei||''),precio_costo:data.pp_valor||'',precio_venta:'',capacidad:'',color:'',detalles:'',notas:'Ingreso por parte de pago — '+String(data.nombre||''),estado:'A revisar',fecha:hoy(),ventaOrigenId:ventaRef.id,creadoEn:serverTimestamp()});
       pagos.forEach((p,i) => {
         const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,
           ventaId:ventaRef.id, clienteNombre:data.nombre || '', equipoModelo:data.modelo || '', medio:p.medio, cuenta:p.cuenta,
@@ -778,6 +779,27 @@ window.FB.crearVentaEquipo = async (data, cb) => {
     cb(null, { id:ventaRef.id });
     v21Sync('venta', ventaRef.id, data, 'venta_creada');
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+window.FB.completarReservaEquipo = async (id, data, cb) => {
+  if (!puede('vender_equipo')) { cb('Sin permiso para completar reservas'); return; }
+  try {
+    const pagos=Array.isArray(data.pagos)?data.pagos:[],regalos=(Array.isArray(data.regalos)?data.regalos:[]).filter(r=>r&&r.productoId).map(r=>({productoId:String(r.productoId),nombre:String(r.nombre||''),cantidad:1}));
+    if(!String(data.imei||'').trim())throw new Error('El IMEI / número de serie es obligatorio');
+    if(!pagos.length||pagos.some(p=>!(Number(p.monto)>0)||!p.medio||!p.cuenta||!['ARS','USD'].includes(p.moneda)||(p.moneda==='ARS'&&!(Number(p.cotizacion)>0))))throw new Error('Revisá los pagos de la reserva');
+    const ventaRef=doc(cVen,id),pagoRefs=pagos.map(()=>doc(cPagPos)),regaloRefs=regalos.map(r=>doc(cPro,r.productoId)),actor=usuarioActualRegistro(),ahora=new Date().toISOString();
+    await runTransaction(db,async tx=>{
+      const ventaSnap=await tx.get(ventaRef),cajaSnap=await tx.get(dCajaActual),regaloSnaps=await Promise.all(regaloRefs.map(ref=>tx.get(ref)));
+      if(!ventaSnap.exists())throw new Error('La reserva ya no existe');const v=ventaSnap.data();if(v.estadoVenta!=='Reservada')throw new Error('La operación ya no está reservada');
+      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
+      const saldo=Number(v.saldoUSD||0),pagado=pagos.reduce((s,p)=>s+Number(p.montoVentaUSD||0),0);if(Math.abs(saldo-pagado)>.01)throw new Error('Los pagos deben cubrir exactamente el saldo de la reserva');
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
+      const cajaId=cajaSnap.data().cajaId,nuevos=pagos.map((p,i)=>Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),todos=(v.pagos||[]).concat(nuevos),total=Number(v.totalPagadoUSD||0)+pagado;
+      tx.update(ventaRef,{estadoVenta:'Cobrada',imei:String(data.imei).trim(),pagos:todos,pago:todos.map(p=>p.medio).join(' + '),totalPagadoUSD:total,saldoUSD:0,cajaRegistrada:true,cotizacionBlue:Number(data.cotizacionBlue||v.cotizacionBlue||0),regalos:regalos,completadaEn:serverTimestamp(),completadaPor:actor,actualizadoEn:serverTimestamp()});
+      pagos.forEach((p,i)=>{const pd={schemaVersion:2,pagoId:pagoRefs[i].id,origenTipo:'venta_equipo',origenId:id,ventaId:id,clienteNombre:v.nombre||'',equipoModelo:v.modelo||'',medio:p.medio,cuenta:p.cuenta,monto:Number(p.monto),moneda:p.moneda,cotizacion:Number(p.cotizacion||1),montoVentaUSD:Number(p.montoVentaUSD||0),estado:'aplicado',usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(pagoRefs[i],pd);tx.set(doc(cMovFin),Object.assign({},pd,{cajaId:cajaId,tipo:'ingreso_venta_equipo',referenciaTipo:'venta_equipo',referenciaId:id}));});
+      regaloSnaps.forEach((s,i)=>{const antes=Number(s.data().stockActual||0),despues=antes-1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre,tipo:'regalo_venta_equipo',cantidad:-1,stockAnterior:antes,stockResultante:despues,motivo:'Regalo al completar reserva',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
+      tx.set(doc(cAud),{entidad:'venta_equipo',entidadId:id,accion:'reserva_completada',actor:actor,cambios:[{campo:'estadoVenta',antes:'Reservada',despues:'Cobrada'}],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });cb(null);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 window.FB.anularVentaEquipo = async (id, motivo, cb) => {
   if (!puede('eliminar_operaciones')) { cb('Solo administración puede anular ventas de equipos'); return; }
@@ -818,12 +840,28 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
     cb(null);
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
-window.FB.updV = (id, d, cb) => { if (!puede('editar_ventas_equipos')) { cb('No tenés permiso para editar ventas anteriores'); return; } actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message)); };
+window.FB.updV = (id, d, cb) => { if (!puede('editar_ventas_equipos')) { cb('No tenés permiso para editar ventas anteriores'); return; } const rol=String(SESION&&SESION.perfil&&SESION.perfil.rol||'').toLowerCase();let cambios=d;if(rol==='tecnico'||rol==='técnico'){const permitidos=['nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','canal','notas','fecha','garantia','seguimiento'];cambios={};permitidos.forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k))cambios[k]=d[k];});}actualizarAuditable('ventas', 'venta', id, cambios).then(() => { cb(null); v21Sync('venta', id, cambios, 'venta_actualizada'); }).catch(e => cb(e.message)); };
 window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── CRUD stock ──
-window.FB.addSt = (d, cb) => agregarAuditable('stock', 'stock', d).then(id => { cb(null); v21Sync('stock', id, d, 'stock_creado'); }).catch(e => cb(e.message));
-window.FB.updSt = (id, d, cb) => actualizarAuditable('stock', 'stock', id, d).then(() => { cb(null); v21Sync('stock', id, d, 'stock_actualizado'); }).catch(e => cb(e.message));
+window.FB.addSt = (d, cb) => {
+  if (!puede('gestionar_stock_equipos')) { cb('Sin permiso para agregar equipos al stock'); return; }
+  const rol = String(SESION && SESION.perfil && SESION.perfil.rol || '').toLowerCase();
+  const guardar = Object.assign({}, d);
+  if (rol === 'tecnico' || rol === 'técnico') { delete guardar.precio_costo; delete guardar.precio_venta; }
+  agregarAuditable('stock', 'stock', guardar).then(id => { cb(null, id); v21Sync('stock', id, guardar, 'stock_creado'); }).catch(e => cb(e.message));
+};
+window.FB.updSt = (id, d, cb) => {
+  if (!puede('gestionar_stock_equipos')) { cb('Sin permiso para editar equipos del stock'); return; }
+  const rol = String(SESION && SESION.perfil && SESION.perfil.rol || '').toLowerCase();
+  let cambios = d;
+  if (rol === 'tecnico' || rol === 'técnico') {
+    const permitidos = ['modelo','capacidad','color','detalles','imei','notas','estado','fecha'];
+    cambios = {};
+    permitidos.forEach(k => { if (Object.prototype.hasOwnProperty.call(d, k)) cambios[k] = d[k]; });
+  }
+  actualizarAuditable('stock', 'stock', id, cambios).then(() => { cb(null); v21Sync('stock', id, cambios, 'stock_actualizado'); }).catch(e => cb(e.message));
+};
 window.FB.delSt = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── POS V1: productos, inventario y ventas atomicas ──
@@ -864,10 +902,11 @@ window.FB.guardarProductoPos = async (data, cb) => {
 };
 
 window.FB.ajustarStockPos = async (data, cb) => {
-  if (!puede('ajustar_stock_pos')) { cb('Solo administración puede ajustar stock'); return; }
+  if (!puede('ajustar_stock_pos')) { cb('Sin permiso para ajustar stock'); return; }
   try {
     const ref = doc(cPro, data.productoId), cantidad = Number(data.cantidad);
     if (!Number.isFinite(cantidad) || cantidad === 0) throw new Error('La cantidad debe ser distinta de cero');
+    if (!String(data.motivo || '').trim()) throw new Error('Indicá el motivo del movimiento de stock');
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     await runTransaction(db, async tx => {
       const snap = await tx.get(ref);
@@ -888,7 +927,7 @@ window.FB.ajustarStockPos = async (data, cb) => {
 };
 
 window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
-  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  if (!puede('cobrar_reparacion')) { cb('Sin permiso para cobrar reparaciones'); return; }
   try {
     const pagosEntrada = Array.isArray(nuevosPagos) ? nuevosPagos : [];
     if (!pagosEntrada.length || pagosEntrada.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta)) throw new Error('Cada pago necesita medio, cuenta e importe');
@@ -954,7 +993,7 @@ window.FB.revertirCobroReparacion = async (id, pagoId, motivo, cb) => {
 };
 
 window.FB.crearVentaPos = async (data, cb) => {
-  if (!sesionActiva()) { cb('Sesión no válida'); return; }
+  if (!puede('vender_accesorios')) { cb('Sin permiso para vender accesorios'); return; }
   try {
     const items = Array.isArray(data.items) ? data.items : [], pagos = Array.isArray(data.pagos) ? data.pagos : [];
     if (!items.length) throw new Error('La venta no tiene productos');

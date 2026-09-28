@@ -43,7 +43,7 @@ function setTopActions(v) {
     if (puede('ajustar_stock_pos')) ta.appendChild(mkBtn('btn-p', '+ Movimiento', function() { posAbrirAjuste(); }));
   } else if (v === 'stock') {
     ta.appendChild(mkBtn('btn-g btn-sm', 'Copiar lista WA', copiarListaStock));
-    ta.appendChild(mkBtn('btn-p', '+  Agregar equipo', function() { openNewStock(null); }));
+    if (puede('gestionar_stock_equipos')) ta.appendChild(mkBtn('btn-p', '+  Agregar equipo', function() { openNewStock(null); }));
   } else if (v === 'cot') {
     if (puede('actualizar_cotizador')) ta.appendChild(mkBtn('btn-g btn-sm', 'Actualizar lista', openListaParser));
     ta.appendChild(mkBtn('btn-p', '+  Cotizar', openCotizador));

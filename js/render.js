@@ -401,17 +401,20 @@ function renderCli() {
 function renderPag() {
   var cnt = el('cnt'); cnt.innerHTML = '';
 
-  var pnd = REPS.filter(function(r) { return !reparacionEsSinCargo(r) && saldoReparacion(r) > 0; });
-  var prc = pnd.filter(function(r) { return totalCobradoReparacion(r) > 0; });
-  var cobrado = REPS.reduce(function(s, r) { return s + totalCobradoReparacion(r); }, 0);
-  var porcobrar = pnd.reduce(function(s, r) { return s + saldoReparacion(r); }, 0);
+  var deudas = REPS.filter(function(r) { return !reparacionEsSinCargo(r) && saldoReparacion(r) > 0; });
+  var activas = deudas.filter(function(r){return r.estado!=='Entregado'&&r.estado!=='No aprobado';});
+  var entregadas = deudas.filter(function(r){return r.estado==='Entregado'||r.estado==='No aprobado';});
+  var sinPago = activas.filter(function(r) { return totalCobradoReparacion(r) <= 0; });
+  var parciales = activas.filter(function(r) { return totalCobradoReparacion(r) > 0; });
+  var porCobrarActivo = activas.reduce(function(s, r) { return s + saldoReparacion(r); }, 0);
 
   // Stats
   var sg = document.createElement('div'); sg.className = 'sg';
   sg.innerHTML = ''
-    + '<div class="sc"><div class="scl">Por cobrar</div><div class="scv co">' + pesos(porcobrar) + '</div></div>'
-    + '<div class="sc"><div class="scl">Pendientes</div><div class="scv cr">' + pnd.length + '</div></div>'
-    + '<div class="sc"><div class="scl">Con sena</div><div class="scv cy">' + prc.length + '</div></div>';
+    + '<div class="sc"><div class="scl">Deuda activa</div><div class="scv co">' + pesos(porCobrarActivo) + '</div></div>'
+    + '<div class="sc"><div class="scl">Órdenes activas</div><div class="scv cr">' + activas.length + '</div></div>'
+    + '<div class="sc"><div class="scl">Con cobro parcial</div><div class="scv cy">' + parciales.length + '</div></div>'
+    + '<div class="sc"><div class="scl">Históricas a revisar</div><div class="scv co">' + entregadas.length + '</div></div>';
   cnt.appendChild(sg);
 
   function mkTabla(titulo, color, filas, cols) {
@@ -456,10 +459,12 @@ function renderPag() {
     tbl.appendChild(tbody); tw.appendChild(tbl); cnt.appendChild(tw);
   }
 
-  mkTabla('Sin pago',  'var(--rd)', pnd, ['Orden','Cliente','Equipo','Presupuesto','Estado']);
-  mkTabla('Con cobro parcial', 'var(--or)', prc, ['Orden','Cliente','Equipo','Presupuesto','Cobrado','Saldo']);
+  mkTabla('Sin pago · órdenes activas',  'var(--rd)', sinPago, ['Orden','Cliente','Equipo','Presupuesto','Estado']);
+  mkTabla('Con cobro parcial · órdenes activas', 'var(--or)', parciales, ['Orden','Cliente','Equipo','Presupuesto','Cobrado','Saldo']);
+  if(entregadas.length){var aviso=document.createElement('div');aviso.className='adm-note';aviso.innerHTML='<b>Histórico a revisar:</b> estas órdenes ya fueron cerradas pero conservan saldo. No se consideran deuda operativa hasta confirmar cada caso.';cnt.appendChild(aviso);}
+  mkTabla('Entregadas / no aprobadas con saldo · revisar', 'var(--mu)', entregadas, ['Orden','Cliente','Equipo','Presupuesto','Cobrado','Saldo']);
 
-  if (!pnd.length && !prc.length) {
+  if (!deudas.length) {
     cnt.innerHTML += '<div class="empty"><div class="ei">🎉</div>Sin pagos pendientes. Todo al dia!</div>';
   }
 }
@@ -1108,6 +1113,7 @@ function renderVen() {
         + '</div></div>'
         + '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'
         + '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="prtVenta(this.dataset.vid)">Comprobante</button>'
+        + (v.estadoVenta==='Reservada' && puede('vender_equipo') ? '<button class="btn btn-p btn-sm" data-vid="'+v.id+'" onclick="openCompletarReserva(this.dataset.vid)">Completar reserva</button>' : '')
         + (puede('editar_ventas_equipos') ? '<button class="btn btn-g btn-sm" data-vid="' + v.id + '" onclick="openEditVenta(this.dataset.vid)">Editar</button>' : '')
         + (puede('eliminar_operaciones') && v.estadoVenta!=='Anulada' && v.estadoVenta!=='Devuelta' ? '<button class="btn btn-d btn-sm" data-vid="' + v.id + '" onclick="anularVentaEquipo(this.dataset.vid)">Anular</button>' : '')
         + '</div>';
@@ -1157,10 +1163,10 @@ function renderStock() {
         + (margen !== null ? '<div style="font-size:10px;font-weight:700;color:' + (margen>=0?'var(--gr)':'var(--rd)') + '">Margen: ' + pesos(margen) + '</div>' : '')
         + '</div></div>'
         + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
-        + '<select class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
+        + (puede('gestionar_stock_equipos') ? '<select class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
         + estados.map(function(e) { return '<option' + (e===s.estado?' selected':'') + '>' + e + '</option>'; }).join('')
-        + '</select>'
-        + '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>'
+        + '</select>' : badgeStock(s.estado))
+        + (puede('gestionar_stock_equipos') ? '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>' : '')
         + (puede('eliminar_operaciones') ? '<button class="btn btn-d btn-sm" data-sid="' + s.id + '" onclick="eliminarStock(this.dataset.sid)">&#128465;</button>' : '')
         + '</div>';
       sec.appendChild(card);
