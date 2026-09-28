@@ -675,6 +675,7 @@ window.FB.sincronizarServiciosDesdeCatalogo = async (items,meta) => {
   return {nuevos:nuevos,actualizados:actualizados,requierenRevision:revision,excluidosPorRegla:excluidos.length,total:confirmacion.size};
 };
 window.FB.guardarServicioMaestro = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const id=data.id,guardar=Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()});delete guardar.id;if(id)await setDoc(doc(cServicios,id),guardar,{merge:true});else await addDoc(cServicios,Object.assign({creadoEn:serverTimestamp(),origen:'manual',repuestoFuenteId:null},guardar));cb(null);}catch(e){cb(e.message);}};
+window.FB.borrarListaMaestra = async (cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const snap=await getDocs(cServicios),docs=snap.docs,chunk=350;for(let i=0;i<docs.length;i+=chunk){const batch=writeBatch(db);docs.slice(i,i+chunk).forEach(d=>batch.delete(d.ref));await batch.commit();}window.SERVICIOS_MAESTROS=[];window.SERVICIOS_CARGANDO=false;window.SERVICIOS_ERROR='';try{await registrarAuditoria('servicios_maestros','lista_completa','eliminada',{}, {cantidad:docs.length,actor:usuarioActualRegistro()});}catch(auditErr){console.warn('La lista se borró pero no pudo registrarse la auditoría:',auditErr);}if(window.VIEW==='servicios'&&typeof render==='function')render();cb(null,docs.length);}catch(e){console.error('Borrar Lista Maestra:',e);cb((e.code?e.code+': ':'')+(e.message||String(e)));}};
 window.FB.guardarPoliticasReparacion = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{await setDoc(dPoliticasRep,Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()}),{merge:true});if(typeof servicioRecalcular==='function'){const snap=await getDocs(cServicios),docs=snap.docs;for(let i=0;i<docs.length;i+=350){const batch=writeBatch(db);docs.slice(i,i+350).forEach(d=>{const r=servicioRecalcular(Object.assign({id:d.id},d.data()),data);batch.set(d.ref,{precioCalculado:r.precioCalculado,costoDirectoEstimado:r.costoDirectoEstimado,gananciaEstimada:r.gananciaEstimada,margenActual:r.margenActual,necesitaRevision:r.necesitaRevision,fechaUltimaRevisionPrecio:serverTimestamp()},{merge:true});});await batch.commit();}}cb(null);}catch(e){cb(e.message);}};
 window.FB.movimientoManualCaja = async (data, cb) => {
   if(!sesionActiva()){cb('Sesión no válida');return;}
@@ -738,25 +739,31 @@ window.FB.crearVentaEquipo = async (data, cb) => {
   if (!puede('vender_equipo')) { cb('Sin permiso para vender equipos'); return; }
   try {
     const pagos = Array.isArray(data.pagos) ? data.pagos : [];
+    const regalos=(Array.isArray(data.regalos)?data.regalos:[]).filter(r=>r&&r.productoId).map(r=>({productoId:String(r.productoId),nombre:String(r.nombre||''),cantidad:1}));
     const precio = Number(data.precio || 0), partePago = data.parte_pago === 'Si' ? Number(data.pp_valor || 0) : 0;
     const requerido = Math.max(0, precio - partePago), pagado = pagos.reduce((s,p) => s + Number(p.montoVentaUSD || 0), 0);
     if (!(precio > 0)) throw new Error('El precio debe ser mayor a cero');
+    if (!['Cobrada','Reservada'].includes(data.estadoVenta)) throw new Error('El estado debe ser Cobrada o Reservada');
     if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || !['ARS','USD'].includes(p.moneda) || (p.moneda === 'ARS' && !(Number(p.cotizacion) > 0)))) throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
     if (data.estadoVenta === 'Cobrada' && Math.abs(pagado - requerido) > 0.01) throw new Error('Los pagos deben cubrir exactamente el saldo de la venta');
     if (pagado > requerido + 0.01) throw new Error('Los pagos superan el saldo de la venta');
-    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos));
+    const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos)), regaloRefs=regalos.map(r=>doc(cPro,r.productoId)), partePagoRef=data.parte_pago==='Si'&&String(data.pp_modelo||'').trim()?doc(cSt):null;
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    const requiereCaja=pagos.length>0;
     const venta = Object.assign({}, data, {
-      tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:true,
+      tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:requiereCaja,
       pagos:pagos.map((p,i) => Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),
       totalPagadoUSD:pagado, saldoUSD:Math.max(0,requerido-pagado), usuario:actor,
       fechaHora:ahora, creadoEn:serverTimestamp()
     });
     await runTransaction(db, async tx => {
-      const cajaSnap=await tx.get(dCajaActual);
-      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
-      const cajaId=cajaSnap.data().cajaId;
+      const cajaSnap=requiereCaja?await tx.get(dCajaActual):null;
+      const regaloSnaps=data.estadoVenta==='Cobrada'?await Promise.all(regaloRefs.map(ref=>tx.get(ref))):[];
+      if(requiereCaja&&(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta'))throw new Error('Primero abrí la caja para registrar la seña');
+      const cajaId=requiereCaja?cajaSnap.data().cajaId:null;
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
       tx.set(ventaRef, venta);
+      if(partePagoRef)tx.set(partePagoRef,{modelo:String(data.pp_modelo).trim(),imei:String(data.pp_imei||''),precio_costo:data.pp_valor||'',precio_venta:'',capacidad:'',color:'',detalles:'',notas:'Ingreso por parte de pago — '+String(data.nombre||''),estado:'A revisar',fecha:hoy(),ventaOrigenId:ventaRef.id,creadoEn:serverTimestamp()});
       pagos.forEach((p,i) => {
         const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,
           ventaId:ventaRef.id, clienteNombre:data.nombre || '', equipoModelo:data.modelo || '', medio:p.medio, cuenta:p.cuenta,
@@ -765,12 +772,34 @@ window.FB.crearVentaEquipo = async (data, cb) => {
         tx.set(pagoRefs[i], pago);
         tx.set(doc(cMovFin), Object.assign({}, pago, { cajaId:cajaId, tipo:'ingreso_venta_equipo', referenciaTipo:'venta_equipo', referenciaId:ventaRef.id }));
       });
+      regaloSnaps.forEach((s,i)=>{const antes=Number(s.data().stockActual||0),despues=antes-1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre,tipo:'regalo_venta_equipo',cantidad:-1,stockAnterior:antes,stockResultante:despues,motivo:'Regalo con venta de equipo',referenciaTipo:'venta_equipo',referenciaId:ventaRef.id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
       tx.set(doc(cAud), { entidad:'venta_equipo', entidadId:ventaRef.id, accion:'creada', actor:actor,
         cambios:[], totalUSD:precio, totalPagadoUSD:pagado, fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
     });
     cb(null, { id:ventaRef.id });
     v21Sync('venta', ventaRef.id, data, 'venta_creada');
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+window.FB.completarReservaEquipo = async (id, data, cb) => {
+  if (!puede('vender_equipo')) { cb('Sin permiso para completar reservas'); return; }
+  try {
+    const pagos=Array.isArray(data.pagos)?data.pagos:[],regalos=(Array.isArray(data.regalos)?data.regalos:[]).filter(r=>r&&r.productoId).map(r=>({productoId:String(r.productoId),nombre:String(r.nombre||''),cantidad:1}));
+    if(!String(data.imei||'').trim())throw new Error('El IMEI / número de serie es obligatorio');
+    if(!pagos.length||pagos.some(p=>!(Number(p.monto)>0)||!p.medio||!p.cuenta||!['ARS','USD'].includes(p.moneda)||(p.moneda==='ARS'&&!(Number(p.cotizacion)>0))))throw new Error('Revisá los pagos de la reserva');
+    const ventaRef=doc(cVen,id),pagoRefs=pagos.map(()=>doc(cPagPos)),regaloRefs=regalos.map(r=>doc(cPro,r.productoId)),actor=usuarioActualRegistro(),ahora=new Date().toISOString();
+    await runTransaction(db,async tx=>{
+      const ventaSnap=await tx.get(ventaRef),cajaSnap=await tx.get(dCajaActual),regaloSnaps=await Promise.all(regaloRefs.map(ref=>tx.get(ref)));
+      if(!ventaSnap.exists())throw new Error('La reserva ya no existe');const v=ventaSnap.data();if(v.estadoVenta!=='Reservada')throw new Error('La operación ya no está reservada');
+      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
+      const saldo=Number(v.saldoUSD||0),pagado=pagos.reduce((s,p)=>s+Number(p.montoVentaUSD||0),0);if(Math.abs(saldo-pagado)>.01)throw new Error('Los pagos deben cubrir exactamente el saldo de la reserva');
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
+      const cajaId=cajaSnap.data().cajaId,nuevos=pagos.map((p,i)=>Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),todos=(v.pagos||[]).concat(nuevos),total=Number(v.totalPagadoUSD||0)+pagado;
+      tx.update(ventaRef,{estadoVenta:'Cobrada',imei:String(data.imei).trim(),pagos:todos,pago:todos.map(p=>p.medio).join(' + '),totalPagadoUSD:total,saldoUSD:0,cajaRegistrada:true,cotizacionBlue:Number(data.cotizacionBlue||v.cotizacionBlue||0),regalos:regalos,completadaEn:serverTimestamp(),completadaPor:actor,actualizadoEn:serverTimestamp()});
+      pagos.forEach((p,i)=>{const pd={schemaVersion:2,pagoId:pagoRefs[i].id,origenTipo:'venta_equipo',origenId:id,ventaId:id,clienteNombre:v.nombre||'',equipoModelo:v.modelo||'',medio:p.medio,cuenta:p.cuenta,monto:Number(p.monto),moneda:p.moneda,cotizacion:Number(p.cotizacion||1),montoVentaUSD:Number(p.montoVentaUSD||0),estado:'aplicado',usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(pagoRefs[i],pd);tx.set(doc(cMovFin),Object.assign({},pd,{cajaId:cajaId,tipo:'ingreso_venta_equipo',referenciaTipo:'venta_equipo',referenciaId:id}));});
+      regaloSnaps.forEach((s,i)=>{const antes=Number(s.data().stockActual||0),despues=antes-1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre,tipo:'regalo_venta_equipo',cantidad:-1,stockAnterior:antes,stockResultante:despues,motivo:'Regalo al completar reserva',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
+      tx.set(doc(cAud),{entidad:'venta_equipo',entidadId:id,accion:'reserva_completada',actor:actor,cambios:[{campo:'estadoVenta',antes:'Reservada',despues:'Cobrada'}],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });cb(null);
+  }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 window.FB.anularVentaEquipo = async (id, motivo, cb) => {
   if (!puede('eliminar_operaciones')) { cb('Solo administración puede anular ventas de equipos'); return; }
@@ -781,6 +810,8 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
       if (!snap.exists()) throw new Error('La venta ya no existe');
       const venta = snap.data();
       const cajaSnap = venta.cajaRegistrada ? await tx.get(dCajaActual) : null;
+      const regalos=(Array.isArray(venta.regalos)?venta.regalos:[]).filter(r=>r&&r.productoId),regaloRefs=regalos.map(r=>doc(cPro,r.productoId));
+      const regaloSnaps=venta.estadoVenta==='Cobrada'?await Promise.all(regaloRefs.map(ref=>tx.get(ref))):[];
       if (venta.cajaRegistrada && (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta')) throw new Error('Primero abrí la caja');
       const cajaId = venta.cajaRegistrada ? cajaSnap.data().cajaId : null;
       if (venta.tipoRegistro === 'pos') throw new Error('Las ventas de accesorios se anulan desde Operaciones de caja');
@@ -792,6 +823,7 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
         cambiosVenta.cajaRevertida = true;
         cambiosVenta.pagos = (venta.pagos || []).map(p => Object.assign({}, p, { estado:'revertido', revertidoEn:ahora, revertidoPor:actor }));
       }
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())return;const antes=Number(s.data().stockActual||0),despues=antes+1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre||'',tipo:'reversion_regalo_venta_equipo',cantidad:1,stockAnterior:antes,stockResultante:despues,motivo:'Anulación de venta de equipo',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
       tx.update(ventaRef, cambiosVenta);
       if (venta.cajaRegistrada) {
         (venta.pagos || []).forEach(p => {
@@ -808,7 +840,7 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
     cb(null);
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
-window.FB.updV = (id, d, cb) => actualizarAuditable('ventas', 'venta', id, d).then(() => { cb(null); v21Sync('venta', id, d, 'venta_actualizada'); }).catch(e => cb(e.message));
+window.FB.updV = (id, d, cb) => { if (!puede('editar_ventas_equipos')) { cb('No tenés permiso para editar ventas anteriores'); return; } const rol=String(SESION&&SESION.perfil&&SESION.perfil.rol||'').toLowerCase();let cambios=d;if(rol==='tecnico'||rol==='técnico'){const permitidos=['nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','canal','notas','fecha','garantia','seguimiento'];cambios={};permitidos.forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k))cambios[k]=d[k];});}actualizarAuditable('ventas', 'venta', id, cambios).then(() => { cb(null); v21Sync('venta', id, cambios, 'venta_actualizada'); }).catch(e => cb(e.message)); };
 window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── CRUD stock ──
@@ -883,6 +915,7 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
     const pagosEntrada = Array.isArray(nuevosPagos) ? nuevosPagos : [];
     if (!pagosEntrada.length || pagosEntrada.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta)) throw new Error('Cada pago necesita medio, cuenta e importe');
     const reparacionRef = doc(cR, id), pagoRefs = pagosEntrada.map(() => doc(cPagPos));
+    const movimientoRefs = pagoRefs.map(p => doc(cMovFin, 'mov_rep_' + p.id));
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     let saldoFinal = 0;
     await runTransaction(db, async tx => {
@@ -891,12 +924,15 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
       if (!snap.exists()) throw new Error('La reparación ya no existe');
       if (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta') throw new Error('Primero abrí la caja');
       const cajaId = cajaSnap.data().cajaId;
-      const r = snap.data(), presupuesto = Number(r.presupuesto || 0);
-      const existentes = Array.isArray(r.pagos) && r.pagos.length ? r.pagos.slice() : (Number(r.sena || 0) > 0 ? [{ monto:Number(r.sena), fecha:r.fecha || '', medio:'Registro previo', cuenta:'Sin especificar', moneda:'ARS', legacy:true }] : []);
+      const r = snap.data(), presupuesto = Number(r.presupuesto || 0),vistos=new Set();
+      if (typeof reparacionEsSinCargo === 'function' && reparacionEsSinCargo(r)) throw new Error('La reparación está definida sin cargo');
+      if (!(presupuesto > 0)) throw new Error('Definí el presupuesto antes de registrar un cobro');
+      const existentesRaw = Array.isArray(r.pagos) && r.pagos.length ? r.pagos.slice() : (r.controlComisionV1!==true&&Number(r.sena||0)>0 ? [{ monto:Number(r.sena), fecha:r.fecha || '', medio:'Registro previo', cuenta:'Sin especificar', moneda:'ARS', legacy:true }] : []);
+      const existentes=existentesRaw.filter(p=>{if(!(Number(p&&p.monto||0)>0)||p.estado==='revertido')return false;if(p.pagoId){if(vistos.has(p.pagoId))return false;vistos.add(p.pagoId);}return true;});
       const cobradoAnterior = existentes.reduce((s,p) => s + Number(p.monto || 0), 0);
       const ingreso = pagosEntrada.reduce((s,p) => s + Number(p.monto || 0), 0);
       if (presupuesto > 0 && cobradoAnterior + ingreso > presupuesto + 0.01) throw new Error('El cobro supera el saldo pendiente');
-      const embebidos = pagosEntrada.map((p,idx) => ({ pagoId:pagoRefs[idx].id, monto:Number(p.monto), fecha:p.fecha || hoy(),
+      const embebidos = pagosEntrada.map((p,idx) => ({ pagoId:pagoRefs[idx].id, movimientoFinancieroId:movimientoRefs[idx].id, monto:Number(p.monto), fecha:p.fecha || hoy(),
         medio:p.medio, cuenta:p.cuenta, moneda:'ARS', notas:String(p.notas || ''), estado:'aplicado', usuario:actor, fechaHora:ahora }));
       const pagosFinales = existentes.concat(embebidos), totalCobrado = cobradoAnterior + ingreso;
       saldoFinal = Math.max(0, presupuesto-totalCobrado);
@@ -904,17 +940,39 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
         pago:presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente') };
       tx.update(reparacionRef, Object.assign({}, financieros, { actualizadoEn:serverTimestamp() }));
       embebidos.forEach((p,idx) => {
-        const pagoDoc = Object.assign({}, p, { schemaVersion:1, origenTipo:'reparacion', origenId:id, reparacionId:id,
+        const pagoDoc = Object.assign({}, p, { schemaVersion:1, cajaId:cajaId, origenTipo:'reparacion', origenId:id, reparacionId:id,
           orden:r.orden || '', clienteNombre:r.nombre || '', creadoEn:serverTimestamp() });
         tx.set(pagoRefs[idx], pagoDoc);
-        tx.set(doc(cMovFin), Object.assign({}, pagoDoc, { cajaId:cajaId, tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
+        tx.set(movimientoRefs[idx], Object.assign({}, pagoDoc, { movimientoFinancieroId:movimientoRefs[idx].id, cajaId:cajaId, tipo:'ingreso_reparacion', referenciaTipo:'reparacion', referenciaId:id }));
       });
       tx.set(doc(cAud), { entidad:'reparacion', entidadId:id, accion:'cobro_registrado', actor:actor,
         cambios:[{campo:'totalCobrado',antes:cobradoAnterior,despues:totalCobrado},{campo:'saldo',antes:Math.max(0,presupuesto-cobradoAnterior),despues:saldoFinal}],
         fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
     });
-    cb(null, { saldo:saldoFinal });
+    cb(null, { saldo:saldoFinal, movimientosCreados:pagosEntrada.length });
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
+};
+
+window.FB.revertirCobroReparacion = async (id, pagoId, motivo, cb) => {
+  if (!puede('gestionar_comisiones')) { cb('Sólo administración puede revertir cobros'); return; }
+  try {
+    motivo=String(motivo||'').trim(); if(!motivo)throw new Error('El motivo es obligatorio');
+    const reparacionRef=doc(cR,id),pagoRef=doc(cPagPos,pagoId),reversionRef=doc(cMovFin),actor=usuarioActualRegistro(),ahora=new Date().toISOString();
+    await runTransaction(db,async tx=>{
+      const repSnap=await tx.get(reparacionRef),pagoSnap=await tx.get(pagoRef),cajaSnap=await tx.get(dCajaActual);
+      if(!repSnap.exists())throw new Error('La reparación ya no existe');
+      if(!pagoSnap.exists())throw new Error('El pago no existe o es histórico');
+      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
+      const r=repSnap.data(),p=pagoSnap.data(); if(p.estado==='revertido')throw new Error('El pago ya fue revertido');
+      if((p.reparacionId||p.origenId)!==id)throw new Error('El pago no pertenece a esta reparación');
+      const pagos=(Array.isArray(r.pagos)?r.pagos:[]).map(x=>x.pagoId===pagoId?Object.assign({},x,{estado:'revertido',revertidoEn:ahora,revertidoPor:actor,motivoReversion:motivo}):x);
+      const activos=pagos.filter(x=>x.estado!=='revertido'),total=activos.reduce((s,x)=>s+Number(x.monto||0),0),presupuesto=Number(r.presupuesto||0);
+      tx.update(pagoRef,{estado:'revertido',revertidoEn:serverTimestamp(),revertidoPor:actor,motivoReversion:motivo,reversionMovimientoId:reversionRef.id});
+      tx.update(reparacionRef,{pagos:pagos,totalCobrado:total,saldo:Math.max(0,presupuesto-total),pago:total>=presupuesto&&presupuesto>0?'Pagado':(total>0?'Parcial':'Pendiente'),actualizadoEn:serverTimestamp()});
+      tx.set(reversionRef,{schemaVersion:2,cajaId:cajaSnap.data().cajaId,tipo:'reversion_cobro_reparacion',referenciaTipo:'reparacion',referenciaId:id,reparacionId:id,pagoOriginalId:pagoId,orden:r.orden||'',clienteNombre:r.nombre||'',medio:p.medio||'',cuenta:p.cuenta||'',monto:-Number(p.monto||0),moneda:p.moneda||'ARS',motivo:motivo,usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()});
+      tx.set(doc(cAud),{entidad:'reparacion',entidadId:id,accion:'cobro_revertido',actor:actor,cambios:[{campo:'totalCobrado',antes:Number(r.totalCobrado||0),despues:total}],pagoId:pagoId,motivo:motivo,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    }); cb(null);
+  } catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 
 window.FB.crearVentaPos = async (data, cb) => {
