@@ -77,16 +77,31 @@ function renderServiciosMaestros(){
 }
 
 function servicioGrupoSeleccionado(){
-  var familia=val('sgFamilia'),calidad=val('sgCalidad'),texto=servicioNorm(val('sgTexto'));
+  var familia=val('sgFamilia'),calidad=val('sgCalidad'),palabras=servicioNorm(val('sgTexto')).split(' ').filter(Boolean);
   return (window.SERVICIOS_MAESTROS||[]).filter(function(s){
     if(familia&&s.familia!==familia)return false;
     if(calidad&&s.calidadComercial!==calidad)return false;
-    if(texto&&servicioNorm([s.modelo,s.nombrePublico,s.calidadTecnica].join(' ')).indexOf(texto)===-1)return false;
+    var texto=servicioNorm([s.nombrePublico,s.marca,s.modelo,s.familia,s.calidadComercial,s.calidadTecnica,s.criterioCostoFuente,s.necesitaRevision?'revision':''].join(' '));
+    if(palabras.length&&!palabras.every(function(p){return texto.indexOf(p)!==-1;}))return false;
     return true;
   });
 }
+function servicioGrupoFiltrosDom(){
+  var sel=el('sgReferencia'),prev=sel&&sel.value,lista=servicioGrupoSeleccionado().slice().sort(function(a,b){return String(a.nombrePublico||'').localeCompare(String(b.nombrePublico||''),'es');});
+  if(sel){sel.innerHTML=lista.length?lista.map(function(s){return '<option value="'+esc(s.id)+'"'+(s.id===prev?' selected':'')+'>'+esc(s.nombrePublico||s.modelo||s.id)+'</option>';}).join(''):'<option value="">Sin coincidencias</option>';}
+  servicioGrupoPreview();
+}
+function servicioGrupoRegla(){
+  var regla=val('sgRegla'),valor=Number(val('sgValor'));
+  if(regla!=='precio_referencia')return {valida:regla==='margen_porcentual'?(valor>0&&valor<100):(valor>=0),regla:regla,valor:valor};
+  var refId=val('sgReferencia'),ref=(window.SERVICIOS_MAESTROS||[]).find(function(s){return s.id===refId;}),objetivo=Number(val('sgPrecioObjetivo'));
+  if(!ref||!(objetivo>0))return {valida:false,regla:'markup_fijo',valor:0,error:'Elegí un servicio de referencia e ingresá su precio objetivo.'};
+  var calculado=servicioRecalcular(ref,window.POLITICAS_REPARACION),cot=Number(calculado.cotizacionReferencia||0),markup=cot?(objetivo-Number(calculado.costoDirectoEstimado||0))/cot:NaN;
+  if(!Number.isFinite(markup)||markup<0)return {valida:false,regla:'markup_fijo',valor:0,error:'El precio objetivo queda por debajo del costo directo de la referencia.'};
+  return {valida:true,regla:'markup_fijo',valor:markup,referencia:calculado,objetivo:objetivo};
+}
 function servicioGrupoCambios(){
-  var regla=val('sgRegla'),valor=Number(val('sgValor')),reemplazar=el('sgReemplazar')&&el('sgReemplazar').checked;
+  var cfg=servicioGrupoRegla(),regla=cfg.regla,valor=cfg.valor,reemplazar=el('sgReemplazar')&&el('sgReemplazar').checked;
   return servicioGrupoSeleccionado().map(function(s){
     var base=Object.assign({},s,{tipoReglaPrecio:regla});
     if(regla==='margen_porcentual'){base.margenPorcentualObjetivo=valor;base.markupUsdObjetivo=0;}
@@ -97,23 +112,23 @@ function servicioGrupoCambios(){
   });
 }
 function servicioGrupoPreview(){
-  var box=el('sgPreview');if(!box)return;var cambios=servicioGrupoCambios(),regla=val('sgRegla'),valor=Number(val('sgValor'));
-  var valido=regla==='margen_porcentual'?(valor>0&&valor<100):(valor>=0);
-  if(!valido){box.innerHTML='<div class="pos-vacio">Ingresá un valor válido.</div>';return;}
-  if(!cambios.length){box.innerHTML='<div class="pos-vacio">El filtro no encuentra servicios.</div>';return;}
-  box.innerHTML='<div class="adm-note"><b>'+cambios.length+' servicio(s)</b> coinciden. '+(cambios[0].reemplazar?'Se reemplazará el precio público.':'El precio público se conserva; cambia sólo el cálculo sugerido.')+'</div><div class="tw"><table><thead><tr><th>Servicio</th><th>Actual</th><th>Nuevo</th></tr></thead><tbody>'+cambios.slice(0,12).map(function(x){return '<tr><td>'+esc(x.original.nombrePublico||'')+'</td><td>'+posDinero(Number(x.original.precioPublico||0),'ARS')+'</td><td>'+posDinero(Number(x.nuevo.precioPublico||0),'ARS')+'<div class="mu">Sugerido '+posDinero(Number(x.nuevo.precioCalculado||0),'ARS')+'</div></td></tr>';}).join('')+'</tbody></table></div>'+(cambios.length>12?'<div class="mu" style="margin-top:6px">Se muestran 12 de '+cambios.length+'.</div>':'');
+  var box=el('sgPreview');if(!box)return;var cfg=servicioGrupoRegla(),cambios=servicioGrupoCambios();
+  if(!cfg.valida){box.innerHTML='<div class="pos-vacio">'+esc(cfg.error||'Ingresá un valor válido.')+'</div>';return;}
+  if(!cambios.length){var total=(window.SERVICIOS_MAESTROS||[]).length;box.innerHTML='<div class="pos-vacio"><b>El filtro no encuentra servicios.</b><br>Hay '+total+' servicios en la lista. Probá dejar Familia o Calidad en “Todas”, o buscá con palabras separadas como <b>pantalla 13</b>.</div>';return;}
+  var politicas=servicioPoliticas(window.POLITICAS_REPARACION),minimo=function(x){return x.nuevo.familia==='Batería'?Number(politicas.margenMinimoBateria||0):(x.nuevo.familia==='Pantalla'?Number(politicas.margenMinimoPantalla||0):20);},bajo=cambios.filter(function(x){return Number(x.nuevo.gananciaEstimada||0)<0||Number(x.nuevo.margenActual||0)<minimo(x);}).length,ref=cfg.referencia?'<div class="adm-note"><b>Referencia:</b> '+esc(cfg.referencia.nombrePublico)+' · costo directo '+posDinero(cfg.referencia.costoDirectoEstimado,'ARS')+' · objetivo '+posDinero(cfg.objetivo,'ARS')+' · markup calculado USD '+cfg.valor.toFixed(2)+'</div>':'';
+  box.innerHTML=ref+'<div class="adm-note"><b>'+cambios.length+' servicio(s)</b> coinciden. '+(cambios[0].reemplazar?'Se reemplazará el precio público.':'El precio público se conserva; cambia sólo el cálculo sugerido.')+(bajo?' <b style="color:var(--rd)">Atención: '+bajo+' quedarían debajo del margen mínimo configurado.</b>':'')+'</div><div class="tw"><table><thead><tr><th>Servicio</th><th>Actual</th><th>Nuevo</th><th>Margen</th></tr></thead><tbody>'+cambios.slice(0,12).map(function(x){return '<tr><td>'+esc(x.original.nombrePublico||'')+'</td><td>'+posDinero(Number(x.original.precioPublico||0),'ARS')+'</td><td>'+posDinero(Number(x.nuevo.precioPublico||0),'ARS')+'<div class="mu">Sugerido '+posDinero(Number(x.nuevo.precioCalculado||0),'ARS')+'</div></td><td class="'+(Number(x.nuevo.margenActual)<minimo(x)?'pos-out':'pos-in')+'">'+Number(x.nuevo.margenActual||0).toFixed(1)+'%</td></tr>';}).join('')+'</tbody></table></div>'+(cambios.length>12?'<div class="mu" style="margin-top:6px">Se muestran 12 de '+cambios.length+'.</div>':'');
 }
 function servicioEditarGrupo(){
   if(!puede('gestionar_servicios_maestros')){toast('Sin permiso','var(--rd)');return;}
   var lista=window.SERVICIOS_MAESTROS||[],familias=Array.from(new Set(lista.map(function(s){return s.familia;}).filter(Boolean))).sort(),calidades=Array.from(new Set(lista.map(function(s){return s.calidadComercial;}).filter(Boolean))).sort();
-  posModal('Editar precios por grupo','<div class="adm-note">Filtrá primero. Antes de guardar vas a ver cuántos servicios cambiarán y una muestra de precios.</div><div class="pos-form"><label>Familia<select id="sgFamilia" onchange="servicioGrupoPreview()"><option value="">Todas</option>'+familias.map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select></label><label>Calidad<select id="sgCalidad" onchange="servicioGrupoPreview()"><option value="">Todas</option>'+calidades.map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select></label><label class="full">Modelo o texto<input id="sgTexto" value="'+esc(SERV_FILTRO)+'" placeholder="Ej: iPhone 13" oninput="servicioGrupoPreview()"></label><label>Regla<select id="sgRegla" onchange="servicioGrupoReglaDom()"><option value="markup_fijo">Markup fijo en USD</option><option value="margen_porcentual">Margen objetivo %</option></select></label><label><span id="sgValorLabel">Markup USD</span><input id="sgValor" type="number" min="0" value="50" oninput="servicioGrupoPreview()"></label><label class="check full"><input id="sgReemplazar" type="checkbox" onchange="servicioGrupoPreview()"> Reemplazar también el precio público actual por el nuevo cálculo</label></div><div id="sgPreview"></div>',servicioGuardarGrupo,'Aplicar al grupo');
-  servicioGrupoPreview();
+  posModal('Editar precios por grupo','<div class="adm-note">Filtrá primero. Antes de guardar vas a ver cuántos servicios cambiarán y una muestra de precios.</div><div class="pos-form"><label>Familia<select id="sgFamilia" onchange="servicioGrupoFiltrosDom()"><option value="">Todas</option>'+familias.map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select></label><label>Calidad<select id="sgCalidad" onchange="servicioGrupoFiltrosDom()"><option value="">Todas</option>'+calidades.map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select></label><label class="full">Modelo o texto<input id="sgTexto" value="'+esc(SERV_FILTRO)+'" placeholder="Ej: pantalla 14" oninput="servicioGrupoFiltrosDom()"></label><label>Regla<select id="sgRegla" onchange="servicioGrupoReglaDom()"><option value="precio_referencia">Calcular desde un precio de referencia</option><option value="markup_fijo">Markup fijo en USD</option><option value="margen_porcentual">Margen objetivo %</option></select></label><label id="sgValorWrap" style="display:none"><span id="sgValorLabel">Markup USD</span><input id="sgValor" type="number" min="0" value="50" oninput="servicioGrupoPreview()"></label><label class="full" id="sgReferenciaWrap">Servicio de referencia<select id="sgReferencia" onchange="servicioGrupoPreview()"></select></label><label id="sgObjetivoWrap">Precio objetivo ARS<input id="sgPrecioObjetivo" type="number" min="0" placeholder="Precio que querés cobrar" oninput="servicioGrupoPreview()"></label><label class="check full"><input id="sgReemplazar" type="checkbox" onchange="servicioGrupoPreview()"> Reemplazar también el precio público actual por el nuevo cálculo</label></div><div id="sgPreview"></div>',servicioGuardarGrupo,'Aplicar al grupo');
+  servicioGrupoFiltrosDom();
 }
-function servicioGrupoReglaDom(){var margen=val('sgRegla')==='margen_porcentual';el('sgValorLabel').textContent=margen?'Margen objetivo %':'Markup USD';el('sgValor').value=margen?'35':'50';servicioGrupoPreview();}
+function servicioGrupoReglaDom(){var regla=val('sgRegla'),referencia=regla==='precio_referencia',margen=regla==='margen_porcentual';el('sgValorWrap').style.display=referencia?'none':'';el('sgReferenciaWrap').style.display=referencia?'':'none';el('sgObjetivoWrap').style.display=referencia?'':'none';el('sgValorLabel').textContent=margen?'Margen objetivo %':'Markup USD';if(!referencia)el('sgValor').value=margen?'35':'50';servicioGrupoPreview();}
 function servicioGuardarGrupo(){
-  var cambios=servicioGrupoCambios(),regla=val('sgRegla'),valor=Number(val('sgValor'));
+  var cfg=servicioGrupoRegla(),cambios=servicioGrupoCambios(),regla=cfg.regla,valor=cfg.valor;
   if(!cambios.length){toast('El filtro no encuentra servicios','var(--rd)');return;}
-  if((regla==='margen_porcentual'&&!(valor>0&&valor<100))||(regla==='markup_fijo'&&!(valor>=0))){toast('Ingresá un valor válido','var(--rd)');return;}
+  if(!cfg.valida){toast(cfg.error||'Ingresá un valor válido','var(--rd)');return;}
   var reemplazar=el('sgReemplazar').checked,mensaje='Se actualizarán '+cambios.length+' servicio(s). '+(reemplazar?'También se reemplazarán sus precios públicos.':'Los precios públicos actuales se conservarán.')+' ¿Continuar?';
   if(!confirm(mensaje))return;
   var items=cambios.map(function(x){return {id:x.original.id,tipoReglaPrecio:x.nuevo.tipoReglaPrecio,markupUsdObjetivo:x.nuevo.markupUsdObjetivo,margenPorcentualObjetivo:x.nuevo.margenPorcentualObjetivo,precioCalculado:x.nuevo.precioCalculado,precioPublico:x.nuevo.precioPublico,precioManual:reemplazar?false:!!x.original.precioManual,modoPrecio:reemplazar?'calculado':(x.original.modoPrecio||'manual'),gananciaEstimada:x.nuevo.gananciaEstimada,margenActual:x.nuevo.margenActual,precioParaRevisar:x.nuevo.precioParaRevisar,necesitaRevision:x.nuevo.necesitaRevision};});
