@@ -67,6 +67,7 @@ const cCajas = collection(db, 'cajas');
 const dCajaActual = doc(db, 'config', 'cajaActual');
 const cServicios = collection(db, 'serviciosMaestros');
 const dPoliticasRep = doc(db, 'config', 'politicasReparacion');
+const dPortalCliente = doc(db, 'config', 'portalCliente');
 
 let authModo = 'login', bootstrapDisponible = false;
 let detenerNotificaciones = null;
@@ -82,6 +83,7 @@ function authUiSesion() {
   const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = puede('ver_cierres_caja') ? '' : 'none';
   const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = puede('ver_balance') ? '' : 'none';
   const serviciosNav = document.getElementById('nav-servicios-maestros'); if (serviciosNav) serviciosNav.style.display = puede('gestionar_servicios_maestros') ? '' : 'none';
+  const portalNav = document.getElementById('nav-portal-cliente'); if (portalNav) portalNav.style.display = puede('gestionar_portal_cliente') ? '' : 'none';
   const resumen = document.getElementById('financeSummary'); if (resumen) resumen.style.display = puede('ver_balance') ? '' : 'none';
   const info = document.getElementById('sesionInfo');
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
@@ -94,6 +96,7 @@ function authUiLogin() {
   const cierresCaja = document.getElementById('nav-cierres-caja'); if (cierresCaja) cierresCaja.style.display = 'none';
   const adminDashboard = document.getElementById('nav-admin-dashboard'); if (adminDashboard) adminDashboard.style.display = 'none';
   const serviciosNav = document.getElementById('nav-servicios-maestros'); if (serviciosNav) serviciosNav.style.display = 'none';
+  const portalNav = document.getElementById('nav-portal-cliente'); if (portalNav) portalNav.style.display = 'none';
 }
 async function verificarBootstrap() {
   try { bootstrapDisponible = (await getDocs(query(cUsr, limit(1)))).empty; }
@@ -238,6 +241,11 @@ function normKey(v) {
   return String(v || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
 }
 function phoneKey(v) { return String(v || '').replace(/\D/g, ''); }
+function conTelefonoClave(data) {
+  var salida = Object.assign({}, data || {});
+  if (Object.prototype.hasOwnProperty.call(salida, 'telefono')) salida.telefonoClave = phoneKey(salida.telefono);
+  return salida;
+}
 function safeId(prefix, key) { return prefix + '_' + (key || Math.random().toString(36).slice(2, 12)).slice(0, 80); }
 
 // Normaliza los campos V1 sin modificar los documentos de origen.
@@ -458,9 +466,9 @@ window.FB.marcarNotificacionLeida = function(id, cb) {
 };
 
 // --- Sobreescribir FB con funciones reales ---
-window.FB.add = (d, cb) => agregarAuditable('reparaciones', 'reparacion', d).then(id => { cb(null, id); v21Sync('reparacion', id, d, 'reparacion_creada'); }).catch(e => cb(e.message));
-window.FB.addId = (id, d, cb) => agregarAuditable('reparaciones', 'reparacion', d, id).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.upd = (id, d, cb) => actualizarAuditable('reparaciones', 'reparacion', id, d).then(() => { cb(null); v21Sync('reparacion', id, d, 'reparacion_actualizada'); }).catch(e => cb(e.message));
+window.FB.add = (d, cb) => { var datos=conTelefonoClave(d); agregarAuditable('reparaciones', 'reparacion', datos).then(id => { cb(null, id); v21Sync('reparacion', id, datos, 'reparacion_creada'); }).catch(e => cb(e.message)); };
+window.FB.addId = (id, d, cb) => agregarAuditable('reparaciones', 'reparacion', conTelefonoClave(d), id).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.upd = (id, d, cb) => { var datos=conTelefonoClave(d); actualizarAuditable('reparaciones', 'reparacion', id, datos).then(() => { cb(null); v21Sync('reparacion', id, datos, 'reparacion_actualizada'); }).catch(e => cb(e.message)); };
 window.FB.del = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('reparaciones', 'reparacion', id).then(() => cb(null)).catch(e => cb(e.message)); };
 window.FB.addR = (d, cb) => agregarAuditable('repuestos', 'repuesto', d).then(() => cb(null)).catch(e => cb(e.message));
 window.FB.updR = (id, d, cb) => actualizarAuditable('repuestos', 'repuesto', id, d).then(() => cb(null)).catch(e => cb(e.message));
@@ -471,6 +479,10 @@ window.FB.setConfig = (d, cb) => actualizarAuditable('config', 'config_catalogo'
 window.FB.setCotizadorConfig = (d, cb) => {
   if (!puede('actualizar_cotizador')) { cb('Solo administrador puede modificar el cotizador'); return; }
   actualizarAuditable('config', 'config_cotizador', 'cotizador', d).then(() => cb(null)).catch(e => cb(e.message));
+};
+window.FB.setPortalClienteConfig = (d, cb) => {
+  if (!puede('gestionar_portal_cliente')) { cb('Solo administrador puede configurar el Portal Cliente'); return; }
+  actualizarAuditable('config', 'config_portal_cliente', 'portalCliente', d).then(() => cb(null)).catch(e => cb(e.message));
 };
 
 window.FB.setCat = async (items, cb) => {
@@ -569,6 +581,10 @@ onSnapshot(dCom, (snap) => {
 onSnapshot(dCfg, (snap) => {
   if (snap.exists() && typeof catLoadConfig === 'function') catLoadConfig(snap.data());
 }, () => {});
+onSnapshot(dPortalCliente, (snap) => {
+  window.PORTAL_CLIENTE_CFG = snap.exists() ? Object.assign({ whatsapp:'', googleReviewUrl:'', ofertas:[], destacados:[] }, snap.data()) : { whatsapp:'', googleReviewUrl:'', ofertas:[], destacados:[] };
+  if (window.VIEW === 'portal' && typeof renderPortalAdmin === 'function') renderPortalAdmin();
+}, () => {});
 onSnapshot(cPro, (snap) => {
   window.PRODUCTOS_POS = snap.docs.map(d => Object.assign({ id:d.id }, d.data())).sort((a,b) => String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
   if ((window.VIEW === 'pos' || window.VIEW === 'prod' || window.VIEW === 'inv') && typeof render === 'function') render();
@@ -661,7 +677,7 @@ window.FB.sincronizarServiciosDesdeCatalogo = async (items,meta) => {
   const snap=await getDocs(cServicios),existentes=new Map();
   snap.forEach(d=>{const x=d.data();if(x.repuestoFuenteId)existentes.set(String(x.repuestoFuenteId),Object.assign({id:d.id},x));});
   let nuevos=0,actualizados=0,revision=0;const chunk=350;
-  for(let i=0;i<candidatos.length;i+=chunk){const batch=writeBatch(db);candidatos.slice(i,i+chunk).forEach(c=>{const previo=existentes.get(c.repuestoFuenteId);let mezcla=Object.assign({},c);if(previo){['nombrePublico','calidadComercial','activo','recomendado','precioPublico','precioManual','modoPrecio','tipoReglaPrecio','markupUsdObjetivo','margenPorcentualObjetivo','incentivoTecnico','reservaGarantia','costoLogisticoDefault'].forEach(k=>{if(previo[k]!==undefined)mezcla[k]=previo[k];});mezcla.necesitaRevision=!!previo.necesitaRevision||Math.abs(Number(previo.costoRepuestoActual||0)-Number(c.costoRepuestoActual||0))>.01;actualizados++;}else nuevos++;if(mezcla.necesitaRevision)revision++;if(typeof window.servicioRecalcular==='function')mezcla=window.servicioRecalcular(mezcla,window.POLITICAS_REPARACION||{});mezcla.fechaUltimoCosto=serverTimestamp();batch.set(doc(cServicios,previo?previo.id:'srv_'+c.codigoProveedor.replace(/[^a-zA-Z0-9_-]/g,'_')),mezcla,{merge:true});});await batch.commit();}
+  for(let i=0;i<candidatos.length;i+=chunk){const batch=writeBatch(db);candidatos.slice(i,i+chunk).forEach(c=>{const previo=existentes.get(c.repuestoFuenteId);let mezcla=Object.assign({},c);if(previo){['nombrePublico','calidadComercial','activo','recomendado','precioPublico','precioManual','modoPrecio','tipoReglaPrecio','markupUsdObjetivo','margenPorcentualObjetivo','incentivoTecnico','reservaGarantia','costoLogisticoDefault'].forEach(k=>{if(previo[k]!==undefined)mezcla[k]=previo[k];});if(previo.costoManual===true){mezcla.costoRepuestoFuenteUltimo=Number(c.costoRepuestoActual||0);mezcla.costoRepuestoActual=Number(previo.costoRepuestoActual||0);mezcla.costoManual=true;}else mezcla.costoManual=false;mezcla.necesitaRevision=!!previo.necesitaRevision||(previo.costoManual!==true&&Math.abs(Number(previo.costoRepuestoActual||0)-Number(c.costoRepuestoActual||0))>.01);actualizados++;}else nuevos++;if(mezcla.necesitaRevision)revision++;if(typeof window.servicioRecalcular==='function')mezcla=window.servicioRecalcular(mezcla,window.POLITICAS_REPARACION||{});mezcla.fechaUltimoCosto=serverTimestamp();batch.set(doc(cServicios,previo?previo.id:'srv_'+c.codigoProveedor.replace(/[^a-zA-Z0-9_-]/g,'_')),mezcla,{merge:true});});await batch.commit();}
   // Los candidatos automáticos anteriores que ya no cumplen la regla comercial
   // se conservan, pero dejan de ofrecerse. Nunca se eliminan servicios ni manuales.
   const fuentesVigentes=new Set(candidatos.map(c=>String(c.repuestoFuenteId)));

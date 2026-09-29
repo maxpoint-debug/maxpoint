@@ -13,6 +13,7 @@ function render() {
   else if (VIEW === 'cierres' && typeof renderCierresCaja==='function') renderCierresCaja();
   else if (VIEW === 'admin' && typeof renderAdminDashboard==='function') renderAdminDashboard();
   else if (VIEW === 'servicios' && typeof renderServiciosMaestros==='function') renderServiciosMaestros();
+  else if (VIEW === 'portal' && typeof renderPortalAdmin==='function') renderPortalAdmin();
   else if (VIEW === 'prod' && typeof renderProductosPos === 'function') renderProductosPos();
   else if (VIEW === 'inv' && typeof renderInventarioPos === 'function') renderInventarioPos();
   else if (VIEW === 'stock') renderStock();

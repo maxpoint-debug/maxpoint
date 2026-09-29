@@ -1,0 +1,52 @@
+// Configuración comercial mínima del Portal Cliente.
+// Se guarda en config/portalCliente para no convertirlo en un CMS.
+(function() {
+  'use strict';
+
+  function cfg() {
+    var c = window.PORTAL_CLIENTE_CFG || {};
+    return {
+      whatsapp: String(c.whatsapp || ''),
+      googleReviewUrl: String(c.googleReviewUrl || ''),
+      ofertas: Array.isArray(c.ofertas) ? c.ofertas.slice() : [],
+      destacados: Array.isArray(c.destacados) ? c.destacados.slice() : []
+    };
+  }
+  function idNuevo(prefijo) { return prefijo + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  function csv(v) { return String(v || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean); }
+  function textoLista(v) { return Array.isArray(v) ? v.join(', ') : ''; }
+  function fechaInput(v) { return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : ''; }
+  function numeroOpcional(v) { var n=Number(v); return String(v).trim()!=='' && isFinite(n) ? n : null; }
+  function bool(id) { var e=el(id); return !!(e && e.checked); }
+  function valor(id) { var e=el(id); return e ? e.value.trim() : ''; }
+
+  function filaOferta(o) {
+    return '<div class="card" style="margin-bottom:12px">'
+      + '<div style="display:flex;justify-content:space-between;gap:12px"><div><b>'+esc(o.nombre||o.titulo||'Oferta')+'</b><div class="mu" style="margin-top:4px">'+esc((o.modelosCompatibles||[]).join(', ')||'Sin modelos compatibles')+'</div></div><span class="badge '+(o.activa!==false?'bg':'br')+'">'+(o.activa!==false?'Activa':'Inactiva')+'</span></div>'
+      + '<div class="fa"><button class="btn btn-g btn-sm" onclick="portalEditarOferta(\''+esc(o.id)+'\')">Editar</button><button class="btn btn-g btn-sm" onclick="portalAlternarOferta(\''+esc(o.id)+'\')">'+(o.activa!==false?'Desactivar':'Activar')+'</button></div></div>';
+  }
+  function filaDestacado(o) {
+    return '<div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:12px"><div><b>'+esc(o.nombre||'Destacado')+'</b><div class="mu" style="margin-top:4px">Orden '+Number(o.orden||0)+(o.precio!=null?' · '+pesos(o.precio):'')+'</div></div><span class="badge '+(o.activo!==false?'bg':'br')+'">'+(o.activo!==false?'Activo':'Inactivo')+'</span></div><div class="fa"><button class="btn btn-g btn-sm" onclick="portalEditarDestacado(\''+esc(o.id)+'\')">Editar</button><button class="btn btn-g btn-sm" onclick="portalAlternarDestacado(\''+esc(o.id)+'\')">'+(o.activo!==false?'Desactivar':'Activar')+'</button></div></div>';
+  }
+
+  window.renderPortalAdmin = function() {
+    if (!puede('gestionar_portal_cliente')) { el('cnt').innerHTML='<div class="empty">Sin permiso para configurar el portal.</div>'; return; }
+    var c=cfg();
+    el('cnt').innerHTML='<div style="max-width:980px;margin:auto">'
+      +'<div class="card" style="margin-bottom:18px"><div class="ct">Canales del portal</div><div class="mu" style="margin-bottom:14px">Se muestran sólo cuando están configurados.</div><div class="fgrid"><div class="f"><label>WhatsApp (código país + número)</label><input id="portalWhatsapp" value="'+esc(c.whatsapp)+'" placeholder="5492324..."></div><div class="f"><label>Enlace de reseñas Google</label><input id="portalGoogle" value="'+esc(c.googleReviewUrl)+'" placeholder="https://..."></div></div><div class="fa"><button class="btn btn-p" onclick="portalGuardarCanales()">Guardar canales</button></div></div>'
+      +'<div class="fgrid" style="align-items:start"><section><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="ct">Ofertas personalizadas</div><button class="btn btn-p btn-sm" onclick="portalEditarOferta()">+ Oferta</button></div><div id="portalOfertasLista">'+(c.ofertas.length?c.ofertas.sort(function(a,b){return Number(a.prioridad||0)-Number(b.prioridad||0);}).map(filaOferta).join(''):'<div class="empty">Todavía no hay ofertas.</div>')+'</div></section>'
+      +'<section><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="ct">Destacados</div><button class="btn btn-p btn-sm" onclick="portalEditarDestacado()">+ Destacado</button></div><div id="portalDestacadosLista">'+(c.destacados.length?c.destacados.sort(function(a,b){return Number(a.orden||0)-Number(b.orden||0);}).map(filaDestacado).join(''):'<div class="empty">Todavía no hay destacados.</div>')+'</div></section></div></div>';
+  };
+
+  function formularioBase(titulo, contenido, guardar) {
+    el('cnt').innerHTML='<div class="card" style="max-width:760px;margin:auto"><div class="ct">'+titulo+'</div><div class="fgrid" style="margin-top:16px">'+contenido+'</div><div class="fa"><button class="btn btn-g" onclick="renderPortalAdmin()">Cancelar</button><button class="btn btn-p" onclick="'+guardar+'">Guardar</button></div></div>';
+  }
+  window.portalEditarOferta=function(id){var o=cfg().ofertas.find(function(x){return x.id===id;})||{id:'',activa:true};formularioBase(o.id?'Editar oferta':'Nueva oferta','<input type="hidden" id="poId" value="'+esc(o.id)+'"><div class="f"><label>Nombre interno *</label><input id="poNombre" value="'+esc(o.nombre||'')+'"></div><div class="f"><label>Prioridad</label><input id="poPrioridad" type="number" value="'+Number(o.prioridad||0)+'"></div><div class="f full"><label>Título para el cliente *</label><input id="poTitulo" value="'+esc(o.titulo||'')+'"></div><div class="f full"><label>Descripción</label><textarea id="poDescripcion">'+esc(o.descripcion||'')+'</textarea></div><div class="f"><label>Descuento %</label><input id="poDescuento" type="number" min="0" max="100" value="'+(o.porcentajeDescuento==null?'':Number(o.porcentajeDescuento))+'"></div><div class="f"><label>Productos (separados por coma)</label><input id="poProductos" value="'+esc(textoLista(o.productos))+'"></div><div class="f full"><label>Modelos compatibles * (separados por coma)</label><input id="poModelos" value="'+esc(textoLista(o.modelosCompatibles))+'" placeholder="iPhone 16 Pro, iPhone 17 Pro"></div><div class="f"><label>Desde</label><input id="poDesde" type="date" value="'+fechaInput(o.fechaDesde)+'"></div><div class="f"><label>Hasta</label><input id="poHasta" type="date" value="'+fechaInput(o.fechaHasta)+'"></div><div class="f"><label>Imagen URL opcional</label><input id="poImagen" value="'+esc(o.imagen||'')+'"></div><div class="f"><label>Mensaje WhatsApp</label><input id="poCta" value="'+esc(o.cta||'')+'"></div><div class="f full"><label><input id="poActiva" type="checkbox" '+(o.activa!==false?'checked':'')+'> Oferta activa</label></div>','portalGuardarOferta()');};
+  window.portalGuardarOferta=function(){var c=cfg(),id=valor('poId')||idNuevo('oferta'),modelos=csv(valor('poModelos'));if(!valor('poNombre')||!valor('poTitulo')||!modelos.length){toast('Completá nombre, título y modelos compatibles','var(--rd)');return;}var o={id:id,nombre:valor('poNombre'),activa:bool('poActiva'),titulo:valor('poTitulo'),descripcion:valor('poDescripcion'),porcentajeDescuento:numeroOpcional(valor('poDescuento')),productos:csv(valor('poProductos')),modelosCompatibles:modelos,fechaDesde:valor('poDesde'),fechaHasta:valor('poHasta'),prioridad:Number(valor('poPrioridad')||0),imagen:valor('poImagen'),cta:valor('poCta')};var i=c.ofertas.findIndex(function(x){return x.id===id;});if(i<0)c.ofertas.push(o);else c.ofertas[i]=o;guardar(c);};
+  window.portalEditarDestacado=function(id){var o=cfg().destacados.find(function(x){return x.id===id;})||{id:'',activo:true};formularioBase(o.id?'Editar destacado':'Nuevo destacado','<input type="hidden" id="pdId" value="'+esc(o.id)+'"><div class="f"><label>Nombre *</label><input id="pdNombre" value="'+esc(o.nombre||'')+'"></div><div class="f"><label>Orden</label><input id="pdOrden" type="number" value="'+Number(o.orden||0)+'"></div><div class="f full"><label>Descripción</label><textarea id="pdDescripcion">'+esc(o.descripcion||'')+'</textarea></div><div class="f"><label>Precio</label><input id="pdPrecio" type="number" min="0" value="'+(o.precio==null?'':Number(o.precio))+'"></div><div class="f"><label>Precio anterior</label><input id="pdAnterior" type="number" min="0" value="'+(o.precioAnterior==null?'':Number(o.precioAnterior))+'"></div><div class="f"><label>Desde</label><input id="pdDesde" type="date" value="'+fechaInput(o.fechaDesde)+'"></div><div class="f"><label>Hasta</label><input id="pdHasta" type="date" value="'+fechaInput(o.fechaHasta)+'"></div><div class="f"><label>Imagen URL opcional</label><input id="pdImagen" value="'+esc(o.imagen||'')+'"></div><div class="f"><label>Mensaje WhatsApp</label><input id="pdCta" value="'+esc(o.cta||'')+'"></div><div class="f full"><label><input id="pdActivo" type="checkbox" '+(o.activo!==false?'checked':'')+'> Destacado activo</label></div>','portalGuardarDestacado()');};
+  window.portalGuardarDestacado=function(){var c=cfg(),id=valor('pdId')||idNuevo('destacado');if(!valor('pdNombre')){toast('Ingresá el nombre del destacado','var(--rd)');return;}var o={id:id,nombre:valor('pdNombre'),activo:bool('pdActivo'),descripcion:valor('pdDescripcion'),precio:numeroOpcional(valor('pdPrecio')),precioAnterior:numeroOpcional(valor('pdAnterior')),fechaDesde:valor('pdDesde'),fechaHasta:valor('pdHasta'),orden:Number(valor('pdOrden')||0),imagen:valor('pdImagen'),cta:valor('pdCta')};var i=c.destacados.findIndex(function(x){return x.id===id;});if(i<0)c.destacados.push(o);else c.destacados[i]=o;guardar(c);};
+  window.portalAlternarOferta=function(id){var c=cfg(),o=c.ofertas.find(function(x){return x.id===id;});if(o){o.activa=o.activa===false;guardar(c);}};
+  window.portalAlternarDestacado=function(id){var c=cfg(),o=c.destacados.find(function(x){return x.id===id;});if(o){o.activo=o.activo===false;guardar(c);}};
+  window.portalGuardarCanales=function(){var c=cfg();c.whatsapp=valor('portalWhatsapp').replace(/\D/g,'');c.googleReviewUrl=valor('portalGoogle');if(c.googleReviewUrl&&!/^https:\/\//i.test(c.googleReviewUrl)){toast('El enlace de Google debe comenzar con https://','var(--rd)');return;}guardar(c);};
+  function guardar(c){window.FB.setPortalClienteConfig(c,function(err){if(err){toast(err,'var(--rd)');return;}window.PORTAL_CLIENTE_CFG=c;toast('Configuración del portal guardada');renderPortalAdmin();});}
+})();

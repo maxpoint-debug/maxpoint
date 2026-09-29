@@ -45,6 +45,7 @@ var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
 var COM_AJUSTES = []; // ajustes aprobables para períodos posteriores
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 var COTIZADOR_CFG = window.MAXPOINT_COTIZADOR ? window.MAXPOINT_COTIZADOR.config({}) : {};
+var PORTAL_CLIENTE_CFG = { whatsapp:'', googleReviewUrl:'', ofertas:[], destacados:[] };
 
 // ===================== SESION Y PERMISOS =====================
 // El perfil se completa desde Firebase Authentication + usuarios/{uid}.
@@ -75,6 +76,7 @@ var PERMISOS_BASE = {
   editar_ventas_equipos: ['administrador', 'tecnico'],
   ver_cierres_caja: ['administrador'],
   gestionar_servicios_maestros: ['administrador']
+  ,gestionar_portal_cliente: ['administrador']
 };
 
 function sesionActiva() {
