@@ -454,6 +454,8 @@
         <option>Reservado</option>
         <option>Prestado</option>
         <option>Vendido</option>
+        <option>Pendiente de devolución</option>
+        <option>Devuelto al cliente</option>
       </select>
     </div>
     <div class="f full"><label>Notas internas</label>
@@ -564,15 +566,20 @@
     <div class="fa"><button class="btn btn-g btn-sm" onclick="cotManualNuevo()">Nuevo modelo</button><button class="btn btn-p btn-sm" id="btnCotManual" onclick="cotGuardarManual()">Guardar modelo</button></div>
     <div style="border-top:1px solid var(--bd);margin:18px 0 12px"></div>
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:8px">Parámetros comerciales</div>
+    <div class="f full"><label>Configurar parámetros para</label><select id="cfgCotModelo" onchange="cotConfigElegirModelo()"></select></div>
+    <div class="mu" style="font-size:11px;margin-bottom:10px">Los parámetros propios de cada modelo se aplican a todas sus capacidades. Los demás equipos usan los parámetros generales.</div>
+    <div class="f full"><label>Origen de descuentos por fallas</label><select id="cfgCotOrigen"><option value="catalogo">Catálogo de repuestos; parámetros como respaldo</option><option value="parametros">Importes configurados aquí</option></select></div>
     <div class="fgrid">
       <div class="f"><label>Umbral batería %</label><input id="cfgCotBatUmbral" type="number" min="0" max="100"/></div>
-      <div class="f"><label>Fallback batería USD</label><input id="cfgCotBatFallback" type="number" min="0"/></div>
+      <div class="f"><label>Batería USD</label><input id="cfgCotBatFallback" type="number" min="0"/></div>
       <div class="f"><label>Estética leve USD</label><input id="cfgCotEstLeve" type="number" min="0"/></div>
       <div class="f"><label>Estética marcada USD</label><input id="cfgCotEstMarcada" type="number" min="0"/></div>
-      <div class="f"><label>Fallback pantalla USD</label><input id="cfgCotPantalla" type="number" min="0"/></div>
+      <div class="f"><label>Pantalla USD</label><input id="cfgCotPantalla" type="number" min="0"/></div>
       <div class="f"><label>Face ID USD</label><input id="cfgCotFace" type="number" min="0"/></div>
       <div class="f"><label>Cámara normal USD</label><input id="cfgCotCamNormal" type="number" min="0"/></div>
       <div class="f"><label>Cámara Pro USD</label><input id="cfgCotCamPro" type="number" min="0"/></div>
+      <div class="f"><label>Cámara frontal USD</label><input id="cfgCotCamFront" type="number" min="0"/></div>
+      <div class="f"><label>Carcasa USD</label><input id="cfgCotCarcasa" type="number" min="0"/></div>
       <div class="f"><label>Vidrio cámara USD</label><input id="cfgCotVidrio" type="number" min="0"/></div>
       <div class="f"><label>Botones USD</label><input id="cfgCotBotones" type="number" min="0"/></div>
       <div class="f"><label>Pieza desconocida USD</label><input id="cfgCotPieza" type="number" min="0"/></div>
@@ -671,7 +678,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- ==================== SCRIPTS ==================== -->
 <!--
   ORDEN IMPORTANTE:
-  1. data.js    → define DATOS_HISTORICOS y EQUIPOS_APPLE
+  1. data.js    → define EQUIPOS_APPLE; los históricos se importan desde archivo local
   2. state.js   → define REPS, RPUS, window.FB (placeholders)
   3. helpers.js → funciones puras (esc, toast, pesos, etc)
   4. render.js  → renderReps, renderRpus, renderCli, renderPag, renderBal
@@ -680,29 +687,29 @@ document.addEventListener('DOMContentLoaded', function() {
   7. firebase.js → ES module, sobreescribe window.FB y activa onSnapshot
 -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-<script src="js/data.js?v=22"></script>
-<script src="js/cotizador-core.js?v=4"></script>
+<script src="js/data.js?v=23"></script>
+<script src="js/cotizador-core.js?v=5"></script>
 <script src="js/publico-core.js?v=1"></script>
-<script src="js/state.js?v=51"></script>
+<script src="js/state.js?v=52"></script>
 <script src="js/helpers.js?v=30"></script>
 <script src="js/moneda.js?v=2"></script>
-<script src="js/render.js?v=55"></script>
-<script src="js/modals.js?v=52"></script>
+<script src="js/render.js?v=57"></script>
+<script src="js/modals.js?v=53"></script>
 <script src="js/catalogo.js?v=29"></script>
 <script src="js/comisiones.js?v=33"></script>
-<script src="js/seguimientos.js?v=24"></script>
-<script src="js/cotizador.js?v=36"></script>
+<script src="js/seguimientos.js?v=25"></script>
+<script src="js/cotizador.js?v=37"></script>
 <script src="js/pos.js?v=12"></script>
 <script src="js/caja.js?v=10"></script>
 <script src="js/servicios.js?v=11"></script>
 <script src="js/admin.js?v=4"></script>
 <script src="js/portal-admin.js?v=2"></script>
-<script src="js/ventas.js?v=36"></script>
-<script src="js/stock.js?v=28"></script>
+<script src="js/ventas.js?v=37"></script>
+<script src="js/stock.js?v=29"></script>
 <script src="js/app.js?v=37"></script>
 <script src="js/buscador.js?v=3"></script>
 <script src="js/notificaciones.js?v=1"></script>
-<script type="module" src="js/firebase.js?v=70"></script>
+<script type="module" src="js/firebase.js?v=73"></script>
 
 </body>
 </html>

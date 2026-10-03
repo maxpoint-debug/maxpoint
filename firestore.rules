@@ -1,0 +1,349 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function perfil() { return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data; }
+    function rol() {
+      let r = perfil().get('rol', '').lower();
+      return r == 'admin' ? 'administrador' : (r == 'técnico' ? 'tecnico' : r);
+    }
+    function ingresoHoy() {
+      let ingreso = timestamp.value(request.auth.token.get('auth_time',0) * 1000);
+      return (ingreso - duration.value(3,'h')).date() == (request.time - duration.value(3,'h')).date();
+    }
+    function activo() {
+      let p = request.auth != null ? perfil() : {};
+      let r = p.get('rol','').lower();
+      return request.auth != null && p.get('activo',true) == true
+        && r in ['administrador','admin','tecnico','técnico','recepcionista'] && ingresoHoy();
+    }
+    function admin() { return activo() && rol() == 'administrador'; }
+    function permiso(nombre, inicial) {
+      let p = request.auth != null ? perfil() : {};
+      let r = p.get('rol','').lower();
+      let normal = r == 'admin' ? 'administrador' : (r == 'técnico' ? 'tecnico' : r);
+      let configurado = exists(/databases/$(database)/documents/config/permisosRoles)
+        ? get(/databases/$(database)/documents/config/permisosRoles).data.get('permisos', {}).get(nombre, {}) : {};
+      return request.auth != null && p.get('activo',true) == true
+        && normal in ['administrador','tecnico','recepcionista'] && ingresoHoy()
+        && (normal == 'administrador' || configurado.get(normal, normal in inicial) == true);
+    }
+    function seguimientosValidos() {
+      let cambios=request.resource.data.diff(resource.data).affectedKeys();
+      let estados=['pendiente','contactado','enviado','interesado','compro','no_interesa'];
+      return (!cambios.hasAny(['seg_est']) || request.resource.data.seg_est in estados)
+        && (!cambios.hasAny(['seg90_est']) || request.resource.data.seg90_est in estados)
+        && (!cambios.hasAny(['seg365_est']) || request.resource.data.seg365_est in estados);
+    }
+    function cambioSolo(campos) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos); }
+    function sinCredenciales() {
+      return !request.resource.data.keys().hasAny(['clave','pin','password','contrasena','contraseña']);
+    }
+    function noCambiarCredenciales() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['clave','pin','password','contrasena','contraseña']);
+    }
+    function autor(campo) { return request.resource.data.get(campo, {}).get('uid', '') == request.auth.uid; }
+    function cajaAbierta(id) {
+      return get(/databases/$(database)/documents/config/cajaActual).data.get('estado','') == 'abierta'
+        && get(/databases/$(database)/documents/config/cajaActual).data.get('cajaId','') == id;
+    }
+    function revisionCaja(id) {
+      return cajaAbierta(id)
+        && getAfter(/databases/$(database)/documents/config/cajaActual).data.get('revisionMovimientos',0)
+          > get(/databases/$(database)/documents/config/cajaActual).data.get('revisionMovimientos',0);
+    }
+    function operativoDinero() {
+      return permiso('cobrar_reparacion',['administrador','tecnico','recepcionista'])
+        || permiso('vender_equipo',['administrador','tecnico','recepcionista'])
+        || permiso('vender_accesorios',['administrador','tecnico','recepcionista'])
+        || permiso('registrar_movimiento_caja',['administrador','tecnico','recepcionista'])
+        || permiso('gestionar_comisiones',['administrador']) || permiso('anular_venta_pos',['administrador'])
+        || permiso('eliminar_operaciones',['administrador']);
+    }
+    function sincronizarV2() {
+      return permiso('editar_reparacion',['administrador','tecnico','recepcionista'])
+        || permiso('vender_equipo',['administrador','tecnico','recepcionista'])
+        || permiso('editar_ventas_equipos',['administrador','tecnico'])
+        || permiso('gestionar_stock_equipos',['administrador','tecnico'])
+        || permiso('gestionar_seguimientos',['administrador','tecnico','recepcionista']);
+    }
+    function publicarPortal() {
+      return permiso('gestionar_portal_cliente',['administrador'])
+        || permiso('editar_reparacion',['administrador','tecnico','recepcionista'])
+        || permiso('cobrar_reparacion',['administrador','tecnico','recepcionista'])
+        || permiso('gestionar_comisiones',['administrador'])
+        || permiso('eliminar_operaciones',['administrador'])
+        || permiso('importar_reparaciones',['administrador'])
+        || permiso('gestionar_seguimientos',['administrador','tecnico','recepcionista']);
+    }
+    function pad2(n) { return (n < 10 ? '0' : '') + string(n); }
+    function fechaArgentina() {
+      let d = request.time - duration.value(3, 'h');
+      return string(d.year()) + '-' + pad2(d.month()) + '-' + pad2(d.day());
+    }
+
+    match /usuarios/{uid} {
+      allow get: if request.auth != null && (request.auth.uid == uid || activo());
+      allow list: if activo(); // Destinatarios de notificaciones internas.
+      allow create, update: if permiso('crear_usuario',['administrador'])
+        && request.resource.data.get('uid',uid) == uid
+        && request.resource.data.rol in ['administrador','tecnico','recepcionista']
+        && sinCredenciales();
+      allow delete: if false;
+    }
+    match /config/{nombre} {
+      allow get: if nombre in ['cotizador','portalCliente'] || activo();
+      allow list: if activo();
+      allow create, update: if
+        (nombre == 'permisosRoles' && admin())
+        || (nombre == 'seguimientos' && admin() && request.resource.data.beneficio is string && request.resource.data.beneficio.size() <= 500 && request.resource.data.activo is bool)
+        || (nombre == 'catalogo' && permiso('actualizar_catalogo',['administrador']))
+        || (nombre == 'comisiones' && permiso('gestionar_comisiones',['administrador']))
+        || (nombre == 'cotizador' && permiso('actualizar_cotizador',['administrador']))
+        || (nombre == 'portalCliente' && permiso('gestionar_portal_cliente',['administrador']))
+        || (nombre == 'moneda' && permiso('editar_tipo_cambio',['administrador']))
+        || (nombre == 'politicasReparacion' && permiso('gestionar_servicios_maestros',['administrador']));
+      allow delete: if false;
+    }
+    // Más específica que config: no existe ninguna autorización general a cajaActual.
+    match /config/cajaActual {
+      allow create: if permiso('operar_caja',['administrador','tecnico','recepcionista'])
+        && request.resource.data.estado == 'abierta' && autor('usuarioApertura');
+      allow update: if
+        (cambioSolo(['revisionMovimientos']) && operativoDinero() && resource.data.estado == 'abierta'
+          && request.resource.data.revisionMovimientos == resource.data.get('revisionMovimientos',0) + 1)
+        || (permiso('operar_caja',['administrador','tecnico','recepcionista'])
+          && ((resource.data.estado == 'cerrada' && request.resource.data.estado == 'abierta' && autor('usuarioApertura'))
+            || (resource.data.estado == 'abierta' && request.resource.data.estado == 'cerrada'
+              && request.resource.data.ultimoCierreId == resource.data.cajaId
+              && getAfter(/databases/$(database)/documents/cajas/$(resource.data.cajaId)).data.estado == 'cerrada')));
+    }
+    match /reparaciones/{id} {
+      allow read: if activo();
+      allow create: if sinCredenciales()
+        && (permiso('importar_reparaciones',['administrador'])
+          || (permiso('editar_reparacion',['administrador','tecnico','recepcionista'])
+            && autor('creadoPor') && request.resource.data.get('totalCobrado',0) == 0
+            && request.resource.data.get('sena','0') in ['0',0]));
+      allow update: if activo() && noCambiarCredenciales() && seguimientosValidos() && (
+        (permiso('gestionar_seguimientos',['administrador','tecnico','recepcionista']) && cambioSolo(['seg_est','_upd']))
+        || (sincronizarV2() && cambioSolo(['clienteId','equipoId','_v2']))
+        || (permiso('editar_reparacion',['administrador','tecnico','recepcionista'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'nombre','equipo','telefono','telefonoClave','modelo','falla','presupuesto','estado','resolucionFinanciera',
+            'tecnico','garantia_ref','estadoFisicoRecepcion','estadoFisicoEntrega','notas','diagnosticoTaller','gremio',
+            'resultadoServicio','controlComisionV1','cobroHistoricoNoConciliado','servicioSnapshot','es_garantia',
+            'garantiaOrigenId','comisionVerificada','comisionVerificadaPor','fechaVerificacionComision','comisionExcepcion',
+            'entregaExcepcion','incidencia','seg_est','orden','fecha','fechaEntrega','timeline','totalCobrado','saldo','pago','_upd'
+          ])
+          && (permiso('gestionar_comisiones',['administrador']) || (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['entregaExcepcion','comisionExcepcion','comisionVerificadaPor','fechaVerificacionComision'])
+            && (request.resource.data.get('comisionVerificada',false) != true || resource.data.get('comisionVerificada',false) == true)
+            && (request.resource.data.get('resolucionFinanciera','') == resource.data.get('resolucionFinanciera','')
+              || !(request.resource.data.get('resolucionFinanciera','') in ['saldo_autorizado','sin_cargo_cortesia']))))
+          && (!(resource.data.estado in ['Entregado','No aprobado']) || request.resource.data.get('tecnico','') == resource.data.get('tecnico','')
+            || permiso('reasignar_reparacion_terminada',['administrador']))
+          && (resource.data.get('controlComisionV1',false) != true || request.resource.data.get('controlComisionV1',false) == true))
+        || ((permiso('cobrar_reparacion',['administrador','tecnico','recepcionista']) || permiso('gestionar_comisiones',['administrador']))
+          && cambioSolo(['pagos','totalCobrado','saldo','pago','actualizadoEn'])
+          && revisionCaja(get(/databases/$(database)/documents/config/cajaActual).data.cajaId))
+      );
+      allow delete: if permiso('eliminar_operaciones',['administrador']);
+    }
+    match /repuestos/{id} {
+      allow read: if activo();
+      allow create: if permiso('gestionar_repuestos',['administrador','tecnico','recepcionista'])
+        && sinCredenciales() && (permiso('editar_costos',['administrador']) || !request.resource.data.keys().hasAny(['costo']));
+      allow update: if permiso('gestionar_repuestos',['administrador','tecnico','recepcionista']) && noCambiarCredenciales()
+        && (permiso('editar_costos',['administrador']) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['costo']));
+      allow delete: if permiso('eliminar_operaciones',['administrador']);
+    }
+    match /ventas/{id} {
+      allow read: if activo();
+      allow create: if sinCredenciales() && (
+        (request.resource.data.get('tipoRegistro','') == 'pos' && permiso('vender_accesorios',['administrador','tecnico','recepcionista']) && autor('usuario'))
+        || (request.resource.data.get('tipoRegistro','') == 'equipo' && permiso('vender_equipo',['administrador','tecnico','recepcionista']) && autor('usuario')
+          && (permiso('editar_costos',['administrador']) || request.resource.data.get('costo','0') in [0,'0']))
+        || (request.resource.data.get('tipoRegistro','') == '' && permiso('editar_finanzas_ventas',['administrador'])));
+      allow update: if activo() && noCambiarCredenciales() && seguimientosValidos() && (
+        (permiso('gestionar_seguimientos',['administrador','tecnico','recepcionista']) && cambioSolo(['seg90_est','seg365_est','seguimiento','_upd']))
+        || (sincronizarV2() && cambioSolo(['clienteId','equipoId','_v2']))
+        || (permiso('editar_ventas_equipos',['administrador','tecnico'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','canal','notas','fecha',
+            'garantia','seguimiento','seg90_est','seg365_est','costo','costoConfirmado','comisionExcepcion','precio','estadoVenta',
+            'parte_pago','pp_modelo','pp_imei','pp_valor','pago','_upd'
+          ])
+          && (resource.data.get('stockEquipoId','') == '' || (request.resource.data.get('imei','') == resource.data.get('imei','') && request.resource.data.get('modelo','') == resource.data.get('modelo','')))
+          && (permiso('editar_costos',['administrador']) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['costo','costoConfirmado']))
+          && (permiso('gestionar_comisiones',['administrador']) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['comisionExcepcion']))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['precio','estadoVenta','parte_pago','pp_modelo','pp_imei','pp_valor','pago'])
+            || (resource.data.get('cajaRegistrada',false) == false && resource.data.get('schemaVersion',0) < 2 && permiso('editar_finanzas_ventas',['administrador']))))
+        || (resource.data.get('estadoVenta','') == 'Reservada' && request.resource.data.get('estadoVenta','') == 'Cobrada'
+          && permiso('vender_equipo',['administrador','tecnico','recepcionista'])
+          && cambioSolo(['estadoVenta','imei','pagos','pago','totalPagadoUSD','saldoUSD','cajaRegistrada','cotizacionBlue','regalos','completadaEn','completadaPor','actualizadoEn','fecha','fechaReserva','stockEquipoId'])
+          && autor('completadaPor') && request.resource.data.saldoUSD == 0)
+        || (permiso('eliminar_operaciones',['administrador']) && request.resource.data.get('estadoVenta','') == 'Anulada'
+          && cambioSolo(['estadoVenta','anulacion','actualizadoEn','cajaRevertida','pagos']))
+        || (permiso('anular_venta_pos',['administrador']) && request.resource.data.get('estado','') == 'anulada'
+          && cambioSolo(['estado','anulacion','actualizadoEn']))
+      );
+      allow delete: if permiso('eliminar_operaciones',['administrador']) && resource.data.get('cajaRegistrada',false) != true && resource.data.get('tipoRegistro','') != 'pos' && resource.data.get('schemaVersion',0) < 2;
+    }
+    match /stock/{id} {
+      allow read: if activo();
+      allow create: if sinCredenciales() && (
+        (permiso('gestionar_stock_equipos',['administrador','tecnico']) && (permiso('editar_costos',['administrador']) || !request.resource.data.keys().hasAny(['precio_costo','precio_venta'])))
+        || (permiso('vender_equipo',['administrador','tecnico','recepcionista']) && request.resource.data.get('ventaOrigenId','') != ''
+          && getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaOrigenId)).data.pp_modelo == request.resource.data.modelo
+          && getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaOrigenId)).data.creadoEn == request.time
+          && getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaOrigenId)).data.pp_valor == request.resource.data.precio_costo));
+      allow update: if noCambiarCredenciales() && (
+        (permiso('gestionar_stock_equipos',['administrador','tecnico'])
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ventaActivaId','ventaOrigenId','partePagoAnulado'])
+          && (resource.data.get('ventaActivaId','') == '' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['estado','imei','modelo']))
+          && (resource.data.get('partePagoAnulado',false) == false || request.resource.data.estado in ['Pendiente de devolución','Devuelto al cliente'])
+          && (permiso('editar_costos',['administrador']) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['precio_costo','precio_venta'])))
+        || (permiso('vender_equipo',['administrador','tecnico','recepcionista']) && autor('actualizadoPor')
+          && cambioSolo(['estado','ventaActivaId','actualizadoPor','actualizadoEn'])
+          && (resource.data.estado == 'Disponible' || (resource.data.estado == 'Reservado' && resource.data.get('ventaActivaId','') == request.resource.data.ventaActivaId))
+          && (resource.data.get('ventaActivaId','') == '' || resource.data.ventaActivaId == request.resource.data.ventaActivaId)
+          && request.resource.data.ventaActivaId != ''
+          && getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaActivaId)).data.stockEquipoId == id
+          && getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaActivaId)).data.imei == resource.data.imei
+          && ((request.resource.data.estado == 'Reservado' && getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaActivaId)).data.estadoVenta == 'Reservada')
+            || (request.resource.data.estado == 'Vendido' && getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaActivaId)).data.estadoVenta == 'Cobrada'))
+          && (getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaActivaId)).data.get('creadoEn',null) == request.time
+            || getAfter(/databases/$(database)/documents/ventas/$(request.resource.data.ventaActivaId)).data.get('completadaEn',null) == request.time))
+        || (permiso('eliminar_operaciones',['administrador']) && autor('actualizadoPor')
+          && cambioSolo(['estado','ventaActivaId','partePagoAnulado','actualizadoPor','actualizadoEn'])
+          && ((resource.data.get('ventaActivaId','') != '' && request.resource.data.get('ventaActivaId','') == ''
+              && request.resource.data.estado in ['Disponible','A revisar']
+              && getAfter(/databases/$(database)/documents/ventas/$(resource.data.ventaActivaId)).data.estadoVenta == 'Anulada')
+            || (resource.data.get('ventaOrigenId','') != '' && request.resource.data.estado == 'Pendiente de devolución'
+              && request.resource.data.partePagoAnulado == true
+              && getAfter(/databases/$(database)/documents/ventas/$(resource.data.ventaOrigenId)).data.estadoVenta == 'Anulada')))
+      );
+      allow delete: if permiso('eliminar_operaciones',['administrador']) && resource.data.get('ventaActivaId','') == '' && resource.data.get('ventaOrigenId','') == '';
+    }
+    match /productos/{id} {
+      allow read: if activo();
+      allow create: if permiso('gestionar_productos',['administrador']) && sinCredenciales()
+        && (permiso('editar_costos',['administrador']) || request.resource.data.get('costo',0) == 0);
+      allow update: if activo() && (
+        (permiso('gestionar_productos',['administrador']) && noCambiarCredenciales()
+          && (permiso('editar_costos',['administrador']) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['costo'])))
+        || (cambioSolo(['stockActual','actualizadoPor','actualizadoEn']) && request.resource.data.stockActual >= 0 && autor('actualizadoPor')
+          && (permiso('ajustar_stock_pos',['administrador','tecnico']) || permiso('vender_accesorios',['administrador','tecnico','recepcionista'])
+            || permiso('vender_equipo',['administrador','tecnico','recepcionista']) || permiso('anular_venta_pos',['administrador']) || permiso('eliminar_operaciones',['administrador'])))
+      );
+      allow delete: if false;
+    }
+    match /pagos/{id} {
+      allow read: if activo();
+      allow create: if activo() && autor('usuario') && request.resource.data.monto > 0 && (
+        (request.resource.data.get('origenTipo','') == 'reparacion' && permiso('cobrar_reparacion',['administrador','tecnico','recepcionista']))
+        || (request.resource.data.get('origenTipo','') == 'venta_equipo' && permiso('vender_equipo',['administrador','tecnico','recepcionista']))
+        || (request.resource.data.get('origenTipo','') == '' && permiso('vender_accesorios',['administrador','tecnico','recepcionista'])));
+      allow update: if request.resource.data.estado == 'revertido' && autor('revertidoPor')
+        && cambioSolo(['estado','revertidoEn','revertidoPor','motivoReversion','reversionMovimientoId'])
+        && (permiso('gestionar_comisiones',['administrador']) || permiso('anular_venta_pos',['administrador']) || permiso('eliminar_operaciones',['administrador']));
+      allow delete: if false;
+    }
+    match /movimientosFinancieros/{id} {
+      allow read: if activo();
+      allow create: if activo() && autor('usuario') && request.resource.data.monto is number && request.resource.data.moneda in ['ARS','USD']
+        && revisionCaja(request.resource.data.cajaId) && (
+          (request.resource.data.tipo == 'ingreso_reparacion' && permiso('cobrar_reparacion',['administrador','tecnico','recepcionista']))
+          || (request.resource.data.tipo == 'ingreso_venta_equipo' && permiso('vender_equipo',['administrador','tecnico','recepcionista']))
+          || (request.resource.data.tipo == 'ingreso_venta' && permiso('vender_accesorios',['administrador','tecnico','recepcionista']))
+          || (request.resource.data.tipo in ['ingreso_manual','egreso_manual'] && permiso('registrar_movimiento_caja',['administrador','tecnico','recepcionista']))
+          || (request.resource.data.tipo == 'reversion_cobro_reparacion' && permiso('gestionar_comisiones',['administrador']))
+          || (request.resource.data.tipo == 'reversion_venta_equipo' && permiso('eliminar_operaciones',['administrador']))
+          || (request.resource.data.tipo == 'reversion_venta' && permiso('anular_venta_pos',['administrador']))
+        );
+      allow update, delete: if false;
+    }
+    match /movimientosStock/{id} {
+      allow read: if activo();
+      allow create: if activo() && autor('usuario') && (
+        (request.resource.data.tipo == 'stock_inicial' && permiso('gestionar_productos',['administrador']))
+        || (request.resource.data.get('referenciaTipo','') == 'ajuste' && permiso('ajustar_stock_pos',['administrador','tecnico']))
+        || (request.resource.data.tipo == 'venta' && permiso('vender_accesorios',['administrador','tecnico','recepcionista']))
+        || (request.resource.data.tipo == 'anulacion_venta' && permiso('anular_venta_pos',['administrador']))
+        || (request.resource.data.tipo == 'regalo_venta_equipo' && permiso('vender_equipo',['administrador','tecnico','recepcionista']))
+        || (request.resource.data.tipo == 'reversion_regalo_venta_equipo' && permiso('eliminar_operaciones',['administrador'])));
+      allow update, delete: if false;
+    }
+    match /cajas/{id} {
+      allow read: if activo();
+      allow create: if permiso('operar_caja',['administrador','tecnico','recepcionista']) && autor('usuarioApertura') && request.resource.data.estado == 'abierta' && request.resource.data.efectivoInicial >= 0;
+      allow update: if permiso('operar_caja',['administrador','tecnico','recepcionista']) && resource.data.estado == 'abierta'
+        && request.resource.data.estado == 'cerrada' && autor('usuarioCierre') && cambioSolo([
+          'estado','cierreFechaHora','usuarioCierre','ingresosEfectivo','egresosEfectivo','efectivoEsperado','efectivoContado','diferencia',
+          'totalesPorMedio','totalesPorCuenta','totalIngresos','totalEgresos','cantidadMovimientos','observacionCierre','cerradoEn'])
+        && request.resource.data.efectivoContado >= 0
+        && request.resource.data.efectivoEsperado == resource.data.efectivoInicial + request.resource.data.ingresosEfectivo - request.resource.data.egresosEfectivo
+        && request.resource.data.diferencia == request.resource.data.efectivoContado - request.resource.data.efectivoEsperado;
+      allow delete: if false;
+    }
+    match /contadores/ventas {
+      allow read: if activo();
+      allow create, update: if permiso('vender_accesorios',['administrador','tecnico','recepcionista']);
+      allow delete: if false;
+    }
+    match /catalogo/{id} { allow read: if activo(); allow write: if permiso('actualizar_catalogo',['administrador']); }
+    match /usados/{id} { allow read: if activo(); allow write: if permiso('actualizar_cotizador',['administrador']); }
+    match /serviciosMaestros/{id} { allow read: if activo(); allow write: if permiso('gestionar_servicios_maestros',['administrador']); }
+    match /clientes/{id} { allow read: if activo(); allow create, update: if sincronizarV2() && sinCredenciales(); allow delete: if false; }
+    match /equipos/{id} { allow read: if activo(); allow create, update: if sincronizarV2() && sinCredenciales(); allow delete: if false; }
+    match /movimientos/{id} { allow read: if activo(); allow create: if sincronizarV2(); allow update, delete: if false; }
+    match /auditoria/{id} { allow read: if activo(); allow create: if activo() && autor('actor'); allow update, delete: if false; }
+    match /tiposCambio/{id} { allow read: if activo(); allow create: if permiso('editar_tipo_cambio',['administrador']) && autor('usuario'); allow update, delete: if false; }
+    match /liquidacionesComisiones/{id} { allow read: if activo(); allow create, update: if permiso('gestionar_comisiones',['administrador']); allow delete: if false; }
+    match /ajustesComisiones/{id} { allow read: if activo(); allow create, update: if permiso('gestionar_comisiones',['administrador']); allow delete: if false; }
+    match /notificaciones/{id} {
+      allow read: if activo(); // El emisor consulta existencia para evitar duplicados.
+      allow create: if activo() && autor('creadaPor');
+      allow update: if activo() && resource.data.usuarioDestinoUid == request.auth.uid && cambioSolo(['leida','leidaEn']);
+      allow delete: if false;
+    }
+    match /sesionesDiarias/{id} {
+      allow get: if admin() || (activo() && id == request.auth.uid + '_' + fechaArgentina());
+      allow list: if admin();
+      allow create: if activo() && id == request.auth.uid + '_' + fechaArgentina()
+        && request.resource.data.keys().hasOnly(['uid','nombre','rol','fecha','primerIngreso'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.fecha == fechaArgentina()
+        && request.resource.data.nombre == perfil().nombre && request.resource.data.rol == perfil().rol
+        && request.resource.data.primerIngreso == request.time;
+      allow update, delete: if false;
+    }
+    // Acceso por celular + orden: clave SHA-256 de ambos datos. No permite enumerar clientes.
+    match /portalAccesos/{clave} {
+      allow get: if clave.matches('^[a-f0-9]{64}$');
+      allow list: if admin();
+      allow create, update: if publicarPortal() && request.resource.data.keys().hasOnly(['activo','actualizadoEn'])
+        && request.resource.data.activo is bool && request.resource.data.actualizadoEn == request.time;
+      allow delete: if false;
+      match /reparaciones/{id} {
+        allow read: if activo() || (get(/databases/$(database)/documents/portalAccesos/$(clave)).data.activo == true && resource.data.visible == true);
+        allow create, update: if publicarPortal() && request.resource.data.keys().hasOnly([
+          'portalVersion','visible','nombre','orden','equipo','capacidad','fecha','estado','falla','diagnosticoTaller',
+          'presupuesto','totalCobrado','sinCargo','es_garantia','actualizadoEn']) && request.resource.data.visible is bool
+          && request.resource.data.actualizadoEn == request.time;
+        allow delete: if false;
+      }
+    }
+    match /portalIndices/{id} {
+      allow read: if activo();
+      allow create, update: if publicarPortal() && request.resource.data.keys().hasOnly(['telefonoClave','accesoId','actualizadoEn']);
+      allow delete: if false;
+    }
+    match /cotizadorPublico/{id} {
+      allow read: if activo() || resource.data.activo == true;
+      allow create, update: if (permiso('actualizar_catalogo',['administrador']) || permiso('actualizar_cotizador',['administrador']))
+        && request.resource.data.keys().hasOnly(['modelo','modeloClave','precio_usd','descuentos','activo','actualizadoEn']);
+      allow delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -219,7 +219,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
       <div class="bat-val" id="batVal">100%</div>
       <input type="range" id="batSlider" min="50" max="100" value="100" oninput="actualizarBat(this.value)">
       <div class="bat-labels"><span>50%</span><span>75%</span><span>100%</span></div>
-      <div class="bat-warn" id="batWarn">⚠️ Batería por debajo del umbral configurado — se descuenta el costo de reemplazo</div>
+      <div class="bat-warn" id="batWarn">⚠️ Batería por debajo del umbral configurado — se aplica el descuento correspondiente</div>
     </div>
   </div>
 
@@ -441,7 +441,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 
 <div class="footer">MaxPoint — Av 17 y 34, Mercedes, Bs As · (2324) 522082</div>
 
-<script src="js/cotizador-core.js?v=4"></script>
+<script src="js/cotizador-core.js?v=5"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getFirestore, collection, onSnapshot, doc, query, where }
@@ -591,7 +591,7 @@ document.addEventListener('click', e => {
 // ── Batería ───────────────────────────────────────────
 window.actualizarBat = function(v) {
   document.getElementById('batVal').textContent = v + '%';
-  document.getElementById('batWarn').style.display = v < COT_CFG.bateria.umbral ? 'block' : 'none';
+  document.getElementById('batWarn').style.display = v < window.MAXPOINT_COTIZADOR.configModelo(COT_CFG,equipoSel ? equipoSel.modelo : '').bateria.umbral ? 'block' : 'none';
 };
 
 // ── Selects visuales ──────────────────────────────────
@@ -700,7 +700,10 @@ window.enviarWA = function() {
 
 // ── Reiniciar ─────────────────────────────────────────
 window.reiniciar = function() {
-  equipoSel = null; pantalla = 'ok'; estetica = 'ok'; interes = 'usado'; extras = [];
+  equipoSel = null; pantalla = 'ok'; estetica = 'ok'; interes = 'usado';
+  window._cotResult = null; acResults = []; acIdx = -1;
+  document.getElementById('equipoDrop').classList.remove('open');
+  document.getElementById('piezaDesc').value = '';
   document.getElementById('equipoQ').value = '';
   document.getElementById('equipoQ').classList.remove('sel');
   document.getElementById('equipoSelCard').style.display = 'none';
