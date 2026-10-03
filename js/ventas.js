@@ -5,6 +5,7 @@
 function openNewVenta(prefillCosto) {
   if (!puede('vender_equipo')) { toast('No tenés permiso para vender equipos','var(--rd)'); return; }
   _ventaId = null;
+  ['vImei','vMod'].forEach(function(id){el(id).disabled=false;});
   _completandoReserva=false; _reservaBasePagadaUSD=0; _regalosVentaBloqueados=false;
   el('mVenT').textContent = 'Nueva venta';
   ['vNom','vTel','vDni','vDir','vEmail','vMod','vCap','vCol','vImei','vPrecio','vCosto','vNot'].forEach(function(id) {
@@ -127,7 +128,7 @@ function saveVenta() {
     if(pagosReserva.some(function(p){return !p.medio||!p.cuenta||(p.moneda==='ARS'&&!(cotReserva>0));})||Math.abs(nuevoTotal-saldoReserva)>0.01){btn.disabled=false;btn.textContent='Completar reserva';toast('Los pagos deben cubrir exactamente el saldo de la reserva','var(--rd)');return;}
     FB.completarReservaEquipo(_ventaId,{imei:imei,pagos:pagosReserva,cotizacionBlue:cotReserva,regalos:regalosVentaDatos()},function(err){btn.disabled=false;btn.textContent='Completar reserva';if(err){toast('Error: '+err,'var(--rd)');return;}closeM('mVen');toast('Reserva completada y venta registrada');});return;
   }
-  if (anterior && anterior.cajaRegistrada) {
+  if (anterior && (anterior.cajaRegistrada || Number(anterior.schemaVersion||0)>=2)) {
     d.precio=anterior.precio; d.estadoVenta=anterior.estadoVenta; d.cotizacionBlue=anterior.cotizacionBlue;
     d.pago=anterior.pago; d.parte_pago=anterior.parte_pago; d.pp_modelo=anterior.pp_modelo;
     d.pp_imei=anterior.pp_imei; d.pp_valor=anterior.pp_valor;
@@ -198,6 +199,7 @@ function openEditVenta(id, completarReserva) {
   }
   el('btnSaveVenta').disabled = false;
   el('btnSaveVenta').textContent = 'Guardar venta';
+  ['vImei','vMod'].forEach(function(id){el(id).disabled=!!v.stockEquipoId;});
   var integrada = !!v.cajaRegistrada || Number(v.schemaVersion||0)>=2, anulada = v.estadoVenta === 'Anulada';
   ['vPrecio','vPartePago','vPpMod','vPpImei','vPpValor'].forEach(function(campo){if(el(campo))el(campo).disabled=integrada;});
   el('vEstadoVenta').disabled=integrada||anulada;
@@ -213,7 +215,7 @@ function togglePartePago() {
   actualizarResumenPagosVentaEquipo();
 }
 
-function openCompletarReserva(id){var v=VENTAS.find(function(x){return x.id===id;});if(!v||v.estadoVenta!=='Reservada')return;if(!puede('vender_equipo')){toast('Sin permiso para completar reservas','var(--rd)');return;}openEditVenta(id,true);_reservaBasePagadaUSD=Number(v.totalPagadoUSD||0);el('mVenT').textContent='Completar reserva';el('vImei').disabled=false;el('vPagosCajaWrap').style.display='';el('vCajaRegistradaAviso').style.display='none';if(el('vAgregarRegalo'))el('vAgregarRegalo').style.display='';_pagosVentaEquipo=[{medio:'',cuenta:'',moneda:'USD',monto:''}];el('btnSaveVenta').textContent='Completar reserva';renderPagosVentaEquipo();renderRegalosVenta();}
+function openCompletarReserva(id){var v=VENTAS.find(function(x){return x.id===id;});if(!v||v.estadoVenta!=='Reservada')return;if(!puede('vender_equipo')){toast('Sin permiso para completar reservas','var(--rd)');return;}openEditVenta(id,true);_reservaBasePagadaUSD=Number(v.totalPagadoUSD||0);el('mVenT').textContent='Completar reserva';el('vImei').disabled=!!v.stockEquipoId;el('vPagosCajaWrap').style.display='';el('vCajaRegistradaAviso').style.display='none';if(el('vAgregarRegalo'))el('vAgregarRegalo').style.display='';_pagosVentaEquipo=[{medio:'',cuenta:'',moneda:'USD',monto:''}];el('btnSaveVenta').textContent='Completar reserva';renderPagosVentaEquipo();renderRegalosVenta();}
 
 function anularVentaEquipo(id) {
   if (!puede('eliminar_operaciones')) { toast('Solo administración puede anular ventas','var(--rd)'); return; }

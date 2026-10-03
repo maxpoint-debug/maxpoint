@@ -544,7 +544,7 @@ function renderCentroControl() {
   var costoVentas = ventasPeriodo.reduce(function(s, v) { return s + Number(v.costo || 0); }, 0);
   var margenVentas = ingresoVentas - costoVentas;
   var margenPct = ingresoVentas ? Math.round(margenVentas / ingresoVentas * 100) : null;
-  var stockActivo = stock.filter(function(s) { return s.estado !== 'Vendido'; });
+  var stockActivo = stock.filter(function(s) { return s.estado !== 'Vendido' && s.estado !== 'Devuelto al cliente' && !s.partePagoAnulado; });
   var stockCosto = stockActivo.reduce(function(s, i) { return s + Number(i.precio_costo || 0); }, 0);
   var stockVenta = stockActivo.reduce(function(s, i) { return s + Number(i.precio_venta || 0); }, 0);
 
@@ -1138,7 +1138,7 @@ function renderVen() {
 // ── RENDER STOCK ─────────────────────────────────────
 function renderStock() {
   var cnt = el('cnt'); cnt.innerHTML = '';
-  var estados = ['A revisar','En reparacion','Disponible','Reservado','Prestado','Vendido'];
+  var estados = ['A revisar','En reparacion','Disponible','Reservado','Prestado','Vendido','Pendiente de devolución','Devuelto al cliente'];
   var colorMap = { 'A revisar':'var(--pu)', 'En reparacion':'var(--acc)', 'Disponible':'var(--gr)',
     'Reservado':'var(--bl)', 'Prestado':'var(--or)', 'Vendido':'var(--mu)' };
   var disp = STOCK.filter(function(s){return s.estado==='Disponible';}).length;
@@ -1168,6 +1168,7 @@ function renderStock() {
         + '<div style="flex:1"><div style="font-size:13px;font-weight:800">' + esc(label) + '</div>'
         + (s.detalles ? '<div style="font-size:11px;color:var(--mu);margin-top:2px">' + esc(s.detalles) + '</div>' : '')
         + (s.imei ? '<div style="font-size:10px;color:var(--mu);font-family:monospace">IMEI: ' + esc(s.imei) + '</div>' : '')
+        + (s.partePagoAnulado ? '<div style="font-size:11px;color:var(--or);margin-top:4px">Venta origen anulada · confirmar devolución al cliente</div>' : '')
         + '</div>'
         + '<div style="text-align:right;flex-shrink:0">'
         + (s.precio_venta ? '<div style="font-size:15px;font-weight:900;color:var(--gr)">' + pesos(s.precio_venta) + '</div>' : '')
@@ -1175,7 +1176,7 @@ function renderStock() {
         + (margen !== null ? '<div style="font-size:10px;font-weight:700;color:' + (margen>=0?'var(--gr)':'var(--rd)') + '">Margen: ' + pesos(margen) + '</div>' : '')
         + '</div></div>'
         + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
-        + (puede('gestionar_stock_equipos') ? '<select class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
+        + (puede('gestionar_stock_equipos') ? '<select '+(s.ventaActivaId?'disabled ':'')+'class="rpu-estado-sel" data-sid="' + s.id + '" onchange="cambiarEstadoStock(this.dataset.sid, this.value)" style="color:' + (colorMap[s.estado]||'var(--mu)') + '">'
         + estados.map(function(e) { return '<option' + (e===s.estado?' selected':'') + '>' + e + '</option>'; }).join('')
         + '</select>' : badgeStock(s.estado))
         + (puede('gestionar_stock_equipos') ? '<button class="btn btn-g btn-sm" data-sid="' + s.id + '" onclick="openEditStock(this.dataset.sid)">Editar</button>' : '')
@@ -1237,9 +1238,12 @@ function renderSeg() {
   sc.innerHTML = '<div class="sc"><div class="scl">Urgentes</div><div class="scv cr">' + pendAlta + '</div></div>'
     + '<div class="sc"><div class="scl">Proximos</div><div class="scv co">' + pendProx + '</div></div>'
     + '<div class="sc"><div class="scl">Total</div><div class="scv cb">' + lista.length + '</div></div>'
-    + '<div class="sc" onclick="segEditarDescuento()" style="cursor:pointer"><div class="scl">Descuento</div><div class="scv cg">' + SEG_DESC + '%</div></div>';
+    + '<div class="sc" '+(esAdministrador()?'onclick="segEditarDescuento()" style="cursor:pointer"':'')+'><div class="scl">Beneficio</div><div class="scv cg" style="font-size:16px">' + (segConfig().activo&&segConfig().beneficio?'Configurado':'Sin oferta') + '</div></div>';
   cnt.appendChild(sc);
 
+  var aviso=document.createElement('div');aviso.className='mu';aviso.style.cssText='font-size:12px;margin:10px 0';aviso.textContent='Abrir WhatsApp prepara el mensaje. Confirmá Contactado después de enviarlo.'+(segConfig().activo&&segConfig().beneficio?' Beneficio: '+segConfig().beneficio:'');cnt.appendChild(aviso);
+  var sinFecha=(window.REPS||[]).filter(function(r){return r.nombre&&r.telefono&&segReparacionEntregada(r)&&!segFechaEntrega(r);}).length;
+  if(sinFecha){var nota=document.createElement('div');nota.className='mu';nota.textContent=sinFecha+' reparaciones entregadas sin fecha de entrega comprobable: no se programó su seguimiento.';cnt.appendChild(nota);}
   // Seguimientos pendientes
   if (lista.filter(function(s){return s.estado==='pendiente';}).length) {
     var secP = document.createElement('div'); secP.style.cssText = 'margin-top:16px';

@@ -85,14 +85,14 @@ function escribirSesionDiaria(registro) {
 }
 function vencerSesionDiaria() {
   if (cerrandoPorVencimiento) return;
-  cerrandoPorVencimiento = true; SESION.perfil = null; authUiLogin();
+  cerrandoPorVencimiento = true; escribirSesionDiaria(null); SESION.perfil = null; authUiLogin();
   signOut(auth).finally(function() { cerrandoPorVencimiento = false; authMensaje('La sesión venció. Volvé a ingresar.'); });
 }
 window.validarVigenciaSesion = function() {
   return !!auth.currentUser && registroSesionVigente(leerSesionDiaria(),auth.currentUser.uid,Date.now());
 };
 function revisarSesionDiaria(actividad) {
-  if (!auth.currentUser || !sesionActiva() || cerrandoPorVencimiento) return;
+  if (!auth.currentUser || !SESION.usuario || !SESION.perfil || cerrandoPorVencimiento) return;
   const ahora = Date.now(), registro = leerSesionDiaria();
   if (!registroSesionVigente(registro,auth.currentUser.uid,ahora)) { vencerSesionDiaria(); return; }
   if (actividad) { registro.actividad = ahora; escribirSesionDiaria(registro); }
@@ -264,7 +264,7 @@ function iniciarPermisosRoles() {
   PERMISOS_ROLES={}; PERMISOS_ESTADO="pendiente";
   detenerPermisosRoles=onSnapshot(doc(db,"config","permisosRoles"),function(snap) {
     PERMISOS_ROLES=(snap.data() || {}).permisos || {}; PERMISOS_ESTADO="listo";
-    if(sesionActiva()) { authUiSesion(); render(); }
+    if(sesionActiva()) { authUiSesion(); render(); reanudarPortalPendiente(); }
   },function(err) {
     PERMISOS_ROLES={}; PERMISOS_ESTADO="error";
     if(sesionActiva()) { authUiSesion(); render(); toast("No se pudieron cargar los permisos: "+err.message,"var(--rd)"); }
@@ -288,6 +288,7 @@ onAuthStateChanged(auth, async function(user) {
     const perfil = (await getDoc(doc(cUsr, user.uid))).data();
     if (revisionActual !== revisionSesion || !auth.currentUser || auth.currentUser.uid !== user.uid) return;
     if (!perfil || perfil.activo === false) throw new Error(!perfil ? 'Tu cuenta no tiene un perfil habilitado.' : 'Tu usuario está inactivo.');
+    if (!['administrador','admin','tecnico','técnico','recepcionista'].includes(String(perfil.rol || '').toLowerCase())) throw new Error('Tu cuenta no tiene un rol habilitado.');
     const ahora = Date.now();
     if (ingresoExplicito) {
       ingresoExplicito = false;
@@ -561,6 +562,7 @@ function datosRepuestoPermitidos(d) {
 function validarCambioReparacion(previo, datos) {
   const permitidos=['nombre','equipo','telefono','modelo','falla','presupuesto','estado','resolucionFinanciera','tecnico','garantia_ref','estadoFisicoRecepcion','estadoFisicoEntrega','notas','diagnosticoTaller','gremio','resultadoServicio','controlComisionV1','cobroHistoricoNoConciliado','servicioSnapshot','es_garantia','garantiaOrigenId','comisionVerificada','comisionVerificadaPor','fechaVerificacionComision','comisionExcepcion','entregaExcepcion','incidencia','seg_est','orden','fecha','timeline','sena','pagos','creadoPor'];
   const d=camposElegidos(sinCredencialesCliente(datos),permitidos), final=Object.assign({},previo,d);
+  if(Object.prototype.hasOwnProperty.call(d,'seg_est') && !['pendiente','contactado','enviado','interesado','compro','no_interesa'].includes(d.seg_est))throw new Error('Estado de seguimiento inválido');
   if(Object.prototype.hasOwnProperty.call(d,'tecnico') && d.tecnico!==previo.tecnico && ['Entregado','No aprobado'].includes(previo.estado) && !puede('reasignar_reparacion_terminada'))throw new Error('Sin permiso para reasignar una reparación terminada');
   ['pagos','sena','creadoPor'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k) && JSON.stringify(d[k])!==JSON.stringify(previo[k]) && !(k==='sena' && Number(d[k]||0)===Number(previo[k]||0)))throw new Error('Los cobros y la autoría se conservan; usá Registrar pago o Revertir cobro');});
   if(d.controlComisionV1===false && previo.controlComisionV1===true)throw new Error('No se puede desactivar el control operativo');
@@ -577,6 +579,7 @@ function validarCambioReparacion(previo, datos) {
     if(!final.resultadoServicio || final.resultadoServicio==='Pendiente de cierre' || !String(final.estadoFisicoEntrega||'').trim())throw new Error('Completá resultado y estado físico final antes de entregar');
     if(!reparacionPuedeEntregarseFinancieramente(final))throw new Error('Registrá el cobro o autorizá la entrega con saldo');
   }
+  if(d.estado==='Entregado' && previo.estado!=='Entregado') {d.fechaEntrega=fechaDiaSesion(Date.now());d.seg_est='pendiente';}
   Object.assign(d,resumenFinancieroReparacion(final));
   if(d.estado && d.estado!==previo.estado)d.timeline=(previo.timeline||[]).concat([{estado:d.estado,fecha:hoy(),hora:horaActual(),usuario:usuarioActualRegistro()}]);
   else delete d.timeline;
@@ -602,6 +605,7 @@ window.FB.upd = async (id, d, cb) => {
     let guardado;
     await runTransaction(db,async tx=>{
       const ref=doc(cR,id),snap=await tx.get(ref);if(!snap.exists())throw new Error('Orden no encontrada');
+      if(soloSeguimiento && !['pendiente','contactado','enviado','interesado','compro','no_interesa'].includes(d.seg_est))throw new Error('Estado de seguimiento inválido');
       guardado=soloSeguimiento ? camposElegidos(d,['seg_est']) : conTelefonoClave(validarCambioReparacion(snap.data(),d));
       tx.update(ref,Object.assign({},guardado,{_upd:serverTimestamp()}));
       tx.set(doc(cAud),{entidad:'reparacion',entidadId:id,accion:'actualizado',actor:usuarioActualRegistro(),cambios:cambiosAuditables(snap.data(),guardado),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
@@ -613,6 +617,13 @@ window.FB.del = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo adm
 window.FB.addR = (d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } agregarAuditable('repuestos', 'repuesto', datosRepuestoPermitidos(d)).then(() => cb(null)).catch(e => cb(e.message)); };
 window.FB.updR = (id, d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } actualizarAuditable('repuestos', 'repuesto', id, datosRepuestoPermitidos(d)).then(() => cb(null)).catch(e => cb(e.message)); };
 window.FB.delR = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('repuestos', 'repuesto', id).then(() => cb(null)).catch(e => cb(e.message)); };
+
+window.FB.setSeguimientosConfig = (d, cb) => {
+  if(!esAdministrador()){cb('Solo administración puede configurar el beneficio');return;}
+  const beneficio=String(d.beneficio||'').trim();
+  if(beneficio.length>500){cb('El beneficio no puede superar 500 caracteres');return;}
+  actualizarAuditable('config','config_seguimientos','seguimientos',{activo:d.activo===true && !!beneficio,beneficio:beneficio}).then(()=>cb(null)).catch(e=>cb(e.message));
+};
 
 // --- Catalogo y config ---
 window.FB.setConfig = (d, cb) => { if(!puede('actualizar_catalogo')) { cb('Sin permiso para configurar catálogo'); return; } actualizarAuditable('config', 'config_catalogo', 'catalogo', d).then(() => cb(null)).catch(e => cb(e.message)); };
@@ -663,6 +674,8 @@ let listenersInternos=[];
 function detenerListenersInternos() {
   listenersInternos.forEach(detener=>detener()); listenersInternos=[];
   ['REPS','RPUS','VENTAS','STOCK','AUDITORIA','PRODUCTOS_POS','MOVIMIENTOS_STOCK','MOVIMIENTOS_FINANCIEROS_POS','MOVIMIENTOS_FINANCIEROS_ADMIN','PAGOS_ADMIN','CIERRES_CAJA','SERVICIOS_MAESTROS','COM_LIQUIDACIONES','COM_AJUSTES'].forEach(k=>{window[k]=[];});
+  window.DATOS_HISTORICOS=[];
+  window.SEGUIMIENTOS_CFG={activo:false,beneficio:''};
   window.CAJA_ACTUAL=null;window.MOVIMIENTOS_CAJA_ACTUAL=[];window.MOVIMIENTOS_CAJA_ID=null;
 }
 function iniciarListenersInternos() {
@@ -702,7 +715,7 @@ onSnapshot(query(cRp, orderBy('_ts','asc')), (snap) => {
 // --- Listener ventas ---
 onSnapshot(query(cVen, orderBy('fecha','desc')), (snap) => {
   window.VENTAS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  if (window.VIEW === 'ven' || window.VIEW === 'ops') render();
+  if (['ven','ops','seg','equipoAdmin','admin','bal'].includes(window.VIEW)) render();
   if (typeof actualizarBadgeSeg === 'function') actualizarBadgeSeg();
 }, () => {});
 
@@ -732,6 +745,10 @@ onSnapshot(dCom, (snap) => {
 onSnapshot(dCfg, (snap) => {
   if (snap.exists() && typeof catLoadConfig === 'function') catLoadConfig(snap.data());
 }, () => {});
+onSnapshot(doc(db,'config','seguimientos'),snap=>{
+  window.SEGUIMIENTOS_CFG=snap.exists()?{activo:snap.data().activo===true,beneficio:String(snap.data().beneficio||'')}:{activo:false,beneficio:''};
+  if(window.VIEW==='seg')render();
+},err=>{window.SEGUIMIENTOS_CFG={activo:false,beneficio:''};if(window.VIEW==='seg'){render();toast('No se pudo cargar el beneficio: '+err.message,'var(--rd)');}});
 onSnapshot(dPortalCliente, (snap) => {
   window.PORTAL_CLIENTE_CFG = snap.exists() ? Object.assign({ whatsapp:'', googleReviewUrl:'', ofertas:[], destacados:[] }, snap.data()) : { whatsapp:'', googleReviewUrl:'', ofertas:[], destacados:[] };
   if (window.VIEW === 'portal' && typeof renderPortalAdmin === 'function') renderPortalAdmin();
@@ -943,39 +960,74 @@ window.FB.actualizarAjusteComision = (id, d, cb) => {
   actualizarAuditable('ajustesComisiones', 'ajuste_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
 };
 
+// Validaciones compartidas del circuito de equipos.
+function pagosVentaEquipo(datos) {
+  return (Array.isArray(datos)?datos:[]).map(p=>{
+    const monto=Number(p.monto),cotizacion=p.moneda==='ARS'?Number(p.cotizacion):1;
+    if(!Number.isFinite(monto)||monto<=0||!p.medio||!p.cuenta||!['ARS','USD'].includes(p.moneda)||!Number.isFinite(cotizacion)||cotizacion<=0)throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
+    const usd=monto/cotizacion;
+    if(p.montoVentaUSD!=null && (!Number.isFinite(Number(p.montoVentaUSD))||Math.abs(Number(p.montoVentaUSD)-usd)>.01))throw new Error('El equivalente en dólares del pago no coincide con el importe y la cotización');
+    return Object.assign({},p,{monto:monto,cotizacion:cotizacion,montoVentaUSD:usd});
+  });
+}
+function regalosVentaEquipo(datos) {
+  const regalos=(Array.isArray(datos)?datos:[]).filter(r=>r&&r.productoId).map(r=>({productoId:String(r.productoId),nombre:String(r.nombre||''),cantidad:1}));
+  if(new Set(regalos.map(r=>r.productoId)).size!==regalos.length)throw new Error('El mismo regalo está seleccionado más de una vez');
+  return regalos;
+}
+async function stockParaVentaEquipo(imei) {
+  const serie=String(imei||'').trim();if(!serie)return null;
+  const snap=await getDocsFromServer(query(cSt,where('imei','==',serie),limit(2)));
+  if(snap.docs.length>1)throw new Error('Hay más de un equipo en stock con ese IMEI; revisá el stock antes de vender');
+  return snap.docs.length?snap.docs[0].ref:null;
+}
+function validarStockVentaEquipo(snap,modelo,ventaId) {
+  if(!snap || !snap.exists())throw new Error('El equipo seleccionado ya no existe en stock');
+  const stock=snap.data(),propio=stock.ventaActivaId===ventaId;
+  if((stock.ventaActivaId&&!propio)||!(stock.estado==='Disponible'||(propio&&stock.estado==='Reservado')))throw new Error('El equipo no está disponible para esta venta');
+  const core=window.MAXPOINT_COTIZADOR, a=core.claveModeloBase(stock.modelo), b=core.claveModeloBase(modelo);
+  if(a&&b&&a!==b)throw new Error('El IMEI corresponde a otro modelo en stock');
+}
 // ── CRUD ventas ──
 window.FB.addV = (d, cb) => { if(!puede('editar_finanzas_ventas')) { cb('Sin permiso para crear ventas históricas'); return; } agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message)); };
 window.FB.crearVentaEquipo = async (data, cb) => {
   if (!puede('vender_equipo')) { cb('Sin permiso para vender equipos'); return; }
   try {
-    const pagos = Array.isArray(data.pagos) ? data.pagos : [];
-    const regalos=(Array.isArray(data.regalos)?data.regalos:[]).filter(r=>r&&r.productoId).map(r=>({productoId:String(r.productoId),nombre:String(r.nombre||''),cantidad:1}));
+    const pagos = pagosVentaEquipo(data.pagos);
+    const regalos=regalosVentaEquipo(data.regalos);
     const precio = Number(data.precio || 0), partePago = data.parte_pago === 'Si' ? Number(data.pp_valor || 0) : 0;
     const requerido = Math.max(0, precio - partePago), pagado = pagos.reduce((s,p) => s + Number(p.montoVentaUSD || 0), 0);
-    if (!(precio > 0)) throw new Error('El precio debe ser mayor a cero');
+    if (!Number.isFinite(precio) || !(precio > 0)) throw new Error('El precio debe ser mayor a cero');
+    if(data.parte_pago==='Si' && (!String(data.pp_modelo||'').trim() || !Number.isFinite(partePago) || partePago<=0 || partePago>precio))throw new Error('Revisá modelo y valor del equipo recibido: debe ser mayor a cero y no superar el precio');
+    if(data.estadoVenta==='Cobrada'&&!String(data.imei||'').trim())throw new Error('El IMEI / número de serie es obligatorio');
     if (!['Cobrada','Reservada'].includes(data.estadoVenta)) throw new Error('El estado debe ser Cobrada o Reservada');
     if (pagos.some(p => !(Number(p.monto) > 0) || !p.medio || !p.cuenta || !['ARS','USD'].includes(p.moneda) || (p.moneda === 'ARS' && !(Number(p.cotizacion) > 0)))) throw new Error('Cada pago necesita medio, cuenta, moneda, importe y cotización válida');
     if (data.estadoVenta === 'Cobrada' && Math.abs(pagado - requerido) > 0.01) throw new Error('Los pagos deben cubrir exactamente el saldo de la venta');
     if (pagado > requerido + 0.01) throw new Error('Los pagos superan el saldo de la venta');
     const ventaRef = doc(cVen), pagoRefs = pagos.map(() => doc(cPagPos)), regaloRefs=regalos.map(r=>doc(cPro,r.productoId)), partePagoRef=data.parte_pago==='Si'&&String(data.pp_modelo||'').trim()?doc(cSt):null;
+    const stockRef=await stockParaVentaEquipo(data.imei);
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     const requiereCaja=pagos.length>0;
     const venta = Object.assign({}, data, {
       costo:puede('editar_costos') ? (data.costo || '0') : '0',
       costoConfirmado:puede('editar_costos') && Number(data.costo||0)>0,
       tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:requiereCaja,
+      imei:String(data.imei||'').trim(), stockEquipoId:stockRef?stockRef.id:'', partePagoStockId:partePagoRef?partePagoRef.id:'', regalos:regalos,
       pagos:pagos.map((p,i) => Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),
       totalPagadoUSD:pagado, saldoUSD:Math.max(0,requerido-pagado), usuario:actor,
       fechaHora:ahora, creadoEn:serverTimestamp()
     });
     await runTransaction(db, async tx => {
       const cajaSnap=requiereCaja?await tx.get(dCajaActual):null;
+      const stockSnap=stockRef?await tx.get(stockRef):null;
+      if(stockRef)validarStockVentaEquipo(stockSnap,data.modelo,ventaRef.id);
       const regaloSnaps=data.estadoVenta==='Cobrada'?await Promise.all(regaloRefs.map(ref=>tx.get(ref))):[];
       if(requiereCaja&&(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta'))throw new Error('Primero abrí la caja para registrar la seña');
       const cajaId=requiereCaja?cajaSnap.data().cajaId:null;
-      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(s.data().activo===false || !s.data().controlaStock)throw new Error('El regalo no está habilitado para stock');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
       if (requiereCaja) tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.set(ventaRef, venta);
+      if(stockRef)tx.update(stockRef,{estado:data.estadoVenta==='Reservada'?'Reservado':'Vendido',ventaActivaId:ventaRef.id,actualizadoPor:actor,actualizadoEn:serverTimestamp()});
       if(partePagoRef)tx.set(partePagoRef,{modelo:String(data.pp_modelo).trim(),imei:String(data.pp_imei||''),precio_costo:data.pp_valor||'',precio_venta:'',capacidad:'',color:'',detalles:'',notas:'Ingreso por parte de pago — '+String(data.nombre||''),estado:'A revisar',fecha:hoy(),ventaOrigenId:ventaRef.id,creadoEn:serverTimestamp()});
       pagos.forEach((p,i) => {
         const pago = { schemaVersion:2, pagoId:pagoRefs[i].id, origenTipo:'venta_equipo', origenId:ventaRef.id,
@@ -996,41 +1048,56 @@ window.FB.crearVentaEquipo = async (data, cb) => {
 window.FB.completarReservaEquipo = async (id, data, cb) => {
   if (!puede('vender_equipo')) { cb('Sin permiso para completar reservas'); return; }
   try {
-    const pagos=Array.isArray(data.pagos)?data.pagos:[],regalos=(Array.isArray(data.regalos)?data.regalos:[]).filter(r=>r&&r.productoId).map(r=>({productoId:String(r.productoId),nombre:String(r.nombre||''),cantidad:1}));
+    const pagos=pagosVentaEquipo(data.pagos),regalos=regalosVentaEquipo(data.regalos);
     if(!String(data.imei||'').trim())throw new Error('El IMEI / número de serie es obligatorio');
-    if(!pagos.length||pagos.some(p=>!(Number(p.monto)>0)||!p.medio||!p.cuenta||!['ARS','USD'].includes(p.moneda)||(p.moneda==='ARS'&&!(Number(p.cotizacion)>0))))throw new Error('Revisá los pagos de la reserva');
+    if(pagos.some(p=>!(Number(p.monto)>0)||!p.medio||!p.cuenta||!['ARS','USD'].includes(p.moneda)||(p.moneda==='ARS'&&!(Number(p.cotizacion)>0))))throw new Error('Revisá los pagos de la reserva');
+    const stockRef=await stockParaVentaEquipo(data.imei);
     const ventaRef=doc(cVen,id),pagoRefs=pagos.map(()=>doc(cPagPos)),regaloRefs=regalos.map(r=>doc(cPro,r.productoId)),actor=usuarioActualRegistro(),ahora=new Date().toISOString();
+    const requiereCaja=pagos.length>0;
+    let completada;
     await runTransaction(db,async tx=>{
-      const ventaSnap=await tx.get(ventaRef),cajaSnap=await tx.get(dCajaActual),regaloSnaps=await Promise.all(regaloRefs.map(ref=>tx.get(ref)));
+      const ventaSnap=await tx.get(ventaRef),cajaSnap=requiereCaja?await tx.get(dCajaActual):null,stockSnap=stockRef?await tx.get(stockRef):null,regaloSnaps=await Promise.all(regaloRefs.map(ref=>tx.get(ref)));
       if(!ventaSnap.exists())throw new Error('La reserva ya no existe');const v=ventaSnap.data();if(v.estadoVenta!=='Reservada')throw new Error('La operación ya no está reservada');
-      if(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta')throw new Error('Primero abrí la caja');
+      if(requiereCaja&&(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta'))throw new Error('Primero abrí la caja');
+      if(v.stockEquipoId && (!stockRef || stockRef.id!==v.stockEquipoId))throw new Error('El IMEI debe corresponder al equipo reservado en stock');
+      if(stockRef)validarStockVentaEquipo(stockSnap,v.modelo,id);
+      if(v.saldoUSD==null || !Number.isFinite(Number(v.saldoUSD)) || Number(v.saldoUSD)<0)throw new Error('La reserva no tiene un saldo válido; revisá sus pagos antes de completarla');
       const saldo=Number(v.saldoUSD||0),pagado=pagos.reduce((s,p)=>s+Number(p.montoVentaUSD||0),0);if(Math.abs(saldo-pagado)>.01)throw new Error('Los pagos deben cubrir exactamente el saldo de la reserva');
-      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
-      const cajaId=cajaSnap.data().cajaId,nuevos=pagos.map((p,i)=>Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),todos=(v.pagos||[]).concat(nuevos),total=Number(v.totalPagadoUSD||0)+pagado;
-      tx.update(dCajaActual,{revisionMovimientos:increment(1)});
-      tx.update(ventaRef,{estadoVenta:'Cobrada',imei:String(data.imei).trim(),pagos:todos,pago:todos.map(p=>p.medio).join(' + '),totalPagadoUSD:total,saldoUSD:0,cajaRegistrada:true,cotizacionBlue:Number(data.cotizacionBlue||v.cotizacionBlue||0),regalos:regalos,completadaEn:serverTimestamp(),completadaPor:actor,actualizadoEn:serverTimestamp()});
+      regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(s.data().activo===false || !s.data().controlaStock)throw new Error('El regalo no está habilitado para stock');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
+      const cajaId=requiereCaja?cajaSnap.data().cajaId:null,nuevos=pagos.map((p,i)=>Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),todos=(v.pagos||[]).concat(nuevos),total=Number(v.totalPagadoUSD||0)+pagado;
+      if(requiereCaja)tx.update(dCajaActual,{revisionMovimientos:increment(1)});
+      completada=Object.assign({},v,{estadoVenta:'Cobrada',imei:String(data.imei).trim(),fechaReserva:v.fechaReserva||v.fecha||'',fecha:hoy(),stockEquipoId:stockRef?stockRef.id:'',pagos:todos,totalPagadoUSD:total,saldoUSD:0});
+      if(stockRef)tx.update(stockRef,{estado:'Vendido',ventaActivaId:id,actualizadoPor:actor,actualizadoEn:serverTimestamp()});
+      tx.update(ventaRef,{estadoVenta:'Cobrada',imei:String(data.imei).trim(),fechaReserva:v.fechaReserva||v.fecha||'',fecha:hoy(),stockEquipoId:stockRef?stockRef.id:'',pagos:todos,pago:todos.map(p=>p.medio).join(' + '),totalPagadoUSD:total,saldoUSD:0,cajaRegistrada:!!v.cajaRegistrada||requiereCaja,cotizacionBlue:Number(data.cotizacionBlue||v.cotizacionBlue||0),regalos:regalos,completadaEn:serverTimestamp(),completadaPor:actor,actualizadoEn:serverTimestamp()});
       pagos.forEach((p,i)=>{const pd={schemaVersion:2,pagoId:pagoRefs[i].id,origenTipo:'venta_equipo',origenId:id,ventaId:id,clienteNombre:v.nombre||'',equipoModelo:v.modelo||'',medio:p.medio,cuenta:p.cuenta,monto:Number(p.monto),moneda:p.moneda,cotizacion:Number(p.cotizacion||1),montoVentaUSD:Number(p.montoVentaUSD||0),estado:'aplicado',usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(pagoRefs[i],pd);tx.set(doc(cMovFin),Object.assign({},pd,{cajaId:cajaId,tipo:'ingreso_venta_equipo',referenciaTipo:'venta_equipo',referenciaId:id}));});
       regaloSnaps.forEach((s,i)=>{const antes=Number(s.data().stockActual||0),despues=antes-1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre,tipo:'regalo_venta_equipo',cantidad:-1,stockAnterior:antes,stockResultante:despues,motivo:'Regalo al completar reserva',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
       tx.set(doc(cAud),{entidad:'venta_equipo',entidadId:id,accion:'reserva_completada',actor:actor,cambios:[{campo:'estadoVenta',antes:'Reservada',despues:'Cobrada'}],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
-    });cb(null);
+    });cb(null);v21Sync('venta',id,completada,'reserva_completada');
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 window.FB.anularVentaEquipo = async (id, motivo, cb) => {
   if (!puede('eliminar_operaciones')) { cb('Solo administración puede anular ventas de equipos'); return; }
   try {
+    if(!String(motivo||'').trim())throw new Error('El motivo de anulación es obligatorio');
     const ventaRef = doc(cVen, id), actor = usuarioActualRegistro(), ahora = new Date().toISOString();
+    const partes=await getDocsFromServer(query(cSt,where('ventaOrigenId','==',id)));
     await runTransaction(db, async tx => {
       const snap = await tx.get(ventaRef);
       if (!snap.exists()) throw new Error('La venta ya no existe');
       const venta = snap.data();
+      if (venta.tipoRegistro === 'pos') throw new Error('Las ventas de accesorios se anulan desde Operaciones de caja');
+      if (venta.estadoVenta === 'Anulada') throw new Error('La venta ya está anulada');
+      if (venta.estadoVenta === 'Devuelta') throw new Error('La venta ya figura como devuelta');
+      const stockRef=venta.stockEquipoId?doc(cSt,venta.stockEquipoId):null,stockSnap=stockRef?await tx.get(stockRef):null;
+      const parteRefs=Array.from(new Map(partes.docs.map(d=>[d.id,d.ref]).concat(venta.partePagoStockId?[[venta.partePagoStockId,doc(cSt,venta.partePagoStockId)]]:[])).values());
+      const parteSnaps=await Promise.all(parteRefs.map(ref=>tx.get(ref)));
+      if(stockRef && (!stockSnap.exists()||stockSnap.data().ventaActivaId!==id))throw new Error('El vínculo con el equipo vendido cambió; revisá el stock antes de anular');
+      parteSnaps.forEach(p=>{if(!p.exists()||p.data().ventaOrigenId!==id)throw new Error('No se encontró el equipo recibido en parte de pago');if(p.data().ventaActivaId||['Vendido','Reservado','Prestado'].includes(p.data().estado))throw new Error('El equipo recibido en parte de pago ya está comprometido; resolvé su operación antes de anular');});
       const cajaSnap = venta.cajaRegistrada ? await tx.get(dCajaActual) : null;
       const regalos=(Array.isArray(venta.regalos)?venta.regalos:[]).filter(r=>r&&r.productoId),regaloRefs=regalos.map(r=>doc(cPro,r.productoId));
       const regaloSnaps=venta.estadoVenta==='Cobrada'?await Promise.all(regaloRefs.map(ref=>tx.get(ref))):[];
       if (venta.cajaRegistrada && (!cajaSnap.exists() || cajaSnap.data().estado !== 'abierta')) throw new Error('Primero abrí la caja');
       const cajaId = venta.cajaRegistrada ? cajaSnap.data().cajaId : null;
-      if (venta.tipoRegistro === 'pos') throw new Error('Las ventas de accesorios se anulan desde Operaciones de caja');
-      if (venta.estadoVenta === 'Anulada') throw new Error('La venta ya está anulada');
-      if (venta.estadoVenta === 'Devuelta') throw new Error('La venta ya figura como devuelta');
       const anulacion = { motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora };
       const cambiosVenta = { estadoVenta:'Anulada', anulacion:anulacion, actualizadoEn:serverTimestamp() };
       if (venta.cajaRegistrada) {
@@ -1039,6 +1106,8 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
       }
       if (venta.cajaRegistrada) tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       regaloSnaps.forEach((s,i)=>{if(!s.exists())return;const antes=Number(s.data().stockActual||0),despues=antes+1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre||'',tipo:'reversion_regalo_venta_equipo',cantidad:1,stockAnterior:antes,stockResultante:despues,motivo:'Anulación de venta de equipo',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
+      if(stockRef)tx.update(stockRef,{estado:venta.estadoVenta==='Reservada'?'Disponible':'A revisar',ventaActivaId:'',actualizadoPor:actor,actualizadoEn:serverTimestamp()});
+      parteSnaps.forEach((p,i)=>tx.update(parteRefs[i],{estado:'Pendiente de devolución',partePagoAnulado:true,actualizadoPor:actor,actualizadoEn:serverTimestamp()}));
       tx.update(ventaRef, cambiosVenta);
       if (venta.cajaRegistrada) {
         (venta.pagos || []).forEach(p => {
@@ -1063,11 +1132,13 @@ window.FB.updV = async (id, d, cb) => {
     await runTransaction(db,async tx=>{
     const ref=doc(cVen,id),snap=await tx.get(ref); if(!snap.exists())throw new Error('Venta no encontrada');
     const previo=snap.data();
+    ['seg90_est','seg365_est'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k)&&!['pendiente','contactado','enviado','interesado','compro','no_interesa'].includes(d[k]))throw new Error('Estado de seguimiento inválido');});
     const operativos=['nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','canal','notas','fecha','garantia','seguimiento','seg90_est','seg365_est'];
+    if(previo.stockEquipoId && ['imei','modelo'].some(k=>Object.prototype.hasOwnProperty.call(d,k)&&String(d[k]||'').trim()!==String(previo[k]||'').trim()))throw new Error('El equipo está vinculado al stock y no puede cambiarse desde la venta');
     cambios=camposElegidos(d,soloSeguimiento?['seg90_est','seg365_est','seguimiento']:operativos);
     if(!soloSeguimiento && puede('editar_costos'))Object.assign(cambios,camposElegidos(d,['costo','costoConfirmado']));
     if(!soloSeguimiento && puede('gestionar_comisiones'))Object.assign(cambios,camposElegidos(d,['comisionExcepcion']));
-    if(!soloSeguimiento && !previo.cajaRegistrada && puede('editar_finanzas_ventas'))Object.assign(cambios,camposElegidos(d,['precio','estadoVenta','parte_pago','pp_modelo','pp_imei','pp_valor','pago']));
+    if(!soloSeguimiento && !previo.cajaRegistrada && Number(previo.schemaVersion||0)<2 && puede('editar_finanzas_ventas'))Object.assign(cambios,camposElegidos(d,['precio','estadoVenta','parte_pago','pp_modelo','pp_imei','pp_valor','pago']));
     tx.update(ref,Object.assign({},cambios,{_upd:serverTimestamp()}));
     tx.set(doc(cAud),{entidad:'venta',entidadId:id,accion:'actualizado',actor:usuarioActualRegistro(),cambios:cambiosAuditables(previo,cambios),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
     });
@@ -1083,13 +1154,31 @@ window.FB.addSt = (d, cb) => {
   if(puede('editar_costos'))Object.assign(guardar,camposElegidos(d,['precio_costo','precio_venta']));
   agregarAuditable('stock', 'stock', guardar).then(id => { cb(null, id); v21Sync('stock', id, guardar, 'stock_creado'); }).catch(e => cb(e.message));
 };
-window.FB.updSt = (id, d, cb) => {
+window.FB.updSt = async (id, d, cb) => {
   if (!puede('gestionar_stock_equipos')) { cb('Sin permiso para editar equipos del stock'); return; }
-  const cambios=camposElegidos(d,['modelo','capacidad','color','detalles','imei','notas','estado','fecha']);
-  if(puede('editar_costos'))Object.assign(cambios,camposElegidos(d,['precio_costo','precio_venta']));
-  actualizarAuditable('stock', 'stock', id, cambios).then(() => { cb(null); v21Sync('stock', id, cambios, 'stock_actualizado'); }).catch(e => cb(e.message));
+  try {
+    const cambios=camposElegidos(d,['modelo','capacidad','color','detalles','imei','notas','estado','fecha']);
+    if(puede('editar_costos'))Object.assign(cambios,camposElegidos(d,['precio_costo','precio_venta']));
+    await runTransaction(db,async tx=>{
+      const ref=doc(cSt,id),snap=await tx.get(ref);if(!snap.exists())throw new Error('El equipo ya no existe');
+      const previo=snap.data();
+      if(previo.ventaActivaId && ['estado','imei','modelo'].some(k=>Object.prototype.hasOwnProperty.call(cambios,k)&&cambios[k]!==previo[k]))throw new Error('El equipo está vinculado a una venta/reserva; completá o anulá esa operación para liberarlo');
+      if(previo.partePagoAnulado && cambios.estado && !['Pendiente de devolución','Devuelto al cliente'].includes(cambios.estado))throw new Error('La parte de pago está anulada; confirmá su devolución al cliente');
+      tx.update(ref,Object.assign({},cambios,{_upd:serverTimestamp()}));
+      tx.set(doc(cAud),{entidad:'stock',entidadId:id,accion:'actualizado',actor:usuarioActualRegistro(),cambios:cambiosAuditables(previo,cambios),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });cb(null);v21Sync('stock',id,cambios,'stock_actualizado');
+  }catch(e){cb(e.message);}
 };
-window.FB.delSt = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
+window.FB.delSt = async (id, cb) => {
+  if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; }
+  try {
+    await runTransaction(db,async tx=>{
+      const ref=doc(cSt,id),snap=await tx.get(ref);if(!snap.exists())throw new Error('El equipo ya no existe');
+      if(snap.data().ventaActivaId || snap.data().ventaOrigenId)throw new Error('Este equipo está vinculado a una operación; conservá el registro y actualizá su estado');
+      tx.delete(ref);tx.set(doc(cAud),{entidad:'stock',entidadId:id,accion:'eliminado',actor:usuarioActualRegistro(),cambios:cambiosAuditables(snap.data(),{}),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });cb(null);
+  }catch(e){cb(e.message);}
+};
 
 // ── POS V1: productos, inventario y ventas atomicas ──
 window.FB.guardarProductoPos = async (data, cb) => {
@@ -1379,13 +1468,65 @@ window.FB.cargarAsistenciasTecnicos = async function(cb) {
 };
 
 // Lecturas públicas separadas de datos internos. No se eliminan registros.
-let colaPortalPublico=Promise.resolve();
-function actualizarPortalEnSegundoPlano(id) {
-  colaPortalPublico=colaPortalPublico.catch(()=>{}).then(()=>publicarPortalReparacion(id)).catch(e=>{
-    console.error('Actualización del portal pendiente:',e);
-    toast('La operación se guardó; el portal necesita actualización: '+e.message,'var(--rd)');
-  });
+let colaPortalPublico=Promise.resolve(), portalProcesando=false;
+let portalPersistenciaDisponible=true, portalPersistenciaAvisada=false;
+const portalPendienteMemoria={};
+const portalAvisosPendientes=new Set();
+function leerPortalPendiente(uid) {
+  if(!portalPersistenciaDisponible)return portalPendienteMemoria[uid] || {};
+  try {
+    const datos=JSON.parse(localStorage.getItem('maxpoint_portal_pendiente_v1_'+uid) || '{}');
+    const limpio={};
+    if(datos && typeof datos==='object' && !Array.isArray(datos))Object.keys(datos).forEach(id=>{
+      if(typeof datos[id]==='string')limpio[id]=datos[id];
+    });
+    portalPendienteMemoria[uid]=limpio;
+    return limpio;
+  }catch(e){portalPersistenciaDisponible=false;return portalPendienteMemoria[uid] || {};}
 }
+function guardarPortalPendiente(uid,datos) {
+  portalPendienteMemoria[uid]=datos;
+  try {localStorage.setItem('maxpoint_portal_pendiente_v1_'+uid,JSON.stringify(datos));}
+  catch(e) {
+    if(!portalPersistenciaAvisada) {portalPersistenciaAvisada=true;toast('No se pudo conservar la actualización pendiente del portal al cerrar este navegador','var(--rd)');}
+    portalPersistenciaDisponible=false;
+  }
+}
+function actualizarPortalEnSegundoPlano(id) {
+  if(!SESION.usuario || !id)return;
+  const uid=SESION.usuario.uid, pendientes=leerPortalPendiente(uid);
+  pendientes[id]=Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);
+  guardarPortalPendiente(uid,pendientes);
+  return reanudarPortalPendiente();
+}
+function reanudarPortalPendiente() {
+  if(portalProcesando || !sesionActiva() || PERMISOS_ESTADO!=='listo')return colaPortalPublico;
+  if(!['gestionar_portal_cliente','editar_reparacion','cobrar_reparacion','gestionar_comisiones','eliminar_operaciones','importar_reparaciones','gestionar_seguimientos'].some(p=>puede(p)))return colaPortalPublico;
+  const uid=SESION.usuario.uid, pendientes=Object.assign({},leerPortalPendiente(uid));
+  if(!Object.keys(pendientes).length)return colaPortalPublico;
+  portalProcesando=true;
+  colaPortalPublico=(async function() {
+    for(const id of Object.keys(pendientes)) {
+      if(!sesionActiva() || SESION.usuario.uid!==uid)break;
+      try {
+        await publicarPortalReparacion(id);
+        const actuales=leerPortalPendiente(uid);
+        // No borrar una actualización más reciente del mismo equipo/pestaña.
+        if(actuales[id]===pendientes[id]) {delete actuales[id];guardarPortalPendiente(uid,actuales);}
+        portalAvisosPendientes.delete(uid+'_'+id);
+      }catch(e) {
+        console.error('Actualización del portal pendiente:',e);
+        if(!portalAvisosPendientes.has(uid+'_'+id)) {
+          portalAvisosPendientes.add(uid+'_'+id);
+          toast('La operación se guardó; se reintentará actualizar el portal: '+e.message,'var(--rd)');
+        }
+      }
+    }
+  })().finally(()=>{portalProcesando=false;});
+  return colaPortalPublico;
+}
+window.addEventListener('online',()=>reanudarPortalPendiente());
+setInterval(()=>reanudarPortalPendiente(),30000);
 async function publicarGrupoPortal(tel,extraIds,baseReps) {
   const core=window.MAXPOINT_PUBLICO;
   const indices=await getDocsFromServer(query(collection(db,'portalIndices'),where('telefonoClave','==',tel)));
@@ -1438,6 +1579,17 @@ window.FB.actualizarLecturasPublicas=async function(cb) {
     const telefonos=Array.from(new Set(reps.map(r=>window.MAXPOINT_PUBLICO.telefono(r.telefono)).filter(Boolean)));
     // Incluye accesos anteriores para desactivar órdenes retiradas/cambiadas.
     const indices=await getDocsFromServer(collection(db,'portalIndices'));
+    const porId=new Map(reps.map(r=>[r.id,r]));
+    for(const indice of indices.docs) {
+      const previo=indice.data(), actual=porId.get(indice.id);
+      if(!previo.accesoId)continue;
+      if(actual && await window.MAXPOINT_PUBLICO.acceso(actual.telefono,actual.orden)===previo.accesoId)continue;
+      await runTransaction(db,async tx=>{
+        const origen=await tx.get(doc(cR,indice.id)), r=origen.exists()?origen.data():null;
+        const claveActual=r?await window.MAXPOINT_PUBLICO.acceso(r.telefono,r.orden):'';
+        if(claveActual!==previo.accesoId)tx.set(doc(db,'portalAccesos',previo.accesoId),{activo:false,actualizadoEn:serverTimestamp()});
+      });
+    }
     indices.docs.forEach(d=>{if(d.data().telefonoClave&&!telefonos.includes(d.data().telefonoClave))telefonos.push(d.data().telefonoClave);});
     for(const tel of telefonos)await publicarGrupoPortal(tel,[],reps);
     await publicarCotizadorPublico();

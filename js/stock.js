@@ -6,6 +6,7 @@ var _stockId = null;
 function openNewStock(prefill) {
   if (!puede('gestionar_stock_equipos')) { toast('Sin permiso para agregar equipos al stock', 'var(--rd)'); return; }
   _stockId = null;
+  ['sEst','sImei','sMod'].forEach(function(id){el(id).disabled=false;});
   var precioWrap = el('wSPrecioVenta'); if (precioWrap) precioWrap.style.display = puede('editar_costos') ? '' : 'none';
   var costoWrap = el('wSCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('mStockT').textContent = 'Agregar equipo';
@@ -30,6 +31,7 @@ function openEditStock(id) {
   var s = STOCK.find(function(x) { return x.id === id; });
   if (!s) return;
   _stockId = id;
+  ['sEst','sImei','sMod'].forEach(function(id){el(id).disabled=!!s.ventaActivaId;});
   var precioWrap = el('wSPrecioVenta'); if (precioWrap) precioWrap.style.display = puede('editar_costos') ? '' : 'none';
   var costoWrap = el('wSCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   el('mStockT').textContent = 'Editar equipo';

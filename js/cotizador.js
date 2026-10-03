@@ -28,28 +28,42 @@ function cotLoadConfig(data) {
 }
 
 function cotConfigRender() {
-  var c = window.MAXPOINT_COTIZADOR.config(COTIZADOR_CFG);
+  var core = window.MAXPOINT_COTIZADOR, modelos = {};
+  USADOS.forEach(function(u) { var k=core.claveModeloBase(u.modelo); if(k)modelos[k]=u.modelo.replace(/\s+\d+\s*(GB|TB)\s*$/i,''); });
+  Object.keys(COTIZADOR_CFG.porModelo || {}).forEach(function(k) { if(!modelos[k])modelos[k]=k.replace(/_/g,' '); });
+  el('cfgCotModelo').innerHTML='<option value="">Parámetros generales</option>'+Object.keys(modelos).sort().map(function(k) { return '<option value="'+k+'">'+esc(modelos[k])+'</option>'; }).join('');
+  cotConfigElegirModelo();
+}
+
+function cotConfigElegirModelo() {
+  var core=window.MAXPOINT_COTIZADOR, clave=el('cfgCotModelo').value;
+  var c=core.configModelo(COTIZADOR_CFG,clave.replace(/_/g,' '));
+  if(clave && !(COTIZADOR_CFG.porModelo || {})[clave])c.origenDescuentos='parametros';
   var valores = {
     cfgCotBatUmbral:c.bateria.umbral, cfgCotBatFallback:c.bateria.fallbackUsd,
     cfgCotEstLeve:c.estetica.leveUsd, cfgCotEstMarcada:c.estetica.marcadaUsd,
     cfgCotPantalla:c.pantalla.fallbackUsd, cfgCotFace:c.fallas.faceIdFallbackUsd,
     cfgCotCamNormal:c.fallas.camaraTraseraNormalUsd, cfgCotCamPro:c.fallas.camaraTraseraProUsd,
+    cfgCotCamFront:c.fallas.camaraFrontalUsd, cfgCotCarcasa:c.fallas.carcasaUsd,
     cfgCotVidrio:c.fallas.vidrioCamaraUsd, cfgCotBotones:c.fallas.botonesUsd,
     cfgCotPieza:c.fallas.piezaDesconocidaUsd, cfgCotMinimo:c.totalMinimoUsd
   };
-  Object.keys(valores).forEach(function(id) { setVal(id, valores[id]); });
+  Object.keys(valores).forEach(function(id) { el(id).value = valores[id]; });
   el('cfgCotSinCoincidencia').value = c.sinCoincidencia;
   el('cfgCotRedondeo').value = c.redondeo;
+  el('cfgCotOrigen').value = c.origenDescuentos;
 }
 
 function cotGuardarConfig() {
   if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede modificar el cotizador', 'var(--rd)'); return; }
   var datos = {
+    origenDescuentos:el('cfgCotOrigen').value,
     bateria:{ umbral:Number(val('cfgCotBatUmbral')), fallbackUsd:Number(val('cfgCotBatFallback')) },
     estetica:{ leveUsd:Number(val('cfgCotEstLeve')), marcadaUsd:Number(val('cfgCotEstMarcada')) },
     pantalla:{ fallbackUsd:Number(val('cfgCotPantalla')) },
     fallas:{ faceIdFallbackUsd:Number(val('cfgCotFace')), camaraTraseraNormalUsd:Number(val('cfgCotCamNormal')),
-      camaraTraseraProUsd:Number(val('cfgCotCamPro')), vidrioCamaraUsd:Number(val('cfgCotVidrio')),
+      camaraTraseraProUsd:Number(val('cfgCotCamPro')), camaraFrontalUsd:Number(val('cfgCotCamFront')),
+      carcasaUsd:Number(val('cfgCotCarcasa')), vidrioCamaraUsd:Number(val('cfgCotVidrio')),
       botonesUsd:Number(val('cfgCotBotones')), piezaDesconocidaUsd:Number(val('cfgCotPieza')) },
     sinCoincidencia:el('cfgCotSinCoincidencia').value,
     redondeo:el('cfgCotRedondeo').value,
@@ -57,6 +71,13 @@ function cotGuardarConfig() {
     updated:hoy()
   };
   if (datos.bateria.umbral < 0 || datos.bateria.umbral > 100) { toast('El umbral de batería debe estar entre 0 y 100', 'var(--rd)'); return; }
+  var campos=['cfgCotBatUmbral','cfgCotBatFallback','cfgCotEstLeve','cfgCotEstMarcada','cfgCotPantalla','cfgCotFace','cfgCotCamNormal','cfgCotCamPro','cfgCotCamFront','cfgCotCarcasa','cfgCotVidrio','cfgCotBotones','cfgCotPieza','cfgCotMinimo'];
+  if(campos.some(function(id) { return val(id).trim()==='' || !Number.isFinite(Number(val(id))) || Number(val(id))<0; })) { toast('Completá los importes con números mayores o iguales a cero','var(--rd)'); return; }
+  var clave=el('cfgCotModelo').value, anteriores=window.MAXPOINT_COTIZADOR.config(COTIZADOR_CFG);
+  if(clave) {
+    anteriores.porModelo[clave]=datos;
+    datos=anteriores;
+  } else datos.porModelo=anteriores.porModelo;
   var btn = el('btnGuardarCfgCot'); btn.disabled = true; btn.textContent = 'Guardando...';
   FB.setCotizadorConfig(datos, function(err) {
     btn.disabled = false; btn.textContent = 'Guardar parámetros';
@@ -445,7 +466,7 @@ function cotEnviarWA() {
   partes.push('Te paso la cotizacion de tu equipo:');
   partes.push('');
   partes.push('Modelo: ' + _cotSel.modelo);
-  if (bat < window.MAXPOINT_COTIZADOR.config(COTIZADOR_CFG).bateria.umbral) partes.push('Bateria: ' + bat + '%');
+  if (bat < window.MAXPOINT_COTIZADOR.configModelo(COTIZADOR_CFG, _cotSel ? _cotSel.modelo : '').bateria.umbral) partes.push('Bateria: ' + bat + '%');
   if (estetica === 'leve')    partes.push('Estetica: Detalles leves');
   if (estetica === 'marcado') partes.push('Estetica: Muy marcado');
   if (pantalla === 'rota')    partes.push('Pantalla: Rota');

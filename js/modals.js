@@ -1002,7 +1002,24 @@ function acEq() {
 // IMPORTAR / PIN
 // ============================================================
 function importarHist() {
-  if (!DATOS_HISTORICOS.length) { toast('No hay datos para importar', 'var(--or)'); return; }
+  if(!puede('importar_reparaciones')){toast('Solo administración puede importar reparaciones','var(--rd)');return;}
+  if (!DATOS_HISTORICOS.length) {
+    var selector=document.createElement('input');selector.type='file';selector.accept='.json,application/json';
+    selector.onchange=function(){
+      if(!selector.files || !selector.files[0])return;
+      var lector=new FileReader();
+      lector.onload=function(){
+        try {
+          var registros=JSON.parse(lector.result);
+          if(!Array.isArray(registros)||!registros.length||registros.some(function(r){return !r||typeof r!=='object'||Array.isArray(r)||!r.nombre||!r.equipo;}))throw new Error('El archivo debe contener una lista de reparaciones con nombre y equipo');
+          DATOS_HISTORICOS=registros;importarHist();
+        }catch(e){toast('No se pudo cargar el histórico: '+e.message,'var(--rd)');}
+      };
+      lector.onerror=function(){toast('No se pudo leer el archivo histórico','var(--rd)');};
+      lector.readAsText(selector.files[0]);
+    };
+    selector.click();return;
+  }
   if (!confirm('Importar ' + DATOS_HISTORICOS.length + ' ordenes al sistema. Solo hacer una vez. Continuar?')) return;
   syncLoad('Importando ' + DATOS_HISTORICOS.length + ' ordenes...');
   var i = 0, tot = DATOS_HISTORICOS.length;
@@ -1016,7 +1033,7 @@ function importarHist() {
     FB.addId(d.id || ('h' + i), Object.assign({}, d, {
       timeline: [{ estado: d.estado || 'Entregado', fecha: d.fecha || '', hora: '' }],
       _imp: true,
-    }), function() { i++; setTimeout(next, 0); });
+    }), function(err) {if(err){syncErr('Importación detenida: '+err);toast('No se importó la orden '+(d.orden||d.id||i)+': '+err,'var(--rd)');return;}i++; setTimeout(next, 0); });
   }
   next();
 }

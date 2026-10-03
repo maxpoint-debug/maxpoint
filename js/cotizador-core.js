@@ -11,6 +11,8 @@
       camaraTraseraProUsd: 100,
       vidrioCamaraUsd: 20,
       botonesUsd: 30,
+      camaraFrontalUsd: 0,
+      carcasaUsd: 0,
       piezaDesconocidaUsd: 40
     },
     sinCoincidencia: 'revision_presencial',
@@ -23,9 +25,9 @@
     return Number.isFinite(n) && n >= 0 ? n : fallback;
   }
 
-  function config(raw) {
+  function config(raw, sinModelos) {
     raw = raw || {};
-    return {
+    var salida = {
       bateria: {
         umbral: numero(raw.bateria && raw.bateria.umbral, DEFAULTS.bateria.umbral),
         fallbackUsd: numero(raw.bateria && raw.bateria.fallbackUsd, DEFAULTS.bateria.fallbackUsd)
@@ -40,13 +42,23 @@
         camaraTraseraNormalUsd: numero(raw.fallas && raw.fallas.camaraTraseraNormalUsd, DEFAULTS.fallas.camaraTraseraNormalUsd),
         camaraTraseraProUsd: numero(raw.fallas && raw.fallas.camaraTraseraProUsd, DEFAULTS.fallas.camaraTraseraProUsd),
         vidrioCamaraUsd: numero(raw.fallas && raw.fallas.vidrioCamaraUsd, DEFAULTS.fallas.vidrioCamaraUsd),
+        camaraFrontalUsd: numero(raw.fallas && raw.fallas.camaraFrontalUsd, DEFAULTS.fallas.camaraFrontalUsd),
+        carcasaUsd: numero(raw.fallas && raw.fallas.carcasaUsd, DEFAULTS.fallas.carcasaUsd),
         botonesUsd: numero(raw.fallas && raw.fallas.botonesUsd, DEFAULTS.fallas.botonesUsd),
         piezaDesconocidaUsd: numero(raw.fallas && raw.fallas.piezaDesconocidaUsd, DEFAULTS.fallas.piezaDesconocidaUsd)
       },
       sinCoincidencia: raw.sinCoincidencia === 'usar_fallback' ? 'usar_fallback' : 'revision_presencial',
       redondeo: raw.redondeo === 'sin_redondeo' ? 'sin_redondeo' : 'entero',
-      totalMinimoUsd: numero(raw.totalMinimoUsd, DEFAULTS.totalMinimoUsd)
+      totalMinimoUsd: numero(raw.totalMinimoUsd, DEFAULTS.totalMinimoUsd),
+      origenDescuentos: raw.origenDescuentos === 'parametros' ? 'parametros' : 'catalogo'
     };
+    if (!sinModelos) {
+      salida.porModelo = {};
+      Object.keys(raw.porModelo || {}).forEach(function(k) {
+        if (/^iphone_\d+(?:_(?:pro_max|pro|plus|mini|air))?$/.test(k)) salida.porModelo[k] = config(raw.porModelo[k], true);
+      });
+    }
+    return salida;
   }
 
   function sinAcentos(v) {
@@ -75,6 +87,16 @@
     var d = datosModelo(texto);
     if (!d || (exigirCapacidad && !d.capacidad)) return '';
     return ['iphone', d.generacion, d.variante.replace(/\s+/g, '_'), d.capacidad].filter(Boolean).join('_');
+  }
+
+  function claveModeloBase(texto) {
+    var d = datosModelo(texto);
+    return d ? ['iphone', d.generacion, d.variante.replace(/\s+/g, '_')].filter(Boolean).join('_') : '';
+  }
+
+  function configModelo(raw, modelo) {
+    var c = config(raw), propio = c.porModelo[claveModeloBase(modelo)];
+    return propio ? config(propio) : c;
   }
 
   function etiquetaModelo(texto) {
@@ -163,7 +185,7 @@
   }
 
   function calcular(entrada) {
-    var cfg = config(entrada.config), modelo = entrada.modelo || '';
+    var modelo = entrada.modelo || '', cfg = configModelo(entrada.config, modelo);
     var detalles = [], revision = [];
     function descuento(lbl, usd, repuesto) {
       if (Number(usd) > 0) detalles.push({ lbl:lbl, usd:Number(usd), repuesto:repuesto || '' });
@@ -173,6 +195,7 @@
       else revision.push(lbl);
     }
     function catalogoO(tipo, lbl, fallback, usarSiempre) {
+      if (cfg.origenDescuentos === 'parametros') { descuento(lbl, fallback); return; }
       var elegido = seleccionarCatalogo(entrada.catalogo, modelo, tipo, cfg.redondeo);
       if (elegido) descuento(lbl, elegido.costo, elegido.label); else falta(lbl, fallback, usarSiempre);
     }
@@ -185,8 +208,8 @@
     var p = entrada.problemas || {}, d = datosModelo(modelo) || { variante:'' }, esPro = d.variante.indexOf('pro') === 0;
     if (p.faceid && p.faceid !== 'ok') catalogoO('faceid', 'Face ID', cfg.fallas.faceIdFallbackUsd, true);
     if (p.camtras && p.camtras !== 'ok') catalogoO('camtras', 'Cámara trasera', esPro ? cfg.fallas.camaraTraseraProUsd : cfg.fallas.camaraTraseraNormalUsd, true);
-    if (p.camfront && p.camfront !== 'ok') catalogoO('camfront', 'Cámara frontal', 0);
-    if (p.carcasa && p.carcasa !== 'ok') catalogoO('carcasa', 'Carcasa', 0);
+    if (p.camfront && p.camfront !== 'ok') catalogoO('camfront', 'Cámara frontal', cfg.fallas.camaraFrontalUsd);
+    if (p.carcasa && p.carcasa !== 'ok') catalogoO('carcasa', 'Carcasa', cfg.fallas.carcasaUsd);
     if (p.vidriocam && p.vidriocam !== 'ok') catalogoO('vidriocam', 'Vidrio de cámara', cfg.fallas.vidrioCamaraUsd, true);
     if (p.botones && p.botones !== 'ok') catalogoO('botones', 'Botones', cfg.fallas.botonesUsd, true);
     if (p.pieza && p.pieza !== 'ok') descuento('Pieza desconocida' + (entrada.piezaDescripcion ? ': ' + entrada.piezaDescripcion : ''), cfg.fallas.piezaDesconocidaUsd);
@@ -201,6 +224,8 @@
   global.MAXPOINT_COTIZADOR = {
     defaults: DEFAULTS,
     config: config,
+    configModelo: configModelo,
+    claveModeloBase: claveModeloBase,
     datosModelo: datosModelo,
     modeloClave: modeloClave,
     etiquetaModelo: etiquetaModelo,

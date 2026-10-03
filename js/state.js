@@ -45,6 +45,7 @@ var COM_LIQUIDACIONES = []; // liquidaciones mensuales de comisiones
 var COM_AJUSTES = []; // ajustes aprobables para períodos posteriores
 var CAT_CONFIG = { usd: 1425, mult: 3, descuento: 0 };
 var COTIZADOR_CFG = window.MAXPOINT_COTIZADOR ? window.MAXPOINT_COTIZADOR.config({}) : {};
+var SEGUIMIENTOS_CFG = {activo:false,beneficio:''};
 var PORTAL_CLIENTE_CFG = { whatsapp:'', googleReviewUrl:'', ofertas:[], destacados:[] };
 
 // ===================== SESION Y PERMISOS =====================
@@ -133,6 +134,7 @@ window.FB = {
   delR:     function(id, cb)     { cb('Firebase no conectado todavía'); },
   setCat:   function(items, cb)  { cb('Firebase no conectado todavía'); },
   setConfig:function(d, cb)      { cb('Firebase no conectado todavía'); },
+  setSeguimientosConfig:function(d, cb) { cb('Firebase no conectado todavía'); },
   setCotizadorConfig:function(d, cb) { cb('Firebase no conectado todavía'); },
   crearLiquidacionComision:function(d, cb) { cb('Firebase no conectado todavía'); },
   actualizarLiquidacionComision:function(id, d, cb) { cb('Firebase no conectado todavía'); },
