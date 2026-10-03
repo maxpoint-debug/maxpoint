@@ -441,10 +441,10 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 
 <div class="footer">MaxPoint — Av 17 y 34, Mercedes, Bs As · (2324) 522082</div>
 
-<script src="js/cotizador-core.js?v=3"></script>
+<script src="js/cotizador-core.js?v=4"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, collection, onSnapshot, doc }
+import { getFirestore, collection, onSnapshot, doc, query, where }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const app = initializeApp({
@@ -481,16 +481,15 @@ function checkLoaded() {
   }
 }
 
-onSnapshot(collection(db, 'usados'), snap => {
-  USADOS = snap.docs.map(d => { const u=d.data(); return Object.assign({},u,{modeloClave:u.modeloClave||window.MAXPOINT_COTIZADOR.modeloClave(u.modelo,true)}); });
-  loadedUsados = true;
-  checkLoaded();
-});
-
-onSnapshot(collection(db, 'catalogo'), snap => {
-  CATALOGO = snap.docs.map(d => d.data());
-  loadedCatalogo = true;
-  checkLoaded();
+onSnapshot(query(collection(db,'cotizadorPublico'),where('activo','==',true)),snap=>{
+  const datos=snap.docs.map(d=>d.data());
+  USADOS=datos.map(u=>({modelo:u.modelo,modeloClave:u.modeloClave,precio_usd:u.precio_usd}));
+  CATALOGO=[];
+  datos.forEach(u=>Object.keys(u.descuentos||{}).forEach(tipo=>CATALOGO.push({portalVersion:1,modeloClave:window.MAXPOINT_COTIZADOR.modeloClave(u.modelo,false),tipo:tipo,descuentoUsd:u.descuentos[tipo].descuentoUsd})));
+  loadedUsados=true;loadedCatalogo=true;checkLoaded();
+},()=>{
+  document.getElementById('loadingView').style.display='none';
+  document.getElementById('noDataView').style.display='block';
 });
 
 onSnapshot(doc(db, 'config', 'cotizador'), snap => {
