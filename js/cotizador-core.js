@@ -142,6 +142,8 @@
 
   function seleccionarCatalogo(catalogo, modelo, tipo, redondeo) {
     var objetivo = datosModelo(modelo); if (!objetivo) return null;
+    var publico=(catalogo||[]).find(function(p){return p.portalVersion===1 && p.modeloClave===modeloClave(modelo,false) && p.tipo===tipo;});
+    if(publico)return {costo:redondeo==='sin_redondeo'?Number(publico.descuentoUsd):Math.round(Number(publico.descuentoUsd)),label:'Descuento por '+tipo};
     var candidatos = (catalogo || []).filter(function(p) {
       var d = datosModelo(p.label);
       return d && d.generacion === objetivo.generacion && d.variante === objetivo.variante

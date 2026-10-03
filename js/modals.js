@@ -42,7 +42,7 @@ function openEditRep(id) {
   setVal('fTel',  r.telefono     || '');
   setVal('fEq',   r.equipo       || '');
   setVal('fMod',  r.modelo       || '');
-  setVal('fCla',  r.clave        || '');
+  setVal('fCla', '');
   setVal('fFal',  r.falla        || '');
   setVal('fPres', r.presupuesto  || '');
   setVal('fSen',  r.sena         || '');
@@ -99,7 +99,6 @@ function saveRep() {
     equipo:       eq,
     telefono:     val('fTel'),
     modelo:       val('fMod'),
-    clave:        val('fCla'),
     falla:        val('fFal'),
     presupuesto:  val('fPres') || '0',
     // `sena` queda sólo para compatibilidad histórica. Todo dinero nuevo debe
@@ -334,11 +333,6 @@ if (!r) return;
     var imeiDiv = document.createElement('div'); imeiDiv.className = 'dr'; imeiDiv.style.marginTop = '4px';
     imeiDiv.innerHTML = '<span class="dl">IMEI</span><span class="mono" style="font-size:11px">' + esc(r.modelo) + '</span>';
     ds2.appendChild(imeiDiv);
-  }
-  if (r.clave) {
-    var claveDiv = document.createElement('div'); claveDiv.className = 'dr'; claveDiv.style.marginTop = '4px';
-    claveDiv.innerHTML = '<span class="dl">Clave / PIN</span><span style="font-weight:900;font-size:15px;color:var(--acc);letter-spacing:2px">' + esc(r.clave) + '</span>';
-    ds2.appendChild(claveDiv);
   }
   col1.appendChild(ds2);
 
@@ -797,13 +791,13 @@ function prtEtiq() {
   var r = REPS.find(function(x) { return x.id === _recId; });
   if (!r) return;
   var falla = (r.falla || '').substring(0, 30);
-  var clave = (r.clave || r.modelo || '').substring(0, 15);
+  var clave = (r.modelo || '').substring(0, 15);
   var css = '@page{size:40mm 30mm;margin:0.8mm}body{width:40mm;height:30mm;font-family:Courier New,monospace;font-size:6.5pt;color:#000;padding:1.5mm;overflow:hidden;box-sizing:border-box}.t{font-size:8.5pt;font-weight:700;border-bottom:.5pt solid #000;padding-bottom:0.5mm;margin-bottom:0.5mm;display:flex;justify-content:space-between}.r{display:flex;justify-content:space-between}@media print{.np{display:none}}';
   var body = '<div class="t"><span>MaxPoint</span><span>' + (r.orden || '') + '</span></div>'
     + '<div style="font-weight:700;font-size:7.5pt">' + (r.nombre || '') + '</div>'
     + '<div style="font-size:7pt">' + (r.equipo || '') + '</div>'
     + '<div style="font-size:6pt;color:#333;margin-top:0.3mm">' + falla + '</div>'
-    + (clave ? '<div style="font-size:6pt"><b>Clave:</b> ' + clave + '</div>' : '')
+    + (clave ? '<div style="font-size:6pt"><b>IMEI:</b> ' + clave + '</div>' : '')
     + '<div class="r" style="margin-top:0.5mm;font-size:6pt"><span>' + (r.fecha || '') + '</span><span>' + (r.tecnico || '') + '</span></div>'
     + '<div class="np" style="margin-top:6px"><button onclick="window.print()">Imprimir etiqueta</button></div>';
   var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' + css + '</style></head><body>' + body + '</body></html>';
@@ -1106,10 +1100,6 @@ function prtOrdenTaller(id) {
     + '<div style="font-size:14px;font-weight:800">' + e2(r.equipo||'') + '</div>'
     + (r.modelo ? '<div style="font-size:9px;color:#777;font-family:monospace;margin-top:2px">IMEI: ' + e2(r.modelo) + '</div>' : '')
     + '</td></tr></table>'
-    + '<div style="background:#fff3cd;border:1px solid #F0B429;border-radius:6px;padding:7px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">'
-    + '<div style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#7a5500">Clave / PIN</div>'
-    + '<div style="font-size:18px;font-weight:900;color:#111;letter-spacing:3px">' + e2(r.clave||'\u2014') + '</div>'
-    + '</div>'
     + '<div style="background:#f8f8f8;border-left:3px solid #F0B429;padding:8px 12px;margin-bottom:10px;border-radius:0 4px 4px 0">'
     + '<div style="font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#bbb;margin-bottom:3px">Falla declarada</div>'
     + '<div style="font-size:11px;color:#222;line-height:1.5">' + e2(r.falla||'\u2014') + '</div>'

@@ -98,13 +98,11 @@ function segContarPendientes() {
 
 // ── Guardar estado en Firebase ────────────────────────
 function segCambiarEstado(seg, nuevoEst) {
-  if (seg.tipo === 'reparacion') {
-    FB.upd(seg.ref_id, { seg_est: nuevoEst }, function() {});
-  } else if (seg.tipo === 'venta_90') {
-    FB.updV(seg.ref_id, { seg90_est: nuevoEst }, function() {});
-  } else if (seg.tipo === 'venta_365') {
-    FB.updV(seg.ref_id, { seg365_est: nuevoEst }, function() {});
-  }
+  if(!puede('gestionar_seguimientos')) { toast('Sin permiso para gestionar seguimientos','var(--rd)'); return; }
+  function done(err) { if(err)toast('No se pudo guardar el seguimiento: '+err,'var(--rd)'); else if(VIEW==='seg')render(); }
+  if(seg.tipo==='reparacion')FB.upd(seg.ref_id,{seg_est:nuevoEst},done);
+  else if(seg.tipo==='venta_90')FB.updV(seg.ref_id,{seg90_est:nuevoEst},done);
+  else if(seg.tipo==='venta_365')FB.updV(seg.ref_id,{seg365_est:nuevoEst},done);
 }
 
 // ── Mensajes WhatsApp ─────────────────────────────────

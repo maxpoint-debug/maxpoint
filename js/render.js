@@ -11,6 +11,7 @@ function render() {
   else if (VIEW === 'ops' && typeof renderPosHistorial === 'function') renderPosHistorial();
   else if (VIEW === 'ven')   renderVen();
   else if (VIEW === 'cierres' && typeof renderCierresCaja==='function') renderCierresCaja();
+  else if (VIEW === 'equipoAdmin' && typeof renderEquipoAdmin==='function') renderEquipoAdmin();
   else if (VIEW === 'admin' && typeof renderAdminDashboard==='function') renderAdminDashboard();
   else if (VIEW === 'servicios' && typeof renderServiciosMaestros==='function') renderServiciosMaestros();
   else if (VIEW === 'portal' && typeof renderPortalAdmin==='function') renderPortalAdmin();
@@ -551,6 +552,7 @@ function renderCentroControl() {
   cab.innerHTML = '<div><div style="font-size:20px;font-weight:800">Administración</div><div class="mu" style="font-size:12px;margin-top:3px">Prioridades operativas y resumen del negocio</div></div>'
     + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
     + ['hoy','mes','30d'].map(function(p) { var t = p === 'hoy' ? 'Hoy' : (p === 'mes' ? 'Este mes' : '30 días'); return '<button class="btn btn-sm ' + (CC_PERIODO === p ? 'btn-p' : 'btn-g') + '" onclick="ccSetPeriodo(\'' + p + '\')">' + t + '</button>'; }).join('')
+    + (esAdministrador() ? '<button class="btn btn-g btn-sm" onclick="showView(\'equipoAdmin\')">Equipo y permisos</button>' : '')
     + '<button class="btn btn-g btn-sm" onclick="showView(\'admin\')">Detalle financiero →</button></div>';
   cnt.appendChild(cab);
 
@@ -1224,6 +1226,7 @@ function renderCot() {
 
 // ── RENDER SEGUIMIENTOS ───────────────────────────────
 function renderSeg() {
+  if(!puede('gestionar_seguimientos')) { el('cnt').innerHTML='<div class="empty">Sin permiso para gestionar seguimientos.</div>'; return; }
   var cnt = el('cnt'); cnt.innerHTML = '';
   var lista = calcSeguimientos();
   var pendAlta = lista.filter(function(s){ return s.estado==='pendiente' && s.urgencia==='alta'; }).length;

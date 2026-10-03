@@ -149,7 +149,7 @@
     var activas=reps.filter(activo).sort(function(a,b){return fechaOrdenable(b.fecha).localeCompare(fechaOrdenable(a.fecha));});
     var historicas=reps.filter(function(r){return !activo(r);}).sort(function(a,b){return fechaOrdenable(b.fecha).localeCompare(fechaOrdenable(a.fecha));});
     var clientes=clienteDesdeReps(q), equipos=equiposDesdeMemoria(q);
-    var ventas=VENTAS.filter(function(v){return coincide(q,[v.nombre,v.telefono,v.modelo,v.imei,v.capacidad,v.color]);}).sort(function(a,b){return fechaOrdenable(b.fecha).localeCompare(fechaOrdenable(a.fecha));});
+    var ventas=VENTAS.filter(function(v){return puede('ver_ventas_equipos') && v.tipoRegistro!=='pos' && coincide(q,[v.nombre,v.telefono,v.modelo,v.imei,v.capacidad,v.color]);}).sort(function(a,b){return fechaOrdenable(b.fecha).localeCompare(fechaOrdenable(a.fecha));});
     var stock=STOCK.filter(function(s){return coincide(q,[s.modelo,s.capacidad,s.color,s.imei,s.detalles,s.estado]);});
     var rpus=RPUS.filter(function(r){return coincide(q,[r.nombre,r.modelo,r.orden,r.cliente,r.estado]);});
     agregarGrupo(res,'Reparaciones activas',activas,filaReparacion,expandir==='Reparaciones activas');

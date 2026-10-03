@@ -65,3 +65,72 @@ function renderAdminDashboard(){
   var dif=d.cierres.filter(function(c){return Math.abs(Number(c.diferencia||0))>.009;}),alertas=[];if(inv.sin)alertas.push(inv.sin+' producto(s) sin stock.');if(dif.length)alertas.push(dif.length+' cierre(s) con diferencia en el período.');if(productos[0])alertas.push('Producto destacado por '+ADM_RANK+': '+productos[0].nombre+'.');if(gastos[0])alertas.push('Mayor gasto operativo: '+gastos[0].nombre+' ('+admFmt(gastos[0])+').');var pv=admPct(d.venta.ARS,ant.venta.ARS);if(pv!==null&&Math.abs(pv)>=20)alertas.push('Ventas ARS '+(pv<0?'cayeron ':'subieron ')+Math.abs(pv).toFixed(1)+'% contra el período anterior.');cnt.innerHTML+='<section class="adm-sec"><div class="ct">Alertas administrativas</div>'+(alertas.map(function(a){return '<div class="adm-alert">⚠ '+esc(a)+'</div>';}).join('')||'<div class="empty">Sin alertas determinísticas para el período.</div>')+'</section><div class="adm-note"><b>Exactas:</b> ventas POS, cobros estructurados, movimientos, cierres, unidades y costos históricos POS/equipos. <b>Estimado:</b> resultado operativo, porque sólo descuenta gastos manuales correctamente categorizados. El margen de reparaciones no se calcula.</div>';
 }
 window.renderAdminDashboard=renderAdminDashboard;window.admSetPeriodo=admSetPeriodo;window.admRango=admRango;window.admRank=admRank;
+
+var EQUIPO_MES = '', EQUIPO_ASISTENCIA_ESTADO = 'pendiente';
+function equipoClave(n) { return String(n || '').trim().toLowerCase(); }
+function equipoContadores() {
+  var personas = {}, meses = {};
+  function persona(n) {
+    var k = equipoClave(n || 'Sin responsable');
+    return personas[k] || (personas[k] = { nombre:n || 'Sin responsable', dias:0, asignadas:0, terminadas:0, ventas:0 });
+  }
+  function sumar(n, f, campo) {
+    var d = /^\d{4}-\d{2}-\d{2}$/.test(String(f)) ? new Date(String(f)+'T12:00:00') : admFecha(f); if (!d || isNaN(d.getTime())) return;
+    var mes = admIso(d).slice(0,7), p = persona(n), k = mes + '|' + equipoClave(p.nombre);
+    if (!meses[k]) meses[k] = {mes:mes,nombre:p.nombre,dias:0,asignadas:0,terminadas:0,ventas:0};
+    p[campo]++; meses[k][campo]++;
+  }
+  ((window.COM_CFG || {}).tecnicos || []).forEach(function(t) { persona(t.nombre); });
+  (window.ASISTENCIAS_TECNICOS || []).forEach(function(a) { sumar(a.nombre,a.fecha,'dias'); });
+  (window.REPS || []).forEach(function(r) {
+    sumar(r.tecnico,r.fecha,'asignadas');
+    if (r.estado !== 'Listo' && r.estado !== 'Entregado') return;
+    var t = (r.timeline || []).find(function(t) { return t.estado === 'Listo'; });
+    if (!t) t = (r.timeline || []).find(function(t) { return t.estado === 'Entregado'; });
+    // Sin fecha de finalización no se atribuye un mes inventado.
+    if (t && t.fecha) sumar(r.tecnico,t.fecha,'terminadas');
+    else persona(r.tecnico).terminadas++;
+  });
+  (window.VENTAS || []).forEach(function(v) {
+    if (!admVentaActiva(v) || v.estadoVenta === 'Reservada') return;
+    sumar(v.tipoRegistro === 'pos' ? (v.usuario || {}).nombre : v.vendedor,admFechaEntidad(v),'ventas');
+  });
+  return {personas:Object.values(personas).sort(function(a,b) { return a.nombre.localeCompare(b.nombre); }),meses:Object.values(meses).sort(function(a,b) { return b.mes.localeCompare(a.mes) || a.nombre.localeCompare(b.nombre); })};
+}
+function equipoFilas(xs) {
+  return xs.map(function(x) { return [esc(x.nombre),EQUIPO_ASISTENCIA_ESTADO === 'ok' ? String(x.dias) : 'No disponible',String(x.asignadas),String(x.terminadas),String(x.ventas)]; });
+}
+function renderEquipoAdmin() {
+  if (!esAdministrador()) { showView('reps'); return; }
+  var datos = equipoContadores(), cnt = el('cnt');
+  cnt.innerHTML = '<div class="adm-head"><div class="ct">Equipo y permisos</div><button class="btn btn-g btn-sm" onclick="showView(\'bal\')">← Administración</button></div>';
+  var permisos = Object.keys(PERMISOS_BASE).map(function(k,i) {
+    return [esc(k.replace(/_/g,' ')),PERMISOS_BASE[k].indexOf('administrador') !== -1 ? 'Sí (fijo)' : 'No (fijo)'].concat(['tecnico','recepcionista'].map(function(rol) {
+      var cfg = PERMISOS_ROLES[k], activo = cfg && typeof cfg[rol] === 'boolean' ? cfg[rol] : PERMISOS_BASE[k].indexOf(rol) !== -1;
+      return '<input type="checkbox" id="perm_'+i+'_'+rol+'" aria-label="'+esc(k+' '+rol)+'"'+(activo?' checked':'')+'>';
+    }));
+  });
+  cnt.innerHTML += admTabla('Permisos por rol',['Permiso','Administrador','Técnico','Recepción'],permisos) + '<button id="equipoGuardarPermisos" class="btn btn-p" onclick="equipoGuardarPermisos()">Guardar permisos</button><div class="adm-note">Los permisos del administrador se conservan. Los cambios se aplican a todos los usuarios del rol.</div>';
+  cnt.innerHTML += admTabla('Acumulado histórico por persona',['Persona','Días con ingreso','Reparaciones asignadas','Reparaciones terminadas','Ventas'],equipoFilas(datos.personas));
+  var opciones = Array.from(new Set(datos.meses.map(function(x) { return x.mes; })));
+  cnt.innerHTML += '<section class="adm-sec"><label>Mes <select onchange="EQUIPO_MES=this.value;renderEquipoAdmin()"><option value="">Todos los meses</option>'+opciones.map(function(m) { return '<option'+(m===EQUIPO_MES?' selected':'')+'>'+m+'</option>'; }).join('')+'</select></label></section>';
+  cnt.innerHTML += admTabla('Desglose mensual',['Mes','Persona','Días con ingreso','Reparaciones asignadas','Reparaciones terminadas','Ventas'],datos.meses.filter(function(x) { return !EQUIPO_MES || x.mes === EQUIPO_MES; }).map(function(x) { return [x.mes].concat(equipoFilas([x])[0]); }));
+  cnt.innerHTML += '<div class="adm-note">Días con inicio de sesión: un registro por usuario y fecha de Argentina, aunque ingrese varias veces o desde varios dispositivos. Terminadas: actualmente Listo o Entregado; se cuentan una vez en la primera fecha registrada de finalización. Las órdenes antiguas sin esa fecha aparecen solo en el histórico. Ventas: operaciones de equipos y POS, excluyendo reservas, anulaciones y devoluciones. Los registros sin responsable se muestran por separado.</div>';
+  cnt.innerHTML += '<div id="equipoAsistenciaEstado" class="mu"></div>';
+  if (EQUIPO_ASISTENCIA_ESTADO === 'pendiente') {
+    EQUIPO_ASISTENCIA_ESTADO = 'cargando';
+    if (!FB.cargarAsistenciasTecnicos) { EQUIPO_ASISTENCIA_ESTADO = 'pendiente'; return; }
+    FB.cargarAsistenciasTecnicos(function(err) {
+      EQUIPO_ASISTENCIA_ESTADO = err ? 'error' : 'ok';
+      if (VIEW === 'equipoAdmin') { renderEquipoAdmin(); if(err) el('equipoAsistenciaEstado').textContent = 'No se pudo cargar la asistencia: '+err; }
+    });
+  }
+}
+function equipoGuardarPermisos() {
+  if (!esAdministrador()) return;
+  var datos = {};
+  Object.keys(PERMISOS_BASE).forEach(function(k,i) { datos[k] = {}; ['tecnico','recepcionista'].forEach(function(rol) { datos[k][rol] = el('perm_'+i+'_'+rol).checked; }); });
+  if (!FB.guardarPermisosRoles) { toast('Firebase todavía no está conectado','var(--rd)'); return; }
+  el('equipoGuardarPermisos').disabled = true;
+  FB.guardarPermisosRoles(datos,function(err) { if (el('equipoGuardarPermisos')) el('equipoGuardarPermisos').disabled=false; toast(err || 'Permisos guardados',err?'var(--rd)':'var(--gr)'); });
+}

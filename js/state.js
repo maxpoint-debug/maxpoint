@@ -55,6 +55,11 @@ var PERMISOS_BASE = {
   ver_balance: ['administrador'],
   ver_costos: ['administrador'],
   editar_costos: ['administrador'],
+  gestionar_repuestos: ['administrador', 'tecnico', 'recepcionista'],
+  gestionar_seguimientos: ['administrador', 'tecnico', 'recepcionista'],
+  actualizar_catalogo: ['administrador'],
+  importar_reparaciones: ['administrador'],
+  editar_finanzas_ventas: ['administrador'],
   editar_reparacion: ['administrador', 'tecnico', 'recepcionista'],
   eliminar_operaciones: ['administrador'],
   reasignar_reparacion_terminada: ['administrador'],
@@ -80,7 +85,8 @@ var PERMISOS_BASE = {
 };
 
 function sesionActiva() {
-  return !!(SESION && SESION.usuario && SESION.perfil && SESION.perfil.activo !== false);
+  return !!(SESION && SESION.usuario && SESION.perfil && SESION.perfil.activo !== false)
+    && (typeof window.validarVigenciaSesion !== 'function' || window.validarVigenciaSesion());
 }
 
 function usuarioActualRegistro() {
@@ -93,13 +99,24 @@ function usuarioActualRegistro() {
   };
 }
 
+var PERMISOS_ROLES = {};
+var PERMISOS_ESTADO = "pendiente";
+var ASISTENCIAS_TECNICOS = [];
+function esAdministrador() {
+  var rol = String(SESION && SESION.perfil && SESION.perfil.rol || "").trim().toLowerCase();
+  return sesionActiva() && (rol === "administrador" || rol === "admin");
+}
+
 function puede(permiso) {
   var roles = PERMISOS_BASE[permiso] || [];
   // Compatibilidad con perfiles creados antes de normalizar el rol.
   var rol = String(SESION && SESION.perfil && SESION.perfil.rol || '').trim().toLowerCase();
   if (rol === 'admin') rol = 'administrador';
   if (rol === 'técnico') rol = 'tecnico';
-  return sesionActiva() && roles.indexOf(rol) !== -1;
+  if (!sesionActiva() || ['administrador','tecnico','recepcionista'].indexOf(rol) === -1 || !Object.prototype.hasOwnProperty.call(PERMISOS_BASE,permiso)) return false;
+  if (rol !== 'administrador' && PERMISOS_ESTADO !== 'listo') return false;
+  if (rol !== 'administrador' && PERMISOS_ROLES[permiso] && typeof PERMISOS_ROLES[permiso][rol] === 'boolean') return PERMISOS_ROLES[permiso][rol];
+  return roles.indexOf(rol) !== -1;
 }
 
 // ===================== FIREBASE OBJECT =====================
@@ -154,3 +171,14 @@ var REGLAS_REPUESTO = [
   { palabras: ['carcasa','marco','chasis','tapa'],                             rep: 'Carcasa' },
   { palabras: ['placa','no enciende','no prende','no inicia','se apaga'],      rep: 'Reparacion de placa' },
 ];
+
+// Una fecha comercial común para todos los dispositivos.
+function fechaDiaSesion(ahora) {
+  var partes = new Intl.DateTimeFormat('en-CA', {timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(ahora));
+  function parte(tipo) { return partes.find(function(p) { return p.type === tipo; }).value; }
+  return parte('year')+'-'+parte('month')+'-'+parte('day');
+}
+function registroSesionVigente(registro, uid, ahora) {
+  return !!registro && registro.uid === uid && registro.dia === fechaDiaSesion(ahora)
+    && Number.isFinite(registro.actividad) && registro.actividad <= ahora && ahora-registro.actividad < 60*60*1000;
+}

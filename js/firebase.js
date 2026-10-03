@@ -14,8 +14,11 @@ import {
   setDoc,
   getDoc,
   getDocs,
+  getDocsFromServer,
+  getDocFromServer,
+  increment,
   writeBatch,
-  onSnapshot,
+  onSnapshot as observarFirestore,
   query,
   where,
   orderBy,
@@ -36,6 +39,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
 const db  = getFirestore(app);
+const onSnapshot = observarFirestore;
 const cR   = collection(db, 'reparaciones');
 const cRp  = collection(db, 'repuestos');
 const cCat = collection(db, 'catalogo');
@@ -69,7 +73,58 @@ const cServicios = collection(db, 'serviciosMaestros');
 const dPoliticasRep = doc(db, 'config', 'politicasReparacion');
 const dPortalCliente = doc(db, 'config', 'portalCliente');
 
-let authModo = 'login', bootstrapDisponible = false;
+let authModo = 'login', bootstrapDisponible = false, ingresoExplicito = false;
+const CLAVE_SESION_DIARIA = 'maxpoint_sesion_diaria_v1';
+let sesionDiariaMemoria = null, cerrandoPorVencimiento = false;
+function leerSesionDiaria() {
+  try { return JSON.parse(localStorage.getItem(CLAVE_SESION_DIARIA)); } catch(e) { return sesionDiariaMemoria; }
+}
+function escribirSesionDiaria(registro) {
+  sesionDiariaMemoria = registro;
+  try { localStorage.setItem(CLAVE_SESION_DIARIA, JSON.stringify(registro)); } catch(e) {}
+}
+function vencerSesionDiaria() {
+  if (cerrandoPorVencimiento) return;
+  cerrandoPorVencimiento = true; SESION.perfil = null; authUiLogin();
+  signOut(auth).finally(function() { cerrandoPorVencimiento = false; authMensaje('La sesión venció. Volvé a ingresar.'); });
+}
+window.validarVigenciaSesion = function() {
+  return !!auth.currentUser && registroSesionVigente(leerSesionDiaria(),auth.currentUser.uid,Date.now());
+};
+function revisarSesionDiaria(actividad) {
+  if (!auth.currentUser || !sesionActiva() || cerrandoPorVencimiento) return;
+  const ahora = Date.now(), registro = leerSesionDiaria();
+  if (!registroSesionVigente(registro,auth.currentUser.uid,ahora)) { vencerSesionDiaria(); return; }
+  if (actividad) { registro.actividad = ahora; escribirSesionDiaria(registro); }
+}
+['pointerdown','keydown','scroll','touchstart'].forEach(function(evento) {
+  document.addEventListener(evento,function(e) { revisarSesionDiaria(e.isTrusted); },{passive:true,capture:true});
+});
+let ultimoMovimientoSesion = 0;
+document.addEventListener('pointermove',function(e) {
+  if (e.isTrusted && Date.now()-ultimoMovimientoSesion > 1000) { ultimoMovimientoSesion=Date.now(); revisarSesionDiaria(true); }
+},{passive:true});
+window.addEventListener('focus',function() { revisarSesionDiaria(false); });
+document.addEventListener('visibilitychange',function() { revisarSesionDiaria(false); });
+window.addEventListener('storage',function(e) { if(e.key === CLAVE_SESION_DIARIA) revisarSesionDiaria(false); });
+setInterval(function() { revisarSesionDiaria(false); },1000);
+async function registrarDiaSesion(user, perfil) {
+  const fecha = fechaDiaSesion(Date.now()), ref = doc(db,'sesionesDiarias',user.uid+'_'+fecha);
+  await runTransaction(db,async function(tx) {
+    const previo = await tx.get(ref);
+    if (!previo.exists()) tx.set(ref,{uid:user.uid,nombre:perfil.nombre || user.email || 'Usuario',rol:perfil.rol,fecha:fecha,primerIngreso:serverTimestamp()});
+  });
+  EQUIPO_ASISTENCIA_ESTADO = 'pendiente';
+  if (VIEW === 'equipoAdmin' && esAdministrador()) renderEquipoAdmin();
+}
+async function asegurarDiaSesion(user, perfil, avisar) {
+  if (!sesionActiva() || !auth.currentUser || auth.currentUser.uid !== user.uid) return;
+  try { await registrarDiaSesion(user,perfil); }
+  catch(e) {
+    if (avisar) toast('No se pudo registrar el día de ingreso. Se reintentará: '+e.message,'var(--rd)');
+    setTimeout(function() { asegurarDiaSesion(user,perfil,false); },30000);
+  }
+}
 let detenerNotificaciones = null;
 function authMensaje(msg, color) { const e = document.getElementById('authErr'); if (e) { e.textContent = msg || ''; e.style.color = color || 'var(--rd)'; } }
 function authError(msg) { authMensaje(msg, 'var(--rd)'); }
@@ -127,13 +182,14 @@ window.authEnviar = async function() {
   const nombre = document.getElementById('authNombre').value.trim();
   if (!email || !pass || (authModo === 'bootstrap' && !nombre)) { authError('Completá los datos requeridos.'); return; }
   authError('');
+  ingresoExplicito = true;
   try {
     if (authModo === 'bootstrap') {
       if (!bootstrapDisponible) throw new Error('El administrador inicial ya fue creado.');
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       await setDoc(doc(cUsr, cred.user.uid), { uid: cred.user.uid, nombre: nombre, email: email, rol: 'administrador', activo: true, createdAt: serverTimestamp() });
     } else await signInWithEmailAndPassword(auth, email, pass);
-  } catch (e) { authError(e.message || 'No se pudo iniciar sesión.'); }
+  } catch (e) { ingresoExplicito = false; authError(e.message || 'No se pudo iniciar sesión.'); }
 };
 window.authTecla = function(e, input) {
   var visibles = ['authNombre', 'authEmail', 'authPass'].map(function(id) { return document.getElementById(id); })
@@ -149,7 +205,7 @@ window.authTecla = function(e, input) {
     e.preventDefault(); visibles[indice - 1].focus();
   }
 };
-window.authSalir = function() { signOut(auth); };
+window.authSalir = function() { escribirSesionDiaria(null); signOut(auth); };
 window.authRecuperarClave = async function() {
   const email = document.getElementById('authEmail').value.trim();
   if (!email) { authError('Ingresá tu email para recibir el enlace.'); return; }
@@ -189,6 +245,7 @@ window.renderUsuarios = async function() {
 window.authCrearUsuario = async function() {
   if (!puede('crear_usuario')) { toast('Sin permiso para crear usuarios', 'var(--rd)'); return; }
   const nombre = document.getElementById('usrNom').value.trim(), email = document.getElementById('usrEmail').value.trim(), pass = document.getElementById('usrPass').value, rol = document.getElementById('usrRol').value;
+  if (['administrador','tecnico','recepcionista'].indexOf(rol) === -1) { toast('Rol inválido','var(--rd)'); return; }
   if (!nombre || !email || !pass) { toast('Completá nombre, email y contraseña', 'var(--rd)'); return; }
   const provision = initializeApp(firebaseConfig, 'provision_' + Date.now());
   try {
@@ -201,12 +258,28 @@ window.authCrearUsuario = async function() {
 };
 
 setPersistence(auth, browserLocalPersistence).catch(function() {});
-let revisionSesion = 0;
+let revisionSesion = 0, detenerPermisosRoles = null;
+function iniciarPermisosRoles() {
+  if(detenerPermisosRoles) detenerPermisosRoles();
+  PERMISOS_ROLES={}; PERMISOS_ESTADO="pendiente";
+  detenerPermisosRoles=onSnapshot(doc(db,"config","permisosRoles"),function(snap) {
+    PERMISOS_ROLES=(snap.data() || {}).permisos || {}; PERMISOS_ESTADO="listo";
+    if(sesionActiva()) { authUiSesion(); render(); }
+  },function(err) {
+    PERMISOS_ROLES={}; PERMISOS_ESTADO="error";
+    if(sesionActiva()) { authUiSesion(); render(); toast("No se pudieron cargar los permisos: "+err.message,"var(--rd)"); }
+  });
+}
 onAuthStateChanged(auth, async function(user) {
   const revisionActual = ++revisionSesion;
+  detenerListenersInternos();
+  if(detenerPermisosRoles) { detenerPermisosRoles(); detenerPermisosRoles=null; }
+  PERMISOS_ROLES={}; PERMISOS_ESTADO="pendiente";
   if (detenerNotificaciones) { detenerNotificaciones(); detenerNotificaciones = null; }
   SESION.usuario = user || null; SESION.perfil = null; SESION.cargando = true;
   if (!user) {
+    ASISTENCIAS_TECNICOS = [];
+    EQUIPO_ASISTENCIA_ESTADO = 'pendiente';
     window.NOTIFICACIONES = [];
     if (typeof window.notificacionesRender === 'function') window.notificacionesRender();
     SESION.cargando = false; authUiLogin(); authMostrarLogin(); return;
@@ -215,7 +288,14 @@ onAuthStateChanged(auth, async function(user) {
     const perfil = (await getDoc(doc(cUsr, user.uid))).data();
     if (revisionActual !== revisionSesion || !auth.currentUser || auth.currentUser.uid !== user.uid) return;
     if (!perfil || perfil.activo === false) throw new Error(!perfil ? 'Tu cuenta no tiene un perfil habilitado.' : 'Tu usuario está inactivo.');
-    SESION.perfil = perfil; SESION.cargando = false; authUiSesion(); iniciarNotificaciones(user.uid);
+    const ahora = Date.now();
+    if (ingresoExplicito) {
+      ingresoExplicito = false;
+      escribirSesionDiaria({uid:user.uid,dia:fechaDiaSesion(ahora),actividad:ahora});
+    }
+    if (!registroSesionVigente(leerSesionDiaria(),user.uid,ahora)) { SESION.cargando=false; vencerSesionDiaria(); return; }
+    SESION.perfil = perfil; SESION.cargando = false; iniciarPermisosRoles(); iniciarListenersInternos(); authUiSesion(); iniciarNotificaciones(user.uid);
+    await asegurarDiaSesion(user,perfil,true);
   } catch (e) {
     if (revisionActual !== revisionSesion) return;
     SESION.cargando = false; authUiLogin(); authError(e.message || 'No se pudo validar la sesión.'); await signOut(auth);
@@ -303,6 +383,7 @@ async function v21Movimiento(tipo, origen, origenId, data, extra) {
 }
 
 async function v21Sync(origen, origenId, data, tipo, extra) {
+  if(origen==='reparacion')actualizarPortalEnSegundoPlano(origenId);
   try {
     // Las actualizaciones parciales usan el documento actual para conservar
     // clienteId y equipoId en cada movimiento V2.2.
@@ -466,19 +547,78 @@ window.FB.marcarNotificacionLeida = function(id, cb) {
 };
 
 // --- Sobreescribir FB con funciones reales ---
-window.FB.add = (d, cb) => { var datos=conTelefonoClave(d); agregarAuditable('reparaciones', 'reparacion', datos).then(id => { cb(null, id); v21Sync('reparacion', id, datos, 'reparacion_creada'); }).catch(e => cb(e.message)); };
-window.FB.addId = (id, d, cb) => agregarAuditable('reparaciones', 'reparacion', conTelefonoClave(d), id).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.upd = (id, d, cb) => { var datos=conTelefonoClave(d); actualizarAuditable('reparaciones', 'reparacion', id, datos).then(() => { cb(null); v21Sync('reparacion', id, datos, 'reparacion_actualizada'); }).catch(e => cb(e.message)); };
-window.FB.del = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('reparaciones', 'reparacion', id).then(() => cb(null)).catch(e => cb(e.message)); };
-window.FB.addR = (d, cb) => agregarAuditable('repuestos', 'repuesto', d).then(() => cb(null)).catch(e => cb(e.message));
-window.FB.updR = (id, d, cb) => actualizarAuditable('repuestos', 'repuesto', id, d).then(() => cb(null)).catch(e => cb(e.message));
+function sinCredencialesCliente(d) {
+  if(Array.isArray(d)) return d.map(sinCredencialesCliente);
+  if(!d || typeof d !== 'object')return d;
+  const limpio={}; Object.keys(d).forEach(k=>{if(CAMPOS_PRIVADOS.indexOf(k.toLowerCase())===-1)limpio[k]=sinCredencialesCliente(d[k]);}); return limpio;
+}
+function camposElegidos(d, campos) { const x={}; campos.forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k))x[k]=d[k];}); return x; }
+function datosRepuestoPermitidos(d) {
+  const x=camposElegidos(d,['nombre','modelo','precio_cliente','proveedor','estado','orden','cliente','notas','fecha']);
+  if(puede('editar_costos') && Object.prototype.hasOwnProperty.call(d,'costo'))x.costo=d.costo;
+  return x;
+}
+function validarCambioReparacion(previo, datos) {
+  const permitidos=['nombre','equipo','telefono','modelo','falla','presupuesto','estado','resolucionFinanciera','tecnico','garantia_ref','estadoFisicoRecepcion','estadoFisicoEntrega','notas','diagnosticoTaller','gremio','resultadoServicio','controlComisionV1','cobroHistoricoNoConciliado','servicioSnapshot','es_garantia','garantiaOrigenId','comisionVerificada','comisionVerificadaPor','fechaVerificacionComision','comisionExcepcion','entregaExcepcion','incidencia','seg_est','orden','fecha','timeline','sena','pagos','creadoPor'];
+  const d=camposElegidos(sinCredencialesCliente(datos),permitidos), final=Object.assign({},previo,d);
+  if(Object.prototype.hasOwnProperty.call(d,'tecnico') && d.tecnico!==previo.tecnico && ['Entregado','No aprobado'].includes(previo.estado) && !puede('reasignar_reparacion_terminada'))throw new Error('Sin permiso para reasignar una reparación terminada');
+  ['pagos','sena','creadoPor'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k) && JSON.stringify(d[k])!==JSON.stringify(previo[k]) && !(k==='sena' && Number(d[k]||0)===Number(previo[k]||0)))throw new Error('Los cobros y la autoría se conservan; usá Registrar pago o Revertir cobro');});
+  if(d.controlComisionV1===false && previo.controlComisionV1===true)throw new Error('No se puede desactivar el control operativo');
+  if(Object.prototype.hasOwnProperty.call(d,'cobroHistoricoNoConciliado') && Number(d.cobroHistoricoNoConciliado)!==Number(previo.cobroHistoricoNoConciliado||previo.sena||0))throw new Error('No se puede inventar un cobro histórico');
+  ['comisionVerificadaPor','fechaVerificacionComision','comisionExcepcion','entregaExcepcion'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k) && !puede('gestionar_comisiones'))throw new Error('Sin permiso para autorizar comisiones o entregas');});
+  if(d.comisionVerificada===true && !previo.comisionVerificada && !puede('gestionar_comisiones'))throw new Error('Sin permiso para verificar comisión');
+  if(final.resolucionFinanciera==='saldo_autorizado' && previo.resolucionFinanciera!==final.resolucionFinanciera && !puede('gestionar_comisiones'))throw new Error('Sin permiso para autorizar saldo pendiente');
+  if(final.resolucionFinanciera==='sin_cargo_cortesia' && previo.resolucionFinanciera!==final.resolucionFinanciera && !puede('gestionar_comisiones'))throw new Error('Sin permiso para autorizar cortesía');
+  if(d.incidencia && (d.incidencia.estado==='Resuelta' || d.incidencia.resolucion) && !puede('resolver_incidencias') && JSON.stringify(d.incidencia)!==JSON.stringify(previo.incidencia))throw new Error('Sin permiso para resolver incidencias');
+  const cobrado=totalCobradoReparacion(previo);
+  if(Number(final.presupuesto||0)+.01<cobrado)throw new Error('El presupuesto no puede quedar por debajo de lo cobrado');
+  if(reparacionEsSinCargo(final) && cobrado>0 && !reparacionEsSinCargo(previo))throw new Error('Primero revertí los cobros antes de definir sin cargo');
+  if(final.controlComisionV1 && final.estado==='Entregado') {
+    if(!final.resultadoServicio || final.resultadoServicio==='Pendiente de cierre' || !String(final.estadoFisicoEntrega||'').trim())throw new Error('Completá resultado y estado físico final antes de entregar');
+    if(!reparacionPuedeEntregarseFinancieramente(final))throw new Error('Registrá el cobro o autorizá la entrega con saldo');
+  }
+  Object.assign(d,resumenFinancieroReparacion(final));
+  if(d.estado && d.estado!==previo.estado)d.timeline=(previo.timeline||[]).concat([{estado:d.estado,fecha:hoy(),hora:horaActual(),usuario:usuarioActualRegistro()}]);
+  else delete d.timeline;
+  return d;
+}
+window.FB.add = (d, cb) => {
+  if(!puede('editar_reparacion')) { cb('Sin permiso para crear reparaciones'); return; }
+  try {
+    const limpio=sinCredencialesCliente(d);
+    const datos=validarCambioReparacion({},Object.assign({},limpio,{sena:'0',creadoPor:undefined}));
+    delete datos.creadoPor; datos.creadoPor=usuarioActualRegistro();
+    agregarAuditable('reparaciones','reparacion',conTelefonoClave(datos)).then(id=>{cb(null,id);v21Sync('reparacion',id,datos,'reparacion_creada');}).catch(e=>cb(e.message));
+  }catch(e){cb(e.message);}
+};
+window.FB.addId = (id, d, cb) => {
+  if(!puede('importar_reparaciones')) { cb('Sin permiso para importar reparaciones'); return; }
+  agregarAuditable('reparaciones','reparacion',conTelefonoClave(sinCredencialesCliente(d)),id).then(()=>{actualizarPortalEnSegundoPlano(id);cb(null);}).catch(e=>cb(e.message));
+};
+window.FB.upd = async (id, d, cb) => {
+  const keys=Object.keys(d),soloSeguimiento=keys.length>0 && keys.every(k=>k==='seg_est');
+  if(!puede(soloSeguimiento?'gestionar_seguimientos':'editar_reparacion')) { cb('Sin permiso para actualizar reparación'); return; }
+  try {
+    let guardado;
+    await runTransaction(db,async tx=>{
+      const ref=doc(cR,id),snap=await tx.get(ref);if(!snap.exists())throw new Error('Orden no encontrada');
+      guardado=soloSeguimiento ? camposElegidos(d,['seg_est']) : conTelefonoClave(validarCambioReparacion(snap.data(),d));
+      tx.update(ref,Object.assign({},guardado,{_upd:serverTimestamp()}));
+      tx.set(doc(cAud),{entidad:'reparacion',entidadId:id,accion:'actualizado',actor:usuarioActualRegistro(),cambios:cambiosAuditables(snap.data(),guardado),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });
+    cb(null);v21Sync('reparacion',id,guardado,'reparacion_actualizada');
+  }catch(e){cb(e.message);}
+};
+window.FB.del = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('reparaciones', 'reparacion', id).then(() => { actualizarPortalEnSegundoPlano(id); cb(null); }).catch(e => cb(e.message)); };
+window.FB.addR = (d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } agregarAuditable('repuestos', 'repuesto', datosRepuestoPermitidos(d)).then(() => cb(null)).catch(e => cb(e.message)); };
+window.FB.updR = (id, d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } actualizarAuditable('repuestos', 'repuesto', id, datosRepuestoPermitidos(d)).then(() => cb(null)).catch(e => cb(e.message)); };
 window.FB.delR = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('repuestos', 'repuesto', id).then(() => cb(null)).catch(e => cb(e.message)); };
 
 // --- Catalogo y config ---
-window.FB.setConfig = (d, cb) => actualizarAuditable('config', 'config_catalogo', 'catalogo', d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.setConfig = (d, cb) => { if(!puede('actualizar_catalogo')) { cb('Sin permiso para configurar catálogo'); return; } actualizarAuditable('config', 'config_catalogo', 'catalogo', d).then(() => cb(null)).catch(e => cb(e.message)); };
 window.FB.setCotizadorConfig = (d, cb) => {
   if (!puede('actualizar_cotizador')) { cb('Solo administrador puede modificar el cotizador'); return; }
-  actualizarAuditable('config', 'config_cotizador', 'cotizador', d).then(() => cb(null)).catch(e => cb(e.message));
+  actualizarAuditable('config', 'config_cotizador', 'cotizador', d).then(() => publicarCotizadorPublico()).then(() => cb(null)).catch(e => cb(e.message));
 };
 window.FB.setPortalClienteConfig = (d, cb) => {
   if (!puede('gestionar_portal_cliente')) { cb('Solo administrador puede configurar el Portal Cliente'); return; }
@@ -486,6 +626,7 @@ window.FB.setPortalClienteConfig = (d, cb) => {
 };
 
 window.FB.setCat = async (items, cb) => {
+  if(!puede('actualizar_catalogo')) { cb('Sin permiso para actualizar catálogo'); return; }
   let etapa = 'inicio';
   try {
     // Actualizacion incremental por codigo. Nunca borra el catalogo tecnico.
@@ -509,7 +650,8 @@ window.FB.setCat = async (items, cb) => {
     etapa = 'auditar catálogo';
     await registrarAuditoria('catalogo','catalogo','base_actualizada_incremental',{}, { productos:items.length,ausentes:ausentes.length });
     etapa = 'generar Lista Maestra';
-    const resumenServicios=window.FB.sincronizarServiciosDesdeCatalogo?await window.FB.sincronizarServiciosDesdeCatalogo(items,{cotizacion:Number(CFG_CAT.usd||0),archivo:items[0]&&items[0].archivoOrigen||''}):null;
+    const resumenServicios=puede('gestionar_servicios_maestros') && window.FB.sincronizarServiciosDesdeCatalogo?await window.FB.sincronizarServiciosDesdeCatalogo(items,{cotizacion:Number(CFG_CAT.usd||0),archivo:items[0]&&items[0].archivoOrigen||''}):null;
+    await publicarCotizadorPublico();
     cb(null,resumenServicios);
   } catch(e) {
     console.error('Actualización de catálogo falló en "'+etapa+'":',e);
@@ -517,6 +659,15 @@ window.FB.setCat = async (items, cb) => {
   }
 };
 
+let listenersInternos=[];
+function detenerListenersInternos() {
+  listenersInternos.forEach(detener=>detener()); listenersInternos=[];
+  ['REPS','RPUS','VENTAS','STOCK','AUDITORIA','PRODUCTOS_POS','MOVIMIENTOS_STOCK','MOVIMIENTOS_FINANCIEROS_POS','MOVIMIENTOS_FINANCIEROS_ADMIN','PAGOS_ADMIN','CIERRES_CAJA','SERVICIOS_MAESTROS','COM_LIQUIDACIONES','COM_AJUSTES'].forEach(k=>{window[k]=[];});
+  window.CAJA_ACTUAL=null;window.MOVIMIENTOS_CAJA_ACTUAL=[];window.MOVIMIENTOS_CAJA_ID=null;
+}
+function iniciarListenersInternos() {
+  detenerListenersInternos();
+  function onSnapshot(...args) { const detener=observarFirestore(...args);listenersInternos.push(detener);return detener; }
 // --- Listener reparaciones ---
 onSnapshot(
   query(cR, orderBy('_ts', 'asc')),
@@ -607,8 +758,26 @@ onSnapshot(query(cMovFin, orderBy('fechaHora','desc'), limit(2000)), (snap) => {
   window.MOVIMIENTOS_ADMIN_LIMITADO=snap.size===2000;
   if(window.VIEW==='admin'&&typeof render==='function')render();
 }, (err) => { console.error('Movimientos administrativos:',err); });
+let detenerMovimientosCaja = null, cajaEscuchada = null;
 onSnapshot(dCajaActual, (snap) => {
-  const d=snap.exists()?snap.data():null; window.CAJA_ACTUAL=d&&d.estado==='abierta'?Object.assign({id:d.cajaId},d):null;
+  const d=snap.exists()?snap.data():null;
+  window.CAJA_ACTUAL=d&&d.estado==='abierta'?Object.assign({id:d.cajaId},d):null;
+  const id=window.CAJA_ACTUAL && window.CAJA_ACTUAL.id;
+  if (id !== cajaEscuchada) {
+    if (detenerMovimientosCaja) detenerMovimientosCaja();
+    cajaEscuchada=id; window.MOVIMIENTOS_CAJA_ACTUAL=[]; window.MOVIMIENTOS_CAJA_ID=id;
+    window.MOVIMIENTOS_CAJA_CARGANDO=!!id; window.MOVIMIENTOS_CAJA_ERROR='';
+    if(id) detenerMovimientosCaja=onSnapshot(query(cMovFin,where('cajaId','==',id)), {includeMetadataChanges:true}, function(ms) {
+      if(cajaEscuchada !== id)return;
+      window.MOVIMIENTOS_CAJA_ACTUAL=ms.docs.map(d=>({id:d.id,...d.data()}));
+      window.MOVIMIENTOS_CAJA_CARGANDO=ms.metadata.fromCache; window.MOVIMIENTOS_CAJA_ERROR='';
+      if(window.VIEW==='pos')render();
+    },function(err) {
+      if(cajaEscuchada !== id)return;
+      window.MOVIMIENTOS_CAJA_CARGANDO=false; window.MOVIMIENTOS_CAJA_ERROR=err.message;
+      if(window.VIEW==='pos')render();
+    });
+  }
   if (window.VIEW==='pos') { if(typeof setTopActions==='function')setTopActions('pos'); if(typeof render==='function')render(); }
 }, () => {});
 onSnapshot(query(cCajas, orderBy('aperturaFechaHora','desc'), limit(500)), (snap) => {
@@ -658,7 +827,10 @@ onSnapshot(cAj, (snap) => {
 }, () => {});
 
 // ── Config comisiones ──
-window.FB.setComCfg = (d, cb) => actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message));
+
+}
+
+window.FB.setComCfg = (d, cb) => { if(!puede('gestionar_comisiones')) { cb('Sin permiso para configurar comisiones'); return; } actualizarAuditable('config', 'config_comisiones', 'comisiones', d).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 function fechaNegocioIso(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 window.FB.abrirCaja = async (data, cb) => {
@@ -709,13 +881,22 @@ window.FB.guardarPoliticasReparacion = async (data,cb) => {if(!puede('gestionar_
 window.FB.movimientoManualCaja = async (data, cb) => {
   if(!puede('registrar_movimiento_caja')){cb('Sin permiso para registrar movimientos de caja');return;}
   try{const monto=Number(data.monto),actor=usuarioActualRegistro(),ahora=new Date().toISOString();if(!Number.isFinite(monto)||monto===0)throw new Error('Ingresá un importe válido');if(!data.medio||!data.cuenta||!data.categoria)throw new Error('Completá medio, cuenta y categoría');if(!String(data.descripcion||'').trim())throw new Error('Indicá el motivo del movimiento');
-    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('No hay una caja abierta');const cajaId=actual.data().cajaId;const mov={schemaVersion:2,tipo:monto>0?'ingreso_manual':'egreso_manual',tipoEgreso:monto<0?String(data.tipoEgreso||'gasto_operativo'):'',referenciaTipo:'caja_manual',referenciaId:cajaId,cajaId:cajaId,monto:monto,moneda:data.moneda==='USD'?'USD':'ARS',medio:String(data.medio),cuenta:String(data.cuenta),categoria:String(data.categoria).trim(),subcategoria:String(data.subcategoria||'').trim(),descripcion:String(data.descripcion||'').trim(),usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(doc(cMovFin),mov);tx.set(doc(cAud),{entidad:'caja',entidadId:cajaId,accion:monto>0?'ingreso_manual':'egreso_manual',actor:actor,cambios:[],monto:monto,moneda:mov.moneda,tipoEgreso:mov.tipoEgreso,categoria:mov.categoria,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('No hay una caja abierta');const cajaId=actual.data().cajaId;const mov={schemaVersion:2,tipo:monto>0?'ingreso_manual':'egreso_manual',tipoEgreso:monto<0?String(data.tipoEgreso||'gasto_operativo'):'',referenciaTipo:'caja_manual',referenciaId:cajaId,cajaId:cajaId,monto:monto,moneda:data.moneda==='USD'?'USD':'ARS',medio:String(data.medio),cuenta:String(data.cuenta),categoria:String(data.categoria).trim(),subcategoria:String(data.subcategoria||'').trim(),descripcion:String(data.descripcion||'').trim(),usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.update(dCajaActual,{revisionMovimientos:increment(1)});
+      tx.set(doc(cMovFin),mov);tx.set(doc(cAud),{entidad:'caja',entidadId:cajaId,accion:monto>0?'ingreso_manual':'egreso_manual',actor:actor,cambios:[],monto:monto,moneda:mov.moneda,tipoEgreso:mov.tipoEgreso,categoria:mov.categoria,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 window.FB.cerrarCaja = async (data, cb) => {
   if(!puede('operar_caja')){cb('Sin permiso para cerrar caja');return;}
-  try{const actor=usuarioActualRegistro(),ahora=new Date().toISOString(),r=data.resumen||{},contado=Number(data.efectivoContado),esperado=Number(r.efectivoEsperado||0),dif=contado-esperado;if(!Number.isFinite(contado)||contado<0)throw new Error('El efectivo contado debe ser válido');if(Math.abs(dif)>.009&&!String(data.observacion||'').trim())throw new Error('Indicá el motivo de la diferencia');
-    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('La caja ya está cerrada');const a=actual.data(),ref=doc(cCajas,a.cajaId),snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='abierta')throw new Error('La sesión de caja no está disponible');const cierre={estado:'cerrada',cierreFechaHora:ahora,usuarioCierre:actor,ingresosEfectivo:Number(r.ingresosEfectivo||0),egresosEfectivo:Number(r.egresosEfectivo||0),efectivoEsperado:esperado,efectivoContado:contado,diferencia:dif,totalesPorMedio:r.totalesPorMedio||{},totalesPorCuenta:r.totalesPorCuenta||{},totalIngresos:Number(r.totalIngresos||0),totalEgresos:Number(r.totalEgresos||0),cantidadMovimientos:Array.isArray(r.movimientos)?r.movimientos.length:0,observacionCierre:String(data.observacion||'').trim(),cerradoEn:serverTimestamp()};tx.update(ref,cierre);tx.set(dCajaActual,{estado:'cerrada',cajaId:null,ultimoCierreId:ref.id,ultimoEfectivoContado:contado,moneda:a.moneda||'ARS',actualizadoEn:serverTimestamp()});tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'cerrada',actor:actor,cambios:[],diferencia:dif,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
+  try{
+    if(data.efectivoContado === null || data.efectivoContado === undefined || String(data.efectivoContado).trim()==='')throw new Error('Ingresá el efectivo contado');
+    const actualPrevio=await getDocFromServer(dCajaActual);
+    if(!actualPrevio.exists() || actualPrevio.data().estado!=='abierta')throw new Error('La caja ya está cerrada');
+    const base=actualPrevio.data(), id=base.cajaId;
+    if(data.cajaId && data.cajaId !== id)throw new Error('La caja cambió. Volvé a abrir el cierre');
+    const movimientos=await getDocsFromServer(query(cMovFin,where('cajaId','==',id)));
+    const r=cajaResumenDesdeMovimientos(base,movimientos.docs.map(d=>({id:d.id,...d.data()})));
+    const actor=usuarioActualRegistro(),ahora=new Date().toISOString(),contado=Number(data.efectivoContado),esperado=r.efectivoEsperado,dif=contado-esperado;if(!Number.isFinite(contado)||contado<0)throw new Error('El efectivo contado debe ser válido');if(Math.abs(dif)>.009&&!String(data.observacion||'').trim())throw new Error('Indicá el motivo de la diferencia');
+    await runTransaction(db,async tx=>{const actual=await tx.get(dCajaActual);if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('La caja ya está cerrada');const a=actual.data();if(a.cajaId!==id || Number(a.revisionMovimientos||0)!==Number(base.revisionMovimientos||0))throw new Error('La caja recibió movimientos durante el cierre. Revisá el efectivo y volvé a confirmar');const ref=doc(cCajas,a.cajaId),snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='abierta')throw new Error('La sesión de caja no está disponible');const cierre={estado:'cerrada',cierreFechaHora:ahora,usuarioCierre:actor,ingresosEfectivo:Number(r.ingresosEfectivo||0),egresosEfectivo:Number(r.egresosEfectivo||0),efectivoEsperado:esperado,efectivoContado:contado,diferencia:dif,totalesPorMedio:r.totalesPorMedio||{},totalesPorCuenta:r.totalesPorCuenta||{},totalIngresos:Number(r.totalIngresos||0),totalEgresos:Number(r.totalEgresos||0),cantidadMovimientos:Array.isArray(r.movimientos)?r.movimientos.length:0,observacionCierre:String(data.observacion||'').trim(),cerradoEn:serverTimestamp()};tx.update(ref,cierre);tx.set(dCajaActual,{estado:'cerrada',cajaId:null,ultimoCierreId:ref.id,ultimoEfectivoContado:contado,moneda:a.moneda||'ARS',actualizadoEn:serverTimestamp()});tx.set(doc(cAud),{entidad:'caja',entidadId:ref.id,accion:'cerrada',actor:actor,cambios:[],diferencia:dif,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);
   }catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 
@@ -763,7 +944,7 @@ window.FB.actualizarAjusteComision = (id, d, cb) => {
 };
 
 // ── CRUD ventas ──
-window.FB.addV = (d, cb) => agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message));
+window.FB.addV = (d, cb) => { if(!puede('editar_finanzas_ventas')) { cb('Sin permiso para crear ventas históricas'); return; } agregarAuditable('ventas', 'venta', d).then(id => { cb(null); v21Sync('venta', id, d, 'venta_creada'); }).catch(e => cb(e.message)); };
 window.FB.crearVentaEquipo = async (data, cb) => {
   if (!puede('vender_equipo')) { cb('Sin permiso para vender equipos'); return; }
   try {
@@ -780,6 +961,8 @@ window.FB.crearVentaEquipo = async (data, cb) => {
     const actor = usuarioActualRegistro(), ahora = new Date().toISOString();
     const requiereCaja=pagos.length>0;
     const venta = Object.assign({}, data, {
+      costo:puede('editar_costos') ? (data.costo || '0') : '0',
+      costoConfirmado:puede('editar_costos') && Number(data.costo||0)>0,
       tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:requiereCaja,
       pagos:pagos.map((p,i) => Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),
       totalPagadoUSD:pagado, saldoUSD:Math.max(0,requerido-pagado), usuario:actor,
@@ -791,6 +974,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
       if(requiereCaja&&(!cajaSnap.exists()||cajaSnap.data().estado!=='abierta'))throw new Error('Primero abrí la caja para registrar la seña');
       const cajaId=requiereCaja?cajaSnap.data().cajaId:null;
       regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
+      if (requiereCaja) tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.set(ventaRef, venta);
       if(partePagoRef)tx.set(partePagoRef,{modelo:String(data.pp_modelo).trim(),imei:String(data.pp_imei||''),precio_costo:data.pp_valor||'',precio_venta:'',capacidad:'',color:'',detalles:'',notas:'Ingreso por parte de pago — '+String(data.nombre||''),estado:'A revisar',fecha:hoy(),ventaOrigenId:ventaRef.id,creadoEn:serverTimestamp()});
       pagos.forEach((p,i) => {
@@ -823,6 +1007,7 @@ window.FB.completarReservaEquipo = async (id, data, cb) => {
       const saldo=Number(v.saldoUSD||0),pagado=pagos.reduce((s,p)=>s+Number(p.montoVentaUSD||0),0);if(Math.abs(saldo-pagado)>.01)throw new Error('Los pagos deben cubrir exactamente el saldo de la reserva');
       regaloSnaps.forEach((s,i)=>{if(!s.exists())throw new Error('El regalo seleccionado ya no existe');if(Number(s.data().stockActual||0)<1)throw new Error('Sin stock de '+(s.data().nombre||regalos[i].nombre));});
       const cajaId=cajaSnap.data().cajaId,nuevos=pagos.map((p,i)=>Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),todos=(v.pagos||[]).concat(nuevos),total=Number(v.totalPagadoUSD||0)+pagado;
+      tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.update(ventaRef,{estadoVenta:'Cobrada',imei:String(data.imei).trim(),pagos:todos,pago:todos.map(p=>p.medio).join(' + '),totalPagadoUSD:total,saldoUSD:0,cajaRegistrada:true,cotizacionBlue:Number(data.cotizacionBlue||v.cotizacionBlue||0),regalos:regalos,completadaEn:serverTimestamp(),completadaPor:actor,actualizadoEn:serverTimestamp()});
       pagos.forEach((p,i)=>{const pd={schemaVersion:2,pagoId:pagoRefs[i].id,origenTipo:'venta_equipo',origenId:id,ventaId:id,clienteNombre:v.nombre||'',equipoModelo:v.modelo||'',medio:p.medio,cuenta:p.cuenta,monto:Number(p.monto),moneda:p.moneda,cotizacion:Number(p.cotizacion||1),montoVentaUSD:Number(p.montoVentaUSD||0),estado:'aplicado',usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()};tx.set(pagoRefs[i],pd);tx.set(doc(cMovFin),Object.assign({},pd,{cajaId:cajaId,tipo:'ingreso_venta_equipo',referenciaTipo:'venta_equipo',referenciaId:id}));});
       regaloSnaps.forEach((s,i)=>{const antes=Number(s.data().stockActual||0),despues=antes-1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre,tipo:'regalo_venta_equipo',cantidad:-1,stockAnterior:antes,stockResultante:despues,motivo:'Regalo al completar reserva',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
@@ -852,6 +1037,7 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
         cambiosVenta.cajaRevertida = true;
         cambiosVenta.pagos = (venta.pagos || []).map(p => Object.assign({}, p, { estado:'revertido', revertidoEn:ahora, revertidoPor:actor }));
       }
+      if (venta.cajaRegistrada) tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       regaloSnaps.forEach((s,i)=>{if(!s.exists())return;const antes=Number(s.data().stockActual||0),despues=antes+1;tx.update(regaloRefs[i],{stockActual:despues,actualizadoPor:actor,actualizadoEn:serverTimestamp()});tx.set(doc(cMovSt),{schemaVersion:1,productoId:regaloRefs[i].id,productoNombre:s.data().nombre||regalos[i].nombre||'',tipo:'reversion_regalo_venta_equipo',cantidad:1,stockAnterior:antes,stockResultante:despues,motivo:'Anulación de venta de equipo',referenciaTipo:'venta_equipo',referenciaId:id,usuario:actor,fechaHora:ahora,creadoEn:serverTimestamp()});});
       tx.update(ventaRef, cambiosVenta);
       if (venta.cajaRegistrada) {
@@ -869,26 +1055,38 @@ window.FB.anularVentaEquipo = async (id, motivo, cb) => {
     cb(null);
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
-window.FB.updV = (id, d, cb) => { if (!puede('editar_ventas_equipos')) { cb('No tenés permiso para editar ventas anteriores'); return; } const rol=String(SESION&&SESION.perfil&&SESION.perfil.rol||'').toLowerCase();let cambios=d;if(rol==='tecnico'||rol==='técnico'){const permitidos=['nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','canal','notas','fecha','garantia','seguimiento'];cambios={};permitidos.forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k))cambios[k]=d[k];});}actualizarAuditable('ventas', 'venta', id, cambios).then(() => { cb(null); v21Sync('venta', id, cambios, 'venta_actualizada'); }).catch(e => cb(e.message)); };
+window.FB.updV = async (id, d, cb) => {
+  const keys=Object.keys(d),soloSeguimiento=keys.length>0 && keys.every(k=>['seg90_est','seg365_est','seguimiento'].includes(k));
+  if(!puede(soloSeguimiento?'gestionar_seguimientos':'editar_ventas_equipos')) { cb('Sin permiso para editar venta'); return; }
+  try {
+    let cambios;
+    await runTransaction(db,async tx=>{
+    const ref=doc(cVen,id),snap=await tx.get(ref); if(!snap.exists())throw new Error('Venta no encontrada');
+    const previo=snap.data();
+    const operativos=['nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','canal','notas','fecha','garantia','seguimiento','seg90_est','seg365_est'];
+    cambios=camposElegidos(d,soloSeguimiento?['seg90_est','seg365_est','seguimiento']:operativos);
+    if(!soloSeguimiento && puede('editar_costos'))Object.assign(cambios,camposElegidos(d,['costo','costoConfirmado']));
+    if(!soloSeguimiento && puede('gestionar_comisiones'))Object.assign(cambios,camposElegidos(d,['comisionExcepcion']));
+    if(!soloSeguimiento && !previo.cajaRegistrada && puede('editar_finanzas_ventas'))Object.assign(cambios,camposElegidos(d,['precio','estadoVenta','parte_pago','pp_modelo','pp_imei','pp_valor','pago']));
+    tx.update(ref,Object.assign({},cambios,{_upd:serverTimestamp()}));
+    tx.set(doc(cAud),{entidad:'venta',entidadId:id,accion:'actualizado',actor:usuarioActualRegistro(),cambios:cambiosAuditables(previo,cambios),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });
+    cb(null);v21Sync('venta',id,cambios,'venta_actualizada');
+  }catch(e){cb(e.message);}
+};
 window.FB.delV = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('ventas', 'venta', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
 
 // ── CRUD stock ──
 window.FB.addSt = (d, cb) => {
   if (!puede('gestionar_stock_equipos')) { cb('Sin permiso para agregar equipos al stock'); return; }
-  const rol = String(SESION && SESION.perfil && SESION.perfil.rol || '').toLowerCase();
-  const guardar = Object.assign({}, d);
-  if (rol === 'tecnico' || rol === 'técnico') { delete guardar.precio_costo; delete guardar.precio_venta; }
+  const guardar=camposElegidos(d,['modelo','capacidad','color','detalles','imei','notas','estado','fecha']);
+  if(puede('editar_costos'))Object.assign(guardar,camposElegidos(d,['precio_costo','precio_venta']));
   agregarAuditable('stock', 'stock', guardar).then(id => { cb(null, id); v21Sync('stock', id, guardar, 'stock_creado'); }).catch(e => cb(e.message));
 };
 window.FB.updSt = (id, d, cb) => {
   if (!puede('gestionar_stock_equipos')) { cb('Sin permiso para editar equipos del stock'); return; }
-  const rol = String(SESION && SESION.perfil && SESION.perfil.rol || '').toLowerCase();
-  let cambios = d;
-  if (rol === 'tecnico' || rol === 'técnico') {
-    const permitidos = ['modelo','capacidad','color','detalles','imei','notas','estado','fecha'];
-    cambios = {};
-    permitidos.forEach(k => { if (Object.prototype.hasOwnProperty.call(d, k)) cambios[k] = d[k]; });
-  }
+  const cambios=camposElegidos(d,['modelo','capacidad','color','detalles','imei','notas','estado','fecha']);
+  if(puede('editar_costos'))Object.assign(cambios,camposElegidos(d,['precio_costo','precio_venta']));
   actualizarAuditable('stock', 'stock', id, cambios).then(() => { cb(null); v21Sync('stock', id, cambios, 'stock_actualizado'); }).catch(e => cb(e.message));
 };
 window.FB.delSt = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('stock', 'stock', id).then(()=>cb(null)).catch(e=>cb(e.message)); };
@@ -913,7 +1111,7 @@ window.FB.guardarProductoPos = async (data, cb) => {
       const stockActual = previo ? Number(previo.stockActual || 0) : (data.controlaStock ? stockInicial : 0);
       const moneda = data.moneda === 'USD' ? 'USD' : 'ARS';
       const guardar = { schemaVersion:1, nombre:nombre, categoria:String(data.categoria || '').trim(), subcategoria:String(data.subcategoria || '').trim(),
-        sku:sku, barcode:barcode, costo:Number(data.costo || 0), precio:Number(data.precio || 0), moneda:moneda,
+        sku:sku, barcode:barcode, costo:puede('editar_costos') ? Number(data.costo || 0) : Number(previo && previo.costo || 0), precio:Number(data.precio || 0), moneda:moneda,
         controlaStock:!!data.controlaStock, stockActual:stockActual, activo:data.activo !== false,
         proveedorId:data.proveedorId || null, ecommerce:{ publicado:false }, variantes:[], actualizadoPor:actor, actualizadoEn:serverTimestamp() };
       if (!previo) guardar.creadoEn = serverTimestamp();
@@ -984,6 +1182,7 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
       saldoFinal = Math.max(0, presupuesto-totalCobrado);
       const financieros = { pagos:pagosFinales, totalCobrado:totalCobrado, saldo:saldoFinal,
         pago:presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente') };
+      tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.update(reparacionRef, Object.assign({}, financieros, { actualizadoEn:serverTimestamp() }));
       embebidos.forEach((p,idx) => {
         const pagoDoc = Object.assign({}, p, { schemaVersion:1, cajaId:cajaId, origenTipo:'reparacion', origenId:id, reparacionId:id,
@@ -995,6 +1194,7 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
         cambios:[{campo:'totalCobrado',antes:cobradoAnterior,despues:totalCobrado},{campo:'saldo',antes:Math.max(0,presupuesto-cobradoAnterior),despues:saldoFinal}],
         fecha:hoy(), hora:horaActual(), creadoEn:serverTimestamp() });
     });
+    actualizarPortalEnSegundoPlano(id);
     cb(null, { saldo:saldoFinal, movimientosCreados:pagosEntrada.length });
   } catch (e) { cb((e.code ? e.code + ': ' : '') + e.message); }
 };
@@ -1013,11 +1213,12 @@ window.FB.revertirCobroReparacion = async (id, pagoId, motivo, cb) => {
       if((p.reparacionId||p.origenId)!==id)throw new Error('El pago no pertenece a esta reparación');
       const pagos=(Array.isArray(r.pagos)?r.pagos:[]).map(x=>x.pagoId===pagoId?Object.assign({},x,{estado:'revertido',revertidoEn:ahora,revertidoPor:actor,motivoReversion:motivo}):x);
       const activos=pagos.filter(x=>x.estado!=='revertido'),total=activos.reduce((s,x)=>s+Number(x.monto||0),0),presupuesto=Number(r.presupuesto||0);
+      tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.update(pagoRef,{estado:'revertido',revertidoEn:serverTimestamp(),revertidoPor:actor,motivoReversion:motivo,reversionMovimientoId:reversionRef.id});
       tx.update(reparacionRef,{pagos:pagos,totalCobrado:total,saldo:Math.max(0,presupuesto-total),pago:total>=presupuesto&&presupuesto>0?'Pagado':(total>0?'Parcial':'Pendiente'),actualizadoEn:serverTimestamp()});
       tx.set(reversionRef,{schemaVersion:2,cajaId:cajaSnap.data().cajaId,tipo:'reversion_cobro_reparacion',referenciaTipo:'reparacion',referenciaId:id,reparacionId:id,pagoOriginalId:pagoId,orden:r.orden||'',clienteNombre:r.nombre||'',medio:p.medio||'',cuenta:p.cuenta||'',monto:-Number(p.monto||0),moneda:p.moneda||'ARS',motivo:motivo,usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()});
       tx.set(doc(cAud),{entidad:'reparacion',entidadId:id,accion:'cobro_revertido',actor:actor,cambios:[{campo:'totalCobrado',antes:Number(r.totalCobrado||0),despues:total}],pagoId:pagoId,motivo:motivo,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
-    }); cb(null);
+    }); actualizarPortalEnSegundoPlano(id); cb(null);
   } catch(e){cb((e.code?e.code+': ':'')+e.message);}
 };
 
@@ -1067,6 +1268,7 @@ window.FB.crearVentaPos = async (data, cb) => {
       const importeFijo = Math.min(Math.max(0, baseGlobal - importePorcentaje), Math.max(0, Number(data.descuentoGlobal && data.descuentoGlobal.importeFijo || 0)));
       const totalValidado = Math.max(0, baseGlobal - importePorcentaje - importeFijo);
       if (Math.abs(totalValidado - total) > 0.01) throw new Error('El precio o descuento cambió; revisá la venta antes de cobrar');
+      tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.set(dContVentas, { ultimoNumero:numero, actualizadoEn:serverTimestamp() }, { merge:true });
       const pagosVenta = pagos.map((p, idx) => Object.assign({}, p, { pagoId:pagoRefs[idx].id }));
       const venta = Object.assign({}, data, { items:itemsVenta, pagos:pagosVenta, subtotal:subtotalValidado,
@@ -1114,6 +1316,7 @@ window.FB.anularVentaPos = async (id, motivo, cb) => {
       if (v.estado !== 'activa') throw new Error('La venta ya no está activa');
       const items = Array.isArray(v.items) ? v.items : [], refs = items.map(i => doc(cPro, i.productoId)), snaps = [];
       for (const ref of refs) snaps.push(await tx.get(ref));
+      tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.update(ventaRef, { estado:'anulada', anulacion:{ motivo:String(motivo || '').trim(), usuario:actor, fechaHora:ahora }, actualizadoEn:serverTimestamp() });
       items.forEach((item, idx) => {
         if (!item.controlaStock) return;
@@ -1148,8 +1351,97 @@ window.FB.setUsados = async (items, cb) => {
       const clave = u.modeloClave || (window.MAXPOINT_COTIZADOR && window.MAXPOINT_COTIZADOR.modeloClave(u.modelo, true)) || u.modelo.replace(/[^a-zA-Z0-9]/g,'_');
       const r = doc(cUsa, clave); b2.set(r, Object.assign({}, u, { modeloClave:clave }));
     });
-    await b2.commit(); await registrarAuditoria('cotizador', 'usados', 'base_reemplazada', {}, { modelos: items.length }); cb(null);
+    await b2.commit(); await registrarAuditoria('cotizador', 'usados', 'base_reemplazada', {}, { modelos: items.length }); await publicarCotizadorPublico(); cb(null);
   } catch(e) { cb(e.message); }
 };
 
 // ── setCat ──
+
+// Configuración incremental de roles y asistencia, sin alterar datos operativos.
+window.FB.guardarPermisosRoles = async function(permisos, cb) {
+  if (!esAdministrador()) { cb('Solo administración puede configurar permisos'); return; }
+  const limpio = {};
+  Object.keys(PERMISOS_BASE).forEach(function(k) {
+    limpio[k] = {};
+    ['tecnico','recepcionista'].forEach(function(rol) {
+      limpio[k][rol] = !!(permisos[k] && permisos[k][rol]);
+    });
+  });
+  try { await actualizarAuditable('config', 'permisos_roles', 'permisosRoles', { permisos:limpio }); cb(null); }
+  catch(e) { cb(e.message); }
+};
+window.FB.cargarAsistenciasTecnicos = async function(cb) {
+  if (!esAdministrador()) { cb('Solo administración puede consultar asistencia'); return; }
+  try {
+    const snap = await getDocs(collection(db,'sesionesDiarias'));
+    ASISTENCIAS_TECNICOS = snap.docs.map(d => ({id:d.id, ...d.data()})); cb(null);
+  } catch(e) { cb(e.message); }
+};
+
+// Lecturas públicas separadas de datos internos. No se eliminan registros.
+let colaPortalPublico=Promise.resolve();
+function actualizarPortalEnSegundoPlano(id) {
+  colaPortalPublico=colaPortalPublico.catch(()=>{}).then(()=>publicarPortalReparacion(id)).catch(e=>{
+    console.error('Actualización del portal pendiente:',e);
+    toast('La operación se guardó; el portal necesita actualización: '+e.message,'var(--rd)');
+  });
+}
+async function publicarGrupoPortal(tel,extraIds,baseReps) {
+  const core=window.MAXPOINT_PUBLICO;
+  const indices=await getDocsFromServer(query(collection(db,'portalIndices'),where('telefonoClave','==',tel)));
+  const ids=Array.from(new Set((baseReps||window.REPS||[]).filter(r=>core.telefono(r.telefono)===tel).map(r=>r.id).concat(indices.docs.map(d=>d.id),extraIds||[])));
+  if(ids.length>400)throw new Error('Este cliente supera 400 órdenes; requiere publicación paginada');
+  for(const id of ids) {
+    const origen=await getDocFromServer(doc(cR,id)), indice=await getDocFromServer(doc(db,'portalIndices',id));
+    const actual=origen.exists()?origen.data():null, anterior=indice.exists()?indice.data():null;
+    const claveActual=actual&&core.telefono(actual.telefono)===tel?await core.acceso(actual.telefono,actual.orden):'';
+    const claves=Array.from(new Set([claveActual,anterior&&anterior.telefonoClave===tel?anterior.accesoId:''].filter(Boolean)));
+    for(const clave of claves)await runTransaction(db,async tx=>{
+      const refs=ids.map(i=>doc(cR,i)), snapshots=[];
+      for(const ref of refs)snapshots.push(await tx.get(ref));
+      const propio=snapshots[ids.indexOf(id)], datos=propio.exists()?propio.data():null;
+      const habilitado=!!datos&&core.telefono(datos.telefono)===tel&&(await core.acceso(datos.telefono,datos.orden))===clave;
+      const raiz=doc(db,'portalAccesos',clave);
+      tx.set(raiz,{activo:habilitado,actualizadoEn:serverTimestamp()});
+      if(!habilitado)return;
+      snapshots.forEach((snap,i)=>{
+        const r=snap.exists()?snap.data():null;
+        const vista=r&&core.telefono(r.telefono)===tel?core.reparacion(r,totalCobradoReparacion(r),reparacionEsSinCargo(r)):{visible:false};
+        tx.set(doc(db,'portalAccesos',clave,'reparaciones',ids[i]),Object.assign({},vista,{actualizadoEn:serverTimestamp()}));
+      });
+      tx.set(doc(db,'portalIndices',id),{telefonoClave:tel,accesoId:clave,actualizadoEn:serverTimestamp()});
+    });
+  }
+}
+async function publicarPortalReparacion(id) {
+  if(!sesionActiva())throw new Error('Sesión activa requerida');
+  const [origen,indice]=await Promise.all([getDocFromServer(doc(cR,id)),getDocFromServer(doc(db,'portalIndices',id))]);
+  const tel=origen.exists()?window.MAXPOINT_PUBLICO.telefono(origen.data().telefono):'';
+  const previo=indice.exists()?indice.data().telefonoClave:'';
+  for(const t of Array.from(new Set([previo,tel].filter(Boolean))))await publicarGrupoPortal(t,[id]);
+}
+async function publicarCotizadorPublico() {
+  const [usados,cat,publicado]=await Promise.all([getDocsFromServer(cUsa),getDocsFromServer(cCat),getDocsFromServer(collection(db,'cotizadorPublico'))]);
+  const datos=window.MAXPOINT_PUBLICO.cotizador(usados.docs.map(d=>d.data()),cat.docs.map(d=>d.data()),window.MAXPOINT_COTIZADOR);
+  const vigentes=new Set(datos.map(d=>d.modeloClave));
+  const tareas=datos.map(d=>({id:d.modeloClave,data:d})).concat(publicado.docs.filter(d=>!vigentes.has(d.id)).map(d=>({id:d.id,data:{activo:false}})));
+  for(let i=0;i<tareas.length;i+=350) {
+    const batch=writeBatch(db);
+    tareas.slice(i,i+350).forEach(x=>batch.set(doc(db,'cotizadorPublico',x.id),Object.assign({},x.data,{actualizadoEn:serverTimestamp()}),{merge:true}));
+    await batch.commit();
+  }
+}
+window.FB.actualizarLecturasPublicas=async function(cb) {
+  if(!esAdministrador()){cb('Solo administración puede inicializar las lecturas públicas');return;}
+  try {
+    const snap=await getDocsFromServer(cR), reps=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const telefonos=Array.from(new Set(reps.map(r=>window.MAXPOINT_PUBLICO.telefono(r.telefono)).filter(Boolean)));
+    // Incluye accesos anteriores para desactivar órdenes retiradas/cambiadas.
+    const indices=await getDocsFromServer(collection(db,'portalIndices'));
+    indices.docs.forEach(d=>{if(d.data().telefonoClave&&!telefonos.includes(d.data().telefonoClave))telefonos.push(d.data().telefonoClave);});
+    for(const tel of telefonos)await publicarGrupoPortal(tel,[],reps);
+    await publicarCotizadorPublico();
+    await registrarAuditoria('publicacion','lecturas_publicas','actualizadas',{}, {clientes:telefonos.length});
+    cb(null);
+  }catch(e){cb(e.message);}
+};
