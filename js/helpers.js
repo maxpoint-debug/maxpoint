@@ -243,7 +243,7 @@ function ventaValidaParaMetricas(venta) {
 }
 
 // --- Modales ---
-function openM(id)  { el(id).classList.add('open'); }
+function openM(id)  { el(id).classList.add('open'); if(typeof applePrepararSugerencias==='function')applePrepararSugerencias(); }
 function closeM(id) { el(id).classList.remove('open'); }
 
 // --- Sync bar ---

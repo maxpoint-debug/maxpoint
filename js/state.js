@@ -139,6 +139,7 @@ window.FB = {
   setSeguimientosConfig:function(d, cb) { cb('Firebase no conectado todavía'); },
   setCotizadorConfig:function(d, cb) { cb('Firebase no conectado todavía'); },
   crearLiquidacionComision:function(d, cb) { cb('Firebase no conectado todavía'); },
+  anularLiquidacionComision:function(id,motivo,cb){cb('Firebase no conectado todavía');},
   actualizarLiquidacionComision:function(id, d, cb) { cb('Firebase no conectado todavía'); },
   getConfig:function(cb)         { cb(null, {}); },
   guardarProductoPos:function(d, cb) { cb('Firebase no conectado todavía'); },

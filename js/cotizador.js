@@ -23,66 +23,85 @@ function cotLoadUsados(docs) {
   }));
 }
 function cotLoadConfig(data) {
-  COTIZADOR_CFG = window.MAXPOINT_COTIZADOR.config(data || {});
+  COTIZADOR_CFG = window.MAXPOINT_COTIZADOR.config(Object.assign({},data || {},{exigirPorModelo:true}));
   if (_cotSel && typeof cotCalcular === 'function') cotCalcular();
 }
 
-function cotConfigRender() {
+var _cotEditorClave = '';
+var COT_CAMPOS = ['BatUmbral','BatFallback','EstLeve','EstMarcada','Pantalla','Face','CamNormal','CamFront','Carcasa','Vidrio','Botones','Pieza','Minimo'];
+
+function cotConfigRender(preferida) {
   var core = window.MAXPOINT_COTIZADOR, modelos = {};
   USADOS.forEach(function(u) { var k=core.claveModeloBase(u.modelo); if(k)modelos[k]=u.modelo.replace(/\s+\d+\s*(GB|TB)\s*$/i,''); });
   Object.keys(COTIZADOR_CFG.porModelo || {}).forEach(function(k) { if(!modelos[k])modelos[k]=k.replace(/_/g,' '); });
-  el('cfgCotModelo').innerHTML='<option value="">Parámetros generales</option>'+Object.keys(modelos).sort().map(function(k) { return '<option value="'+k+'">'+esc(modelos[k])+'</option>'; }).join('');
-  cotConfigElegirModelo();
+  el('cfgCotModelo').innerHTML='<option value="">Nuevo modelo / elegir equipo</option>'+Object.keys(modelos).sort().map(function(k) { return '<option value="'+k+'">'+esc(modelos[k])+'</option>'; }).join('');
+  el('cfgCotModelo').value = preferida || '';
+}
+
+function cotConfigCargarCampos(modelo) {
+  var core=window.MAXPOINT_COTIZADOR, clave=core.claveModeloBase(modelo);
+  _cotEditorClave=clave;
+  var propio=(COTIZADOR_CFG.porModelo || {})[clave];
+  var c=propio ? core.configModelo(COTIZADOR_CFG,modelo) : null;
+  var valores = c ? [c.bateria.umbral,c.bateria.fallbackUsd,c.estetica.leveUsd,c.estetica.marcadaUsd,
+    c.pantalla.fallbackUsd,c.fallas.faceIdFallbackUsd,
+    /\bpro\b/i.test(modelo)?c.fallas.camaraTraseraProUsd:c.fallas.camaraTraseraNormalUsd,
+    c.fallas.camaraFrontalUsd,c.fallas.carcasaUsd,c.fallas.vidrioCamaraUsd,c.fallas.botonesUsd,
+    c.fallas.piezaDesconocidaUsd,c.totalMinimoUsd] : [90,'','','','','','','','','','','',0];
+  COT_CAMPOS.forEach(function(id,i) { el('cfgCot'+id).value=valores[i]; });
+  el('cfgCotRedondeo').value=c ? c.redondeo : 'entero';
+  el('cfgCotModeloNombre').textContent=modelo || 'Elegí o escribí un modelo';
+  el('cfgCotAviso').textContent=c ? 'Estos importes corresponden sólo a este modelo y se comparten entre sus capacidades.' : 'Completá los descuentos de este modelo. Usá 0 cuando no quieras aplicar un descuento; no se copian valores globales.';
 }
 
 function cotConfigElegirModelo() {
-  var core=window.MAXPOINT_COTIZADOR, clave=el('cfgCotModelo').value;
-  var c=core.configModelo(COTIZADOR_CFG,clave.replace(/_/g,' '));
-  if(clave && !(COTIZADOR_CFG.porModelo || {})[clave])c.origenDescuentos='parametros';
-  var valores = {
-    cfgCotBatUmbral:c.bateria.umbral, cfgCotBatFallback:c.bateria.fallbackUsd,
-    cfgCotEstLeve:c.estetica.leveUsd, cfgCotEstMarcada:c.estetica.marcadaUsd,
-    cfgCotPantalla:c.pantalla.fallbackUsd, cfgCotFace:c.fallas.faceIdFallbackUsd,
-    cfgCotCamNormal:c.fallas.camaraTraseraNormalUsd, cfgCotCamPro:c.fallas.camaraTraseraProUsd,
-    cfgCotCamFront:c.fallas.camaraFrontalUsd, cfgCotCarcasa:c.fallas.carcasaUsd,
-    cfgCotVidrio:c.fallas.vidrioCamaraUsd, cfgCotBotones:c.fallas.botonesUsd,
-    cfgCotPieza:c.fallas.piezaDesconocidaUsd, cfgCotMinimo:c.totalMinimoUsd
+  var clave=val('cfgCotModelo'), equipo=USADOS.find(function(u) { return window.MAXPOINT_COTIZADOR.claveModeloBase(u.modelo)===clave; });
+  if(equipo) { el('cotManualSel').value=equipo.modelo; cotManualElegir(); }
+  else {
+    el('cotManualSel').value='';
+    setVal('cotManualModelo',clave.replace(/_/g,' '));
+    setVal('cotManualCapacidad',''); setVal('cotManualPrecio','');
+    cotConfigCargarCampos(val('cotManualModelo'));
+  }
+}
+
+function cotManualModeloCambiar() {
+  var modelo=val('cotManualModelo'), clave=window.MAXPOINT_COTIZADOR.claveModeloBase(modelo);
+  if(clave!==_cotEditorClave)cotConfigCargarCampos(modelo);
+  el('cfgCotModelo').value=clave;
+  el('cfgCotModeloNombre').textContent=modelo || 'Elegí o escribí un modelo';
+}
+
+function cotConfigLeerCampos() {
+  if(COT_CAMPOS.some(function(id) { var v=val('cfgCot'+id); return v==='' || !Number.isFinite(Number(v)) || Number(v)<0; })) {
+    toast('Completá todos los descuentos del modelo con importes válidos; 0 significa sin descuento','var(--rd)'); return null;
+  }
+  if(Number(val('cfgCotBatUmbral'))>100) { toast('El umbral de batería debe estar entre 0 y 100','var(--rd)'); return null; }
+  var camara=Number(val('cfgCotCamNormal'));
+  return {
+    origenDescuentos:'parametros',
+    bateria:{umbral:Number(val('cfgCotBatUmbral')),fallbackUsd:Number(val('cfgCotBatFallback'))},
+    estetica:{leveUsd:Number(val('cfgCotEstLeve')),marcadaUsd:Number(val('cfgCotEstMarcada'))},
+    pantalla:{fallbackUsd:Number(val('cfgCotPantalla'))},
+    fallas:{faceIdFallbackUsd:Number(val('cfgCotFace')),camaraTraseraNormalUsd:camara,camaraTraseraProUsd:camara,
+      camaraFrontalUsd:Number(val('cfgCotCamFront')),carcasaUsd:Number(val('cfgCotCarcasa')),
+      vidrioCamaraUsd:Number(val('cfgCotVidrio')),botonesUsd:Number(val('cfgCotBotones')),piezaDesconocidaUsd:Number(val('cfgCotPieza'))},
+    sinCoincidencia:'usar_fallback',redondeo:val('cfgCotRedondeo'),totalMinimoUsd:Number(val('cfgCotMinimo'))
   };
-  Object.keys(valores).forEach(function(id) { el(id).value = valores[id]; });
-  el('cfgCotSinCoincidencia').value = c.sinCoincidencia;
-  el('cfgCotRedondeo').value = c.redondeo;
-  el('cfgCotOrigen').value = c.origenDescuentos;
 }
 
 function cotGuardarConfig() {
   if (!puede('actualizar_cotizador')) { toast('Solo un administrador puede modificar el cotizador', 'var(--rd)'); return; }
-  var datos = {
-    origenDescuentos:el('cfgCotOrigen').value,
-    bateria:{ umbral:Number(val('cfgCotBatUmbral')), fallbackUsd:Number(val('cfgCotBatFallback')) },
-    estetica:{ leveUsd:Number(val('cfgCotEstLeve')), marcadaUsd:Number(val('cfgCotEstMarcada')) },
-    pantalla:{ fallbackUsd:Number(val('cfgCotPantalla')) },
-    fallas:{ faceIdFallbackUsd:Number(val('cfgCotFace')), camaraTraseraNormalUsd:Number(val('cfgCotCamNormal')),
-      camaraTraseraProUsd:Number(val('cfgCotCamPro')), camaraFrontalUsd:Number(val('cfgCotCamFront')),
-      carcasaUsd:Number(val('cfgCotCarcasa')), vidrioCamaraUsd:Number(val('cfgCotVidrio')),
-      botonesUsd:Number(val('cfgCotBotones')), piezaDesconocidaUsd:Number(val('cfgCotPieza')) },
-    sinCoincidencia:el('cfgCotSinCoincidencia').value,
-    redondeo:el('cfgCotRedondeo').value,
-    totalMinimoUsd:Number(val('cfgCotMinimo')),
-    updated:hoy()
-  };
-  if (datos.bateria.umbral < 0 || datos.bateria.umbral > 100) { toast('El umbral de batería debe estar entre 0 y 100', 'var(--rd)'); return; }
-  var campos=['cfgCotBatUmbral','cfgCotBatFallback','cfgCotEstLeve','cfgCotEstMarcada','cfgCotPantalla','cfgCotFace','cfgCotCamNormal','cfgCotCamPro','cfgCotCamFront','cfgCotCarcasa','cfgCotVidrio','cfgCotBotones','cfgCotPieza','cfgCotMinimo'];
-  if(campos.some(function(id) { return val(id).trim()==='' || !Number.isFinite(Number(val(id))) || Number(val(id))<0; })) { toast('Completá los importes con números mayores o iguales a cero','var(--rd)'); return; }
-  var clave=el('cfgCotModelo').value, anteriores=window.MAXPOINT_COTIZADOR.config(COTIZADOR_CFG);
-  if(clave) {
-    anteriores.porModelo[clave]=datos;
-    datos=anteriores;
-  } else datos.porModelo=anteriores.porModelo;
-  var btn = el('btnGuardarCfgCot'); btn.disabled = true; btn.textContent = 'Guardando...';
-  FB.setCotizadorConfig(datos, function(err) {
-    btn.disabled = false; btn.textContent = 'Guardar parámetros';
-    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    cotLoadConfig(datos); toast('Parámetros del cotizador actualizados');
+  var modelo=val('cotManualModelo'), datos=cotConfigLeerCampos();
+  if(!datos)return;
+  if(!window.MAXPOINT_COTIZADOR.claveModeloBase(modelo)) { toast('Elegí un modelo de iPhone','var(--rd)'); return; }
+  var btn=el('btnGuardarCfgCot');btn.disabled=true;btn.textContent='Guardando...';
+  FB.guardarModeloCotizador({modelo:modelo,parametros:datos},function(err,config,resultado) {
+    btn.disabled=false;btn.textContent='Guardar sólo descuentos';
+    if(err){toast('Error: '+err,'var(--rd)');return;}
+    cotLoadConfig(config);cotConfigRender(window.MAXPOINT_COTIZADOR.claveModeloBase(modelo));cotConfigCargarCampos(modelo);
+    if(resultado&&resultado.publicacionPendiente)toast('Descuentos guardados. Falta publicar desde Portal Cliente → Actualizar portal y cotizador','var(--or)');
+    else toast('Descuentos guardados para '+modelo);
   });
 }
 
@@ -248,14 +267,15 @@ function cotExtraSetUsd(input) {
 
 function cotCalcular() {
   if (!_cotSel) return;
-  var base = Number(_cotSel.precio_usd || 0), bat = parseInt(el('cotBat').value, 10) || 100;
+  var base = Number(_cotSel.precio_usd || 0), lecturaBat=Number(el('cotBat').value);
+  var bat=el('cotBat').value.trim()!=='' && Number.isFinite(lecturaBat) ? Math.max(0,Math.min(100,lecturaBat)) : 100;
   var pieza = val('cotPieza').trim();
   var resultado = window.MAXPOINT_COTIZADOR.calcular({
     modelo:_cotSel.modelo, base:base, bateria:bat,
     estetica:el('cotEstetica').value, pantalla:el('cotPantalla').value,
     problemas:{ faceid:el('cotFaceId').value, camtras:el('cotCamTras').value, camfront:el('cotCamFront').value,
       carcasa:el('cotCarcasa').value, vidriocam:el('cotVidrioCam').value, botones:el('cotBotones').value, pieza:pieza ? 'si' : 'ok' },
-    piezaDescripcion:pieza, extras:_cotExtras, catalogo:window.CATALOGO || [], config:COTIZADOR_CFG
+    piezaDescripcion:pieza, extras:_cotExtras, catalogo:window.CATALOGO || [], config:Object.assign({},COTIZADOR_CFG,{exigirPorModelo:true})
   });
   window._cotInternoResultado = resultado;
 
@@ -315,11 +335,14 @@ function cotManualElegir() {
   setVal('cotManualModelo', partes ? partes[1] : (equipo ? equipo.modelo : ''));
   setVal('cotManualCapacidad', partes ? partes[2].toUpperCase() : '');
   setVal('cotManualPrecio', equipo ? equipo.precio_usd : '');
+  el('cfgCotModelo').value=window.MAXPOINT_COTIZADOR.claveModeloBase(val('cotManualModelo'));
+  cotConfigCargarCampos(val('cotManualModelo'));
 }
 
 function cotManualNuevo() {
   var sel = el('cotManualSel'); if (sel) sel.value = '';
   setVal('cotManualModelo', ''); setVal('cotManualCapacidad', ''); setVal('cotManualPrecio', '');
+  el('cfgCotModelo').value=''; cotConfigCargarCampos('');
   var modelo = el('cotManualModelo'); if (modelo) modelo.focus();
 }
 
@@ -331,17 +354,21 @@ function cotGuardarManual() {
   var modelo = modeloBase && capacidad ? modeloBase + ' ' + capacidad : '';
   var precio = Number(val('cotManualPrecio'));
   if (!modelo || !/^\d+(GB|TB)$/.test(capacidad) || !Number.isFinite(precio) || precio < 0) { toast('Completá modelo, almacenamiento y valor USD válido', 'var(--rd)'); return; }
-  var modeloOriginal = val('cotManualSel');
-  var base = USADOS.slice(), indice = base.findIndex(function(u) { return u.modelo === (modeloOriginal || modelo); });
-  var modeloClave = window.MAXPOINT_COTIZADOR.modeloClave(modelo, true);
-  if (indice === -1) base.push({ modelo: modelo, modeloClave:modeloClave, precio_usd: precio });
-  else base[indice] = Object.assign({}, base[indice], { modelo: modelo, modeloClave:modeloClave, precio_usd: precio });
-  var btn = el('btnCotManual'); btn.disabled = true; btn.textContent = 'Guardando...';
-  FB.setUsados(base, function(err) {
-    btn.disabled = false; btn.textContent = 'Guardar modelo';
-    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    USADOS = cotOrdenarPorModelo(base); cotManualCargar();
-    toast(indice === -1 ? 'Modelo agregado' : 'Valor actualizado');
+  if(!window.MAXPOINT_COTIZADOR.modeloClave(modelo,true) || val('cotManualPrecio').trim()==='' || precio<=0) { toast('Ingresá un modelo de iPhone y un precio USD mayor a cero','var(--rd)');return; }
+  var datos=cotConfigLeerCampos();if(!datos)return;
+  var modeloOriginal=val('cotManualSel');
+  var btn=el('btnCotManual');btn.disabled=true;btn.textContent='Guardando...';
+  FB.guardarModeloCotizador({modelo:modelo,modeloOriginal:modeloOriginal,precio_usd:precio,parametros:datos},function(err,config,resultado) {
+    btn.disabled=false;btn.textContent='Guardar modelo y descuentos';
+    if(err){toast('Error: '+err,'var(--rd)');return;}
+    cotLoadConfig(config);
+    var clave=window.MAXPOINT_COTIZADOR.modeloClave(modelo,true);
+    var base=USADOS.filter(function(u) {return u.modeloClave!==clave;});
+    base.push({modelo:modelo,modeloClave:clave,precio_usd:precio});cotLoadUsados(base);
+    cotConfigRender(window.MAXPOINT_COTIZADOR.claveModeloBase(modelo));cotManualCargar();
+    el('cotManualSel').value=modelo;cotManualElegir();
+    if(resultado&&resultado.publicacionPendiente)toast('Modelo y descuentos guardados. Falta publicar desde Portal Cliente → Actualizar portal y cotizador','var(--or)');
+    else toast('Modelo y descuentos guardados');
   });
 }
 

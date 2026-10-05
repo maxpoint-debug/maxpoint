@@ -261,7 +261,11 @@ function renderRpus() {
       return function() {
         var nuevoEst = selEl.value;
         selEl.style.color = colorMap[nuevoEst] || 'var(--mu)';
-        FB.updR(id, { estado: nuevoEst }, function(err) {
+        var cambio={estado:nuevoEst};
+        if(anterior==='Usado'&&r.consumoReparacionId&&nuevoEst!=='Usado'){var motivo=prompt('Motivo para revertir el consumo del repuesto:');if(motivo===null||!motivo.trim()){selEl.value=anterior;selEl.style.color=colorMap[anterior];return;}cambio.motivoReversion=motivo;}
+        selEl.disabled=true;
+        FB.updR(id, cambio, function(err) {
+          selEl.disabled=false;
           if (err) { selEl.value = anterior; selEl.style.color = colorMap[anterior] || 'var(--mu)'; toast('Error: ' + err, 'var(--rd)'); return; }
           if (nuevoEst !== anterior && (nuevoEst === 'Encargado' || nuevoEst === 'Llego') && typeof notificarEventoRepuesto === 'function') {
             notificarEventoRepuesto(nuevoEst === 'Llego' ? 'repuesto_llego' : 'repuesto_encargado', r);
@@ -280,6 +284,8 @@ function renderRpus() {
       };
     })(r.id)));
 
+    if(puede('editar_costos'))btns.appendChild(mkBtn('btn-g btn-sm','Costo',function(){var costo=prompt('Costo real unitario del repuesto en ARS (0 si fue sin cargo):',r.costo||'');if(costo===null)return;if(!costo.trim()||!Number.isFinite(Number(costo))||Number(costo)<0){toast('Ingresá un costo válido','var(--rd)');return;}FB.updR(r.id,{costo:Number(costo),costoConfirmado:true},function(err){toast(err?'Error: '+err:'Costo actualizado',err?'var(--rd)':undefined);});}));
+    if(r.estado==='Usado'&&!r.consumoReparacionId)btns.appendChild(mkBtn('btn-g btn-sm','Vincular consumo',function(){if(confirm('Registrar este repuesto histórico como utilizado por la orden '+(r.orden||'indicada')+'?'))FB.updR(r.id,{vincularConsumo:true},function(err){toast(err?'Error: '+err:'Consumo vinculado',err?'var(--rd)':undefined);});}));
     top.appendChild(info); top.appendChild(btns); card.appendChild(top);
 
     // Meta info
@@ -337,15 +343,9 @@ function renderCli() {
   });
   si.appendChild(ico); si.appendChild(inp); tb.appendChild(si); cnt.appendChild(tb);
 
-  // Agrupar por cliente
-  var map = {};
-  REPS.forEach(function(r) {
-    var k = (r.nombre || '').trim().toLowerCase();
-    if (!k) return;
-    if (!map[k]) map[k] = { nombre: r.nombre, tel: r.telefono, ords: [] };
-    map[k].ords.push(r);
-  });
-  var clientes = Object.values(map).sort(function(a, b) { return a.nombre.localeCompare(b.nombre); });
+  var clientes = clientesAgrupar(REPS,puede('ver_ventas_equipos')?(window.VENTAS||[]):[]);
+  var pendientes = typeof window.v21PendientesCantidad==='function'?window.v21PendientesCantidad():0;
+  if(pendientes){var aviso=document.createElement('div');aviso.className='adm-note';aviso.textContent=pendientes+' sincronización(es) de cliente/equipo pendiente(s).';aviso.appendChild(mkBtn('btn-g btn-sm','Reintentar',function(){if(FB.reintentarClientes)FB.reintentarClientes();}));cnt.appendChild(aviso);}
 
   if (!clientes.length) {
     cnt.innerHTML += '<div class="empty"><div class="ei">👤</div>Sin clientes.</div>';
@@ -367,6 +367,7 @@ function renderCli() {
     info.appendChild(nom); info.appendChild(tel);
     var btns = document.createElement('div'); btns.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;align-items:center';
     btns.appendChild(mkBadge('b-count', c.ords.length + ' ord.'));
+    if(c.ventas.length)btns.appendChild(mkBadge('b-count',c.ventas.length+' venta(s)'));
     if (act) btns.appendChild(mkBadge('b-active', act + ' activo' + (act !== 1 ? 's' : '')));
     if (c.tel) {
       // Buscamos la ultima orden activa del cliente para abrirWA2 con contexto
@@ -376,31 +377,20 @@ function renderCli() {
       btns.appendChild(mkBtn('btn-w btn-sm', '💬 WA', (function(ord) {
         return function() {
           if (ord) abrirWA2(ord.id);
-          else toast('Sin ordenes para enviar mensaje', 'var(--mu)');
+          else abrirWA(c.tel, 'Hola '+c.nombre+', te escribimos de MaxPoint.');
         };
       })(ultimaOrd)));
     }
     hd.appendChild(info); hd.appendChild(btns); card.appendChild(hd);
 
-    // Ultimas 3 ordenes
-    c.ords.slice().reverse().slice(0, 3).forEach(function(r) {
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;border-top:1px solid var(--bd);padding:5px 0;font-size:13px;flex-wrap:wrap';
-      var spanOrd = document.createElement('span'); spanOrd.className = 'on'; spanOrd.textContent = r.orden || '';
-      var spanEq  = document.createElement('span'); spanEq.className  = 'mu'; spanEq.style.fontSize = '12px'; spanEq.textContent = r.equipo || '';
-      var spanFec = document.createElement('span'); spanFec.className = 'mu'; spanFec.style.fontSize = '11px'; spanFec.textContent = r.fecha || '';
-      var estSpan = document.createElement('span'); estSpan.innerHTML = badgeEst(r.estado);
-      var bVer    = mkBtn('btn-g btn-sm', 'Ver', (function(id) { return function() { openDet(id); }; })(r.id));
-      row.appendChild(spanOrd); row.appendChild(spanEq);
-      row.appendChild(estSpan); row.appendChild(spanFec); row.appendChild(bVer);
-      card.appendChild(row);
+    if(c.sinIdentidad){var amb=document.createElement('div');amb.className='adm-note';amb.textContent='Sin teléfono ni identidad confirmada: este registro se conserva separado.';card.appendChild(amb);}
+    c.equipos.forEach(function(e){
+      var detalle=document.createElement('details');detalle.className='ds';detalle.style.cssText='margin-top:10px;border-top:1px solid var(--bd);padding-top:10px';
+      var titulo=document.createElement('summary');titulo.style.cursor='pointer';titulo.textContent=[e.modelo||'Equipo',e.capacidad,e.color,e.serie?'Serie / IMEI: '+e.serie:'Sin serie registrada'].filter(Boolean).join(' · ');detalle.appendChild(titulo);
+      e.reparaciones.forEach(function(r){var row=document.createElement('div');row.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px';var texto=document.createElement('span');texto.textContent=(r.orden||'Orden')+' · '+(r.estado||'')+' · '+(r.fecha||'');row.appendChild(texto);row.appendChild(mkBtn('btn-g btn-sm','Ver reparación',function(){openDet(r.id);}));detalle.appendChild(row);});
+      e.ventas.forEach(function(v){var row=document.createElement('div');row.style.cssText='margin-top:8px';row.textContent='Compra · '+(v.fecha||'')+' · '+(v.estadoVenta||'Cobrada');if(puede('ver_ventas_equipos'))row.appendChild(mkBtn('btn-g btn-sm','Ver en ventas',function(){showView('ven');}));detalle.appendChild(row);});
+      card.appendChild(detalle);
     });
-    if (c.ords.length > 3) {
-      var more = document.createElement('div');
-      more.style.cssText = 'font-size:11px;color:var(--mu);text-align:center;padding-top:4px';
-      more.textContent = '+' + (c.ords.length - 3) + ' mas';
-      card.appendChild(more);
-    }
     cnt.appendChild(card);
   });
 }
@@ -508,7 +498,7 @@ function ccSetPeriodo(periodo) { CC_PERIODO = periodo; renderBal(); }
 
 function ccCard(etiqueta, valor, detalle, color) {
   return '<div class="sc" style="min-width:145px"><div class="scl">' + esc(etiqueta) + '</div><div class="scv" style="color:' + (color || 'var(--tx)') + '">' + valor + '</div>'
-    + (detalle ? '<div style="font-size:10px;color:var(--mu);margin-top:4px">' + esc(detalle) + '</div>' : '') + '</div>';
+    + (detalle ? '<div class="sc-detalle">' + esc(detalle) + '</div>' : '') + '</div>';
 }
 
 function ccUsd(n) {
@@ -594,9 +584,9 @@ function renderCentroControl() {
   if (sinRecepcion.length) alertas.push({ color:'var(--or)', texto:'Hay ' + sinRecepcion.length + ' orden(es) nueva(s) sin estado físico de recepción.' });
   var sinTecnico = abiertas.filter(function(r) { return !r.tecnico; });
   if (sinTecnico.length) alertas.push({ color:'var(--mu)', texto:'Hay ' + sinTecnico.length + ' orden(es) abierta(s) sin técnico asignado.' });
-  var secAt = document.createElement('div'); secAt.style.marginTop = '22px';
+  var secAt = document.createElement('div'); secAt.className = 'adm-operativa'; secAt.style.marginTop = '22px';
   secAt.innerHTML = '<div class="ct" style="margin-bottom:8px">ATENCIÓN</div>';
-  if (alertas.length) alertas.slice(0, 6).forEach(function(a) { var x = document.createElement('div'); x.style.cssText = 'border-left:3px solid ' + a.color + ';background:var(--s1);padding:10px 12px;margin-bottom:6px;border-radius:0 7px 7px 0;font-size:12px'; x.textContent = '⚠ ' + a.texto; secAt.appendChild(x); });
+  if (alertas.length) alertas.slice(0, 6).forEach(function(a) { var x = document.createElement('div'); x.className = 'adm-alert'; x.style.setProperty('--alert-color',a.color); x.textContent = '⚠ ' + a.texto; secAt.appendChild(x); });
   else secAt.innerHTML += '<div class="empty" style="padding:18px">Sin alertas operativas relevantes.</div>';
   cnt.appendChild(secAt);
   var secResumen = document.createElement('div'); secResumen.className = 'ct'; secResumen.style.marginTop = '22px'; secResumen.style.marginBottom = '8px'; secResumen.textContent = 'RESUMEN DEL PERÍODO'; cnt.appendChild(secResumen);
@@ -614,7 +604,7 @@ function renderCentroControl() {
     cnt.appendChild(secPost);
   }
 
-  var pulso = document.createElement('div'); pulso.style.marginTop = '22px'; pulso.innerHTML = '<div class="ct" style="margin-bottom:8px">PULSO DEL NEGOCIO</div>';
+  var pulso = document.createElement('div'); pulso.className = 'adm-operativa'; pulso.style.marginTop = '22px'; pulso.innerHTML = '<div class="ct" style="margin-bottom:8px">PULSO DEL NEGOCIO</div>';
   var ultimos = []; for (var i = 6; i >= 0; i--) ultimos.push(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - i));
   var porDiaReps = ultimos.map(function(d) {
     var p = cobrosRep.filter(function(x) { return ccMismoDia(ccFecha(x.fecha), d); }).reduce(function(s, x) { return s + x.monto; }, 0);
@@ -626,7 +616,7 @@ function renderCentroControl() {
   var pulsoVentas = document.createElement('div'); pulsoVentas.innerHTML = '<div class="mu" style="font-size:11px;margin:0 0 6px">Ventas de equipos · USD</div>'; pulsoVentas.appendChild(ccBarrasPorDia(porDiaVentas, 'var(--bl)', 'USD'));
   pulsoGrid.appendChild(pulsoReps); pulsoGrid.appendChild(pulsoVentas); pulso.appendChild(pulsoGrid); cnt.appendChild(pulso);
 
-  var oper = document.createElement('div'); oper.style.marginTop = '22px'; oper.innerHTML = '<div class="ct" style="margin-bottom:8px">OPERACIÓN</div>';
+  var oper = document.createElement('div'); oper.className = 'adm-operativa'; oper.style.marginTop = '22px'; oper.innerHTML = '<div class="ct" style="margin-bottom:8px">OPERACIÓN</div>';
   var estados = ['Ingresado','En proceso','Listo','Entregado','No aprobado','Garantia'];
   var estadoBox = document.createElement('div'); estadoBox.className = 'sc-row'; estadoBox.innerHTML = estados.map(function(e) { return ccCard(e, reps.filter(function(r) { return r.estado === e; }).length, '', colorEst(e)); }).join(''); oper.appendChild(estadoBox);
   var tecnicos = {};
@@ -650,7 +640,7 @@ function renderCentroControl() {
   var topModelos = Object.keys(modelosVentas).map(function(nombre) { return { nombre:nombre, datos:modelosVentas[nombre] }; })
     .sort(function(a, b) { return b.datos.cantidad - a.datos.cantidad || b.datos.facturacion - a.datos.facturacion; }).slice(0, 5);
   var bajoMargen = ventasConCosto.filter(function(v) { return Number(v.precio || 0) - Number(v.costo || 0) <= 0; });
-  var secRent = document.createElement('div'); secRent.style.marginTop = '22px'; secRent.innerHTML = '<div class="ct" style="margin-bottom:8px">RENTABILIDAD Y CAPITAL</div>';
+  var secRent = document.createElement('div'); secRent.className = 'adm-operativa'; secRent.style.marginTop = '22px'; secRent.innerHTML = '<div class="ct" style="margin-bottom:8px">RENTABILIDAD Y CAPITAL</div>';
   var rentCards = document.createElement('div'); rentCards.className = 'sc-row';
   rentCards.innerHTML = ccCard('Ticket promedio', ccUsd(ticketPromedio), ventasPeriodo.length + ' venta(s) del período', 'var(--bl)')
     + ccCard('Margen promedio', ccUsd(margenPromedio), ventasConCosto.length + ' venta(s) con costo', margenPromedio >= 0 ? 'var(--gr)' : 'var(--rd)')
@@ -673,7 +663,7 @@ function renderCentroControl() {
   rpus.filter(function(r) { return r.estado === 'Usado'; }).forEach(function(r) { var n = r.nombre || 'Sin nombre'; rpuUso[n] = (rpuUso[n] || 0) + 1; });
   var topUso = Object.keys(rpuUso).map(function(n) { return { nombre:n, cantidad:rpuUso[n] }; }).sort(function(a,b) { return b.cantidad - a.cantidad; }).slice(0,5);
   var rpuAbiertos = rpuActivos.filter(function(rp) { return rp.orden && reps.some(function(r) { return r.orden === rp.orden && r.estado !== 'Entregado' && r.estado !== 'No aprobado'; }); });
-  var secRpu = document.createElement('div'); secRpu.style.marginTop = '22px'; secRpu.innerHTML = '<div class="ct" style="margin-bottom:8px">REPUESTOS</div>';
+  var secRpu = document.createElement('div'); secRpu.className = 'adm-operativa'; secRpu.style.marginTop = '22px'; secRpu.innerHTML = '<div class="ct" style="margin-bottom:8px">REPUESTOS</div>';
   var rpuCards = document.createElement('div'); rpuCards.className = 'sc-row';
   rpuCards.innerHTML = ccCard('Capital inmovilizado', ccUsd(capitalRpu), rpuActivos.length + ' repuesto(s) no usados', 'var(--pu)')
     + ccCard('Pendientes de llegada', rpus.filter(function(r) { return r.estado === 'Esperando' || r.estado === 'Encargado'; }).length, 'Esperando o encargados', 'var(--or)')
@@ -689,8 +679,8 @@ function renderCentroControl() {
   var sinPrecio = stockActivo.filter(function(s) { return !Number(s.precio_venta); });
   if (sinPrecio.length) oportunidades.push('Hay ' + sinPrecio.length + ' equipo(s) de stock sin precio de venta.');
   if (topUso.length) oportunidades.push('El repuesto más usado registrado es ' + topUso[0].nombre + ' (' + topUso[0].cantidad + ' uso(s)).');
-  var secOp = document.createElement('div'); secOp.style.marginTop = '22px'; secOp.innerHTML = '<div class="ct" style="margin-bottom:8px">OPORTUNIDADES</div>';
-  if (oportunidades.length) oportunidades.forEach(function(t) { var x = document.createElement('div'); x.style.cssText = 'background:rgba(45,206,137,.06);border:1px solid rgba(45,206,137,.2);padding:10px 12px;margin-bottom:6px;border-radius:7px;font-size:12px'; x.textContent = '↗ ' + t; secOp.appendChild(x); });
+  var secOp = document.createElement('div'); secOp.className = 'adm-operativa'; secOp.style.marginTop = '22px'; secOp.innerHTML = '<div class="ct" style="margin-bottom:8px">OPORTUNIDADES</div>';
+  if (oportunidades.length) oportunidades.forEach(function(t) { var x = document.createElement('div'); x.className = 'adm-alert'; x.style.setProperty('--alert-color','var(--gr)'); x.textContent = '↗ ' + t; secOp.appendChild(x); });
   else secOp.innerHTML += '<div class="empty" style="padding:18px">Aún no hay datos suficientes para oportunidades accionables.</div>';
   cnt.appendChild(secOp);
 }
@@ -879,7 +869,7 @@ function renderBal() {
   var totalGastoAnio = rpusAnio.reduce(function(s,rp){return s+Number(rp.costo||0);},0);
   var rpUsadosAnio   = rpusAnio.filter(function(rp){return rp.estado==='Usado';}).length;
 
-  var secRpu = document.createElement('div'); secRpu.style.marginTop = '20px';
+  var secRpu = document.createElement('div'); secRpu.className = 'adm-operativa'; secRpu.style.marginTop = '20px';
   secRpu.innerHTML = '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--pu);margin-bottom:8px">Repuestos ' + anioCurR + '</div>';
   var scRpu = document.createElement('div'); scRpu.className = 'sc-row';
   scRpu.innerHTML = '<div class="sc"><div class="scl">Comprados</div><div class="scv cp">' + rpusAnio.length + '</div></div>'

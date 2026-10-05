@@ -10,6 +10,7 @@ function mismoNombreUsuario(a, b) {
 }
 function openNewRep() {
   _eid = null;
+  window._clienteRepElegido = null;
   window._servicioRecepcionSnapshot = null;
   window._garantiaOrigen = null;
   el('mFormT').textContent = 'Nuevo ingreso';
@@ -36,13 +37,14 @@ function openEditRep(id) {
   if (!r) { toast('Orden no encontrada', 'var(--rd)'); return; }
   window._garantiaOrigen = null;
   _eid = id;
+  window._clienteRepElegido = null;
   window._servicioRecepcionSnapshot = r.servicioSnapshot || null;
   el('mFormT').textContent = 'Editar ' + r.orden;
   setVal('fNom',  r.nombre       || '');
   setVal('fTel',  r.telefono     || '');
   setVal('fEq',   r.equipo       || '');
   setVal('fMod',  r.modelo       || '');
-  setVal('fCla', '');
+  setVal('fCla', r.clave == null ? '' : String(r.clave));
   setVal('fFal',  r.falla        || '');
   setVal('fPres', r.presupuesto  || '');
   setVal('fSen',  r.sena         || '');
@@ -99,6 +101,7 @@ function saveRep() {
     equipo:       eq,
     telefono:     val('fTel'),
     modelo:       val('fMod'),
+    clave:        el('fCla').value,
     falla:        val('fFal'),
     presupuesto:  val('fPres') || '0',
     // `sena` queda sólo para compatibilidad histórica. Todo dinero nuevo debe
@@ -147,9 +150,10 @@ function saveRep() {
     d.creadoPor = { uid: SESION.usuario.uid, nombre: SESION.perfil.nombre, email: SESION.perfil.email };
   }
 
-  function done(err, idNuevo) {
+  function done(err, idNuevo, resultadoAlta) {
     btn.disabled = false; btn.textContent = 'Guardar';
     if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
+    if(resultadoAlta&&resultadoAlta.orden)orden=resultadoAlta.orden;
     closeM('mForm');
     toast(_eid ? '✓ Actualizado' : '✓ Orden creada');
     if (!_eid && d.es_garantia === 'si' && idNuevo && typeof notificarEventoReparacion === 'function') {
@@ -165,8 +169,9 @@ function saveRep() {
   if (_eid) {
     actualizarReparacion(_eid, d, done);
   } else {
-    var orden = nextOrden();
+    var orden = ''; // Firestore asigna el número en la transacción de alta.
     FB.add(Object.assign({}, d, {
+      clienteIdElegido: window._clienteRepElegido || '',
       orden:    orden,
       fecha:    hoy(),
       timeline: [{ estado: est, fecha: hoy(), hora: horaActual(), usuario: usuarioActualRegistro() }],
@@ -295,12 +300,12 @@ if (!r) return;
   var mh = document.createElement('div'); mh.className = 'mh';
   var mhLeft = document.createElement('div');
   var mhTitle = document.createElement('div'); mhTitle.className = 'mt'; mhTitle.textContent = r.equipo || '';
-  var mhSub = document.createElement('div'); mhSub.style.marginTop = '4px';
+  var mhSub = document.createElement('div'); mhSub.className = 'det-orden-meta';
   var mhOrden = document.createElement('span'); mhOrden.className = 'on'; mhOrden.textContent = r.orden || '';
   mhSub.appendChild(mhOrden);
   if (r.tecnico) {
-    var mhTec = document.createElement('span'); mhTec.className = 'mu'; mhTec.style.cssText = 'font-size:11px;margin-left:8px';
-    mhTec.textContent = '· ' + r.tecnico; mhSub.appendChild(mhTec);
+    var mhTec = document.createElement('span'); mhTec.className = 'det-tecnico';
+    mhTec.textContent = 'Técnico: ' + r.tecnico; mhSub.appendChild(mhTec);
   }
   if (r.garantia_ref) {
     mhSub.appendChild(mkBadge('b-garantia', 'Garantia de ' + r.garantia_ref));
@@ -328,6 +333,16 @@ if (!r) return;
     + '<div class="dr"><span class="dl">Nombre</span><span>' + esc(r.nombre) + '</span></div>'
     + '<div class="dr"><span class="dl">Telefono</span><span class="mono">' + esc(r.telefono || '—') + '</span></div>';
   col1.appendChild(ds1);
+
+  if (sesionActiva()) {
+    var acceso = document.createElement('div'); acceso.className = 'ds';
+    var accesoTitulo = document.createElement('div'); accesoTitulo.className = 'dst';
+    accesoTitulo.textContent = 'Desbloqueo del equipo · uso interno';
+    var accesoValor = document.createElement('div'); accesoValor.className = 'mono';
+    accesoValor.style.cssText = 'font-size:18px;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere';
+    accesoValor.textContent = r.clave == null || r.clave === '' ? 'Sin PIN registrado' : String(r.clave);
+    acceso.appendChild(accesoTitulo); acceso.appendChild(accesoValor); col1.appendChild(acceso);
+  }
 
   // Falla
   var ds2 = document.createElement('div'); ds2.className = 'ds';
@@ -416,6 +431,7 @@ if (!r) return;
     });
     ds3.appendChild(phDiv);
   }
+  if(puede('ver_costos')&&r.repuestosConsumidos){var costoReal=document.createElement('div');costoReal.className='adm-note';costoReal.textContent='Costo de repuestos registrados: '+pesos(r.costoRepuestosReal||0)+(r.costoRepuestosPendiente?' · '+r.costoRepuestosPendiente+' costo(s) pendiente(s). Total incompleto.':' · No incluye mano de obra ni otros gastos.');ds3.appendChild(costoReal);}
   col2.appendChild(ds3);
 
   if (r.incidencia) {
@@ -838,6 +854,7 @@ function saveRepuesto() {
     nombre:         nom,
     modelo:         val('rpMod'),
     costo:          val('rpCos') || '0',
+    costoConfirmado: val('rpCos') !== '',
     precio_cliente: val('rpPrecio') || '0',
     proveedor:      val('rpPro'),
     estado:         el('rpEst').value,
@@ -958,27 +975,23 @@ function abrirWA2(id) {
 // AUTOCOMPLETE
 // ============================================================
 function acNom() {
+  window._clienteRepElegido = null;
   var v  = val('fNom').toLowerCase();
   var ac = el('acNomL');
   if (v.length < 2) { ac.style.display = 'none'; return; }
-  var map = {};
-  REPS.forEach(function(r) {
-    var k = (r.nombre || '').trim().toLowerCase();
-    if (!map[k]) map[k] = { nombre: r.nombre, tel: r.telefono, n: 0 };
-    map[k].n++;
-  });
-  var matches = Object.values(map).filter(function(c) { return c.nombre.toLowerCase().includes(v); }).slice(0, 6);
+  var matches=clientesAgrupar(REPS,puede('ver_ventas_equipos')?(window.VENTAS||[]):[]).filter(function(c){return c.nombre.toLowerCase().includes(v);}).slice(0,6);
   if (!matches.length) { ac.style.display = 'none'; return; }
   ac.innerHTML = '';
   matches.forEach(function(c) {
     var d = document.createElement('div'); d.className = 'aci';
     var b = document.createElement('b'); b.textContent = c.nombre;
     var s = document.createElement('div'); s.className = 'aci-sub';
-    s.textContent = (c.tel || 'Sin tel') + ' · ' + c.n + ' orden' + (c.n !== 1 ? 'es' : '');
+    s.textContent = (c.tel || 'Sin tel') + ' · ' + c.ords.length + ' orden(es) · '+c.ventas.length+' compra(s)';
     d.appendChild(b); d.appendChild(s);
     d.addEventListener('click', function() {
       setVal('fNom', c.nombre);
       setVal('fTel', c.tel || '');
+      if(c.clave.indexOf('id:')===0)window._clienteRepElegido=c.clave.slice(3);
       ac.style.display = 'none';
     });
     ac.appendChild(d);
@@ -990,7 +1003,7 @@ function acEq() {
   var v  = val('fEq').toLowerCase();
   var ac = el('acEqL');
   if (v.length < 2) { ac.style.display = 'none'; return; }
-  var matches = EQUIPOS_APPLE.filter(function(e) { return e.toLowerCase().includes(v); });
+  var matches = typeof appleSugerirModelos==='function' ? appleSugerirModelos(v) : EQUIPOS_APPLE.filter(function(e) { return e.toLowerCase().includes(v); });
   matches.sort(function(a, b) { return String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' }); });
   matches = matches.slice(0, 8);
   if (!matches.length) { ac.style.display = 'none'; return; }

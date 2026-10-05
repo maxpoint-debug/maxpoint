@@ -50,7 +50,8 @@
       sinCoincidencia: raw.sinCoincidencia === 'usar_fallback' ? 'usar_fallback' : 'revision_presencial',
       redondeo: raw.redondeo === 'sin_redondeo' ? 'sin_redondeo' : 'entero',
       totalMinimoUsd: numero(raw.totalMinimoUsd, DEFAULTS.totalMinimoUsd),
-      origenDescuentos: raw.origenDescuentos === 'parametros' ? 'parametros' : 'catalogo'
+      origenDescuentos: raw.origenDescuentos === 'parametros' ? 'parametros' : 'catalogo',
+      exigirPorModelo: raw.exigirPorModelo === true
     };
     if (!sinModelos) {
       salida.porModelo = {};
@@ -96,7 +97,10 @@
 
   function configModelo(raw, modelo) {
     var c = config(raw), propio = c.porModelo[claveModeloBase(modelo)];
-    return propio ? config(propio) : c;
+    if(!propio)return c;
+    var salida=config(propio);
+    if(c.exigirPorModelo)salida.origenDescuentos='parametros';
+    return salida;
   }
 
   function etiquetaModelo(texto) {
@@ -186,6 +190,11 @@
 
   function calcular(entrada) {
     var modelo = entrada.modelo || '', cfg = configModelo(entrada.config, modelo);
+    var completa = config(entrada.config);
+    if (completa.exigirPorModelo && !completa.porModelo[claveModeloBase(modelo)]) {
+      return { total:null, totalDescuentos:0, descuentos:[], requiereRevision:true,
+        revision:['Descuentos del modelo pendientes de configuración'], sinConfiguracion:true };
+    }
     var detalles = [], revision = [];
     function descuento(lbl, usd, repuesto) {
       if (Number(usd) > 0) detalles.push({ lbl:lbl, usd:Number(usd), repuesto:repuesto || '' });

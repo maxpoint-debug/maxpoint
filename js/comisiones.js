@@ -136,6 +136,7 @@ function comEvaluarOperacion(tipo, item, cfg, usuarios) {
   else if(tipo==='reparacion' && item.estado!=='Entregado')motivo='No entregada';
   else if(tipo==='reparacion' && estadoPagoReparacion(item)!=='Pagado')motivo='Saldo pendiente o sin cobro';
   else if(tipo==='venta' && !segVentaReal(item))motivo='Venta pendiente, anulada o devuelta';
+  else if(tipo==='reparacion'&&item.ultimaGarantiaId)motivo='Garantía vinculada: requiere revisión';
   else if(!periodo)motivo='Fecha de entrega/cobro o venta no verificable';
   else if(decision.estado==='No comisiona')motivo='Resuelta: no comisiona';
   else if(decision.estado==='Incluida')monto=Number(decision.montoArs||0);
@@ -291,6 +292,7 @@ function comRenderControl() {
       var estado = document.createElement('span'); estado.className = 'mu'; estado.style.fontSize = '11px';
       estado.textContent = existente.estado + (existente.fechaPago ? ' - ' + existente.fechaPago : '');
       acciones.appendChild(estado);
+      if(existente.estado==='Aprobada')acciones.appendChild(mkBtn('btn-d btn-sm','Anular liquidación',function(){comAnularLiquidacion(existente.id);}));
       if (existente.estado === 'Aprobada' && !comRevisionesLocales(existente).length) acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(existente.id)));
     } else if (p.lineas.length) acciones.appendChild(mkBtn('btn-g btn-sm', 'Aprobar liquidación', (function(m, n) { return function() { comAprobarLiquidacion(m, n); }; })(seleccionado, p.clave)));
     card.appendChild(acciones); sec.appendChild(card);
@@ -304,10 +306,13 @@ function comRenderControl() {
     acciones.appendChild(mkBtn('btn-g btn-sm', 'Copiar detalle', (function(m, n, ls, total, est) {
       return function() { comCopiarDetalle(m, n, ls, total, est); };
     })(seleccionado, identidad.nombre, l.lineas || [], Number(l.totalArs || 0), l.estado)));
+    if(l.estado==='Aprobada')acciones.appendChild(mkBtn('btn-d btn-sm','Anular liquidación',function(){comAnularLiquidacion(l.id);}));
     if (l.estado === 'Aprobada' && !comRevisionesLocales(l).length) acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(l.id)));
     card.appendChild(acciones);
     sec.appendChild(card);
   });
+  var anuladas=(window.COM_LIQUIDACIONES||[]).filter(function(l){return l.periodo===seleccionado&&l.estado==='Anulada';});
+  if(anuladas.length){var archivo=document.createElement('details');archivo.className='adm-note';var titulo=document.createElement('summary');titulo.textContent='Liquidaciones anuladas ('+anuladas.length+')';archivo.appendChild(titulo);anuladas.forEach(function(l){var fila=document.createElement('div');fila.style.marginTop='10px';fila.textContent=l.persona+' · '+pesos(l.totalArs)+' · '+(l.motivoAnulacion||'Sin motivo histórico')+' · '+(l.anuladoPor&&l.anuladoPor.nombre||'')+' · '+(l.fechaAnulacion||'');fila.appendChild(mkBtn('btn-g btn-sm','Copiar detalle',function(){comCopiarDetalle(l.periodo,l.persona,l.lineas||[],l.totalArs,l.estado);}));archivo.appendChild(fila);});sec.appendChild(archivo);}
   var excepciones = [];
   personas.forEach(function(p) { (p.excluidas || []).forEach(function(x) { excepciones.push({ persona:p.nombre, dato:x }); }); });
   var secEx = document.createElement('div'); secEx.style.marginTop = '16px'; secEx.innerHTML = '<div class="ct" style="margin-bottom:8px">EXCEPCIONES DE COMISIONES</div>';
@@ -344,17 +349,21 @@ function comAprobarLiquidacion(mes, clave) {
   FB.crearLiquidacionComision({periodo:mes,persona:persona.nombreBase,personaUid:persona.uid,estado:'Aprobada',lineas:persona.lineas,ajustes:[],totalArs:persona.totalArs,creadoPor:actor,aprobadoPor:actor,fechaAprobacion:hoy(),reglasVersion:2},function(err){toast(err?'Error: '+err:'Liquidación aprobada',err?'var(--rd)':undefined);});
 }
 
-function comMarcarPagada(id) {
-  if (!puede('gestionar_comisiones')) return;
-  var l = (window.COM_LIQUIDACIONES || []).find(function(x) { return x.id === id; });
-  if (!l || l.estado !== 'Aprobada') return;
-  var medio = prompt('Medio de pago de la comisión:', 'Efectivo');
-  if (medio === null) return;
-  FB.actualizarLiquidacionComision(id, { estado:'Pagada', medioPago:medio || 'Sin especificar', pagadoPor:usuarioActualRegistro(), fechaPago:hoy(), horaPago:horaActual() }, function(err) {
-    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    toast('Comisión marcada como pagada');
-  });
+function comAnularLiquidacion(id) {
+  if(!puede('gestionar_comisiones'))return;
+  var motivo=prompt('Motivo para anular esta liquidación sin pagar. El detalle se conserva y las operaciones quedan disponibles para una nueva revisión:');
+  if(motivo===null)return;if(!motivo.trim()){toast('El motivo es obligatorio','var(--rd)');return;}
+  FB.anularLiquidacionComision(id,motivo,function(err){toast(err?'Error: '+err:'Liquidación anulada; detalle conservado',err?'var(--rd)':undefined);});
 }
+function comMarcarPagada(id) {
+  if(!puede('gestionar_comisiones'))return;
+  var l=(window.COM_LIQUIDACIONES||[]).find(function(x){return x.id===id;});if(!l||l.estado!=='Aprobada')return;
+  posModal('Pago de comisión', '<div class="adm-note">'+esc(l.persona)+' · '+pesos(l.totalArs)+'</div><div class="pos-form"><label>Medio<select id="comPagoMedio" onchange="comCuentaPagoSugerida()"><option>Efectivo</option><option>Transferencia</option></select></label><label>Cuenta<input id="comPagoCuenta" value="Caja efectivo"></label><label class="check full"><input id="comPagoEgreso" type="checkbox" '+(Number(l.totalArs)<=0?'disabled ':'')+'> Registrar también el egreso en la caja abierta</label><div class="mu full">Activá el egreso si el pago se realiza ahora. Si ya fue registrado en Caja, dejalo desmarcado para evitar duplicarlo. No se envía dinero desde el sistema.</div></div>',function(){
+    var b=el('posModalGuardar');b.disabled=true;
+    FB.actualizarLiquidacionComision(id,{estado:'Pagada',medioPago:val('comPagoMedio'),cuentaPago:val('comPagoCuenta'),registrarEgreso:el('comPagoEgreso').checked},function(err){b.disabled=false;if(err){toast('Error: '+err,'var(--rd)');return;}posCerrarModal();toast('Comisión pagada y registrada');});
+  },'Confirmar pago');
+}
+function comCuentaPagoSugerida(){setVal('comPagoCuenta',val('comPagoMedio')==='Efectivo'?'Caja efectivo':'Banco');}
 
 // ── Guardar config ────────────────────────────────────
 function comGuardarCfg(cb) {

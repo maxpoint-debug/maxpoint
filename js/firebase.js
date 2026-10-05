@@ -144,6 +144,12 @@ function authUiSesion() {
   if (info && SESION.perfil) info.textContent = SESION.perfil.nombre + ' · ' + SESION.perfil.rol;
 }
 function authUiLogin() {
+  // Los modales están fuera del shell: cerrar y vaciar el desbloqueo también
+  // al vencer la sesión, para que no quede visible sobre la pantalla de login.
+  ['mForm','mDet'].forEach(id=>{const modal=document.getElementById(id);if(modal)modal.classList.remove('open');});
+  const desbloqueo=document.getElementById('fCla');if(desbloqueo)desbloqueo.value='';
+  const detalle=document.getElementById('mDetC');if(detalle)detalle.textContent='';
+  window._detId=null;
   const shell = document.getElementById('appShell'); if (shell) shell.style.display = 'none';
   const gate = document.getElementById('authGate'); if (gate) gate.style.display = 'flex';
   const nav = document.getElementById('nav-users'); if (nav) nav.style.display = 'none';
@@ -383,32 +389,68 @@ async function v21Movimiento(tipo, origen, origenId, data, extra) {
   });
 }
 
+// Cola por usuario: persiste sólo IDs, nunca datos personales del cliente.
+let v21Trabajando=false,v21Timer=null,v21Generacion=0,v21Avisado=false;
+const v21ColaMemoria=new Map(),v21ColaSinPersistir=new Set();
+function v21ColaClave(){return 'maxpoint_v21_pendientes_'+(SESION.usuario&&SESION.usuario.uid||'');}
+function v21LeerCola(){try{return JSON.parse((v21ColaSinPersistir.has(v21ColaClave())?v21ColaMemoria.get(v21ColaClave()):localStorage.getItem(v21ColaClave()))||v21ColaMemoria.get(v21ColaClave())||'[]').filter(x=>x&&['reparacion','venta','stock'].includes(x.origen)&&x.origenId&&x.movimientoId);}catch(e){return JSON.parse(v21ColaMemoria.get(v21ColaClave())||'[]');}}
+function v21GuardarCola(xs){v21ColaMemoria.set(v21ColaClave(),JSON.stringify(xs));try{localStorage.setItem(v21ColaClave(),JSON.stringify(xs));v21ColaSinPersistir.delete(v21ColaClave());}catch(e){if(!v21ColaSinPersistir.has(v21ColaClave())&&typeof toast==='function')toast('No se pudo conservar el reintento de clientes. Mantené esta pestaña abierta hasta sincronizar','var(--or)');v21ColaSinPersistir.add(v21ColaClave());console.warn('No se pudo conservar la cola de clientes:',e.message);}}
+window.v21PendientesCantidad=()=>SESION.usuario?v21LeerCola().length:0;
+async function v21Aplicar(evento,uid,generacion) {
+  const col=evento.origen==='reparacion'?cR:evento.origen==='venta'?cVen:cSt;
+  const ref=doc(col,evento.origenId),movRef=doc(cMov,evento.movimientoId);
+  await runTransaction(db,async tx=>{
+    if(!SESION.usuario||SESION.usuario.uid!==uid||generacion!==v21Generacion||!sesionActiva())throw new Error('La sesión cambió');
+    const snap=await tx.get(ref);if(!snap.exists())return;
+    const actual=snap.data(),equipo=v22DatosEquipo(actual,evento.origen),tel=phoneKey(actual.telefono);
+    const claveCliente=tel?tel+'_'+clienteNombreClave(actual.nombre):evento.origen+'_'+evento.origenId;
+    const clienteNuevoId=actual.nombre?'cli3_'+Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(claveCliente)))).map(b=>b.toString(16).padStart(2,'0')).join(''):'';
+    const clienteId=actual.nombre?(evento.clienteIdElegido||(actual.identidadClienteV3&&actual.clienteId?actual.clienteId:clienteNuevoId)):'';
+    const serie=String(equipo.imei||'').trim().toUpperCase().replace(/\s/g,'');
+    if(serie.length>128)throw new Error('La serie necesita revisión antes de sincronizar');
+    const equipoId=(equipo.modelo||serie)?(serie?'eq3_'+encodeURIComponent(serie):safeId('eq',evento.origen+'_'+evento.origenId)):'';
+    const cliRef=clienteId?doc(cCli,clienteId):null,eqRef=equipoId?doc(cEq,equipoId):null;
+    const cli=cliRef?await tx.get(cliRef):null,eq=eqRef?await tx.get(eqRef):null,mov=await tx.get(movRef);
+    if(evento.clienteIdElegido&&(!cli||!cli.exists()))throw new Error('El cliente elegido ya no existe');
+    const meta={schemaVersion:3,updatedAt:serverTimestamp()};
+    if(cliRef){const d=Object.assign({},meta,{nombre:actual.nombre,telefono:actual.telefono||'',dni:actual.dni||'',direccion:actual.direccion||'',email:actual.email||''});if(!cli.exists())d.createdAt=serverTimestamp();tx.set(cliRef,d,{merge:true});}
+    if(eqRef){const d=Object.assign({},meta,equipo,{origen:evento.origen,origenId:evento.origenId});if(clienteId)d.clienteId=clienteId;if(!eq.exists())d.createdAt=serverTimestamp();tx.set(eqRef,d,{merge:true});}
+    const links={_v2:3,identidadClienteV3:!!clienteId,v2SincronizadoEn:serverTimestamp()};
+    if(clienteId)links.clienteId=clienteId;if(equipoId)links.equipoId=equipoId;
+    tx.update(ref,links);
+    if(!mov.exists())tx.set(movRef,{schemaVersion:3,tipo:evento.tipo,origen:evento.origen,origenId:evento.origenId,clienteId:clienteId,equipoId:equipoId,estado:actual.estado||actual.estadoVenta||'',detalle:'',fecha:serverTimestamp(),createdAt:serverTimestamp()});
+  });
+}
+async function v21ProcesarCola() {
+  if(v21Trabajando||!sesionActiva())return;
+  const uid=SESION.usuario.uid,generacion=v21Generacion;
+  v21Trabajando=true;
+  try {
+    let cola=v21LeerCola();
+    while(cola.length&&generacion===v21Generacion&&SESION.usuario&&SESION.usuario.uid===uid){
+      const evento=cola[0];await v21Aplicar(evento,uid,generacion);
+      if(generacion!==v21Generacion||!SESION.usuario||SESION.usuario.uid!==uid)return;
+      v21GuardarCola(v21LeerCola().filter(x=>x.movimientoId!==evento.movimientoId||x.revision!==evento.revision));cola=v21LeerCola();
+    }
+    v21Avisado=false;
+  }catch(e){
+    if(generacion!==v21Generacion)return;
+    console.warn('Cliente/equipo pendiente:',e.message);
+    if(!v21Avisado&&typeof toast==='function'){v21Avisado=true;toast('La operación se guardó; su ficha de cliente/equipo tiene una sincronización pendiente','var(--or)');}
+    v21Timer=setTimeout(()=>{v21Timer=null;v21ProcesarCola();},30000);
+  }finally{
+    if(generacion===v21Generacion){v21Trabajando=false;if(window.VIEW==='cli')render();}
+  }
+}
+window.FB.reintentarClientes=()=>{if(v21Timer)clearTimeout(v21Timer);v21Timer=null;v21ProcesarCola();};
 async function v21Sync(origen, origenId, data, tipo, extra) {
   if(origen==='reparacion')actualizarPortalEnSegundoPlano(origenId);
-  try {
-    // Las actualizaciones parciales usan el documento actual para conservar
-    // clienteId y equipoId en cada movimiento V2.2.
-    const col = origen === 'reparacion' ? 'reparaciones' : (origen === 'venta' ? 'ventas' : 'stock');
-    const origenRef = doc(db, col, origenId);
-    const previo = await getDoc(origenRef);
-    const actual = previo.exists() ? previo.data() : {};
-    const completo = Object.assign({}, actual, data);
-    const tieneIdentidad = !!(completo.nombre || completo.telefono || completo.imei || completo.modelo || completo.equipo);
-    let clienteId = actual.clienteId || null;
-    let equipoId = actual.equipoId || null;
-    if (tieneIdentidad) {
-      clienteId = await v21Cliente(completo) || clienteId;
-      equipoId = await v21Equipo(completo, origen, origenId, clienteId) || equipoId;
-      const links = { _v2: 2 };
-      if (clienteId) links.clienteId = clienteId;
-      if (equipoId) links.equipoId = equipoId;
-      await updateDoc(origenRef, links);
-    }
-    await v21Movimiento(tipo, origen, origenId, completo, { clienteId, equipoId, detalle: extra && extra.detalle });
-  } catch (e) {
-    // V2.1 nunca debe impedir la operacion principal de V1.
-    console.warn('MaxPoint V2.1 sync:', e);
-  }
+  if(!sesionActiva())return;
+  const cola=v21LeerCola();
+  // Las actualizaciones próximas se consolidan; el reintento relee la fuente actual.
+  const pendiente=cola.find(x=>x.origen===origen&&x.origenId===origenId);
+  if(pendiente){pendiente.revision=Number(pendiente.revision||0)+1;if(extra&&extra.clienteIdElegido)pendiente.clienteIdElegido=extra.clienteIdElegido;}else cola.push({origen:origen,origenId:origenId,tipo:tipo,movimientoId:doc(cMov).id,revision:1,clienteIdElegido:extra&&extra.clienteIdElegido||''});
+  v21GuardarCola(cola);v21ProcesarCola();
 }
 
 
@@ -553,15 +595,27 @@ function sinCredencialesCliente(d) {
   if(!d || typeof d !== 'object')return d;
   const limpio={}; Object.keys(d).forEach(k=>{if(CAMPOS_PRIVADOS.indexOf(k.toLowerCase())===-1)limpio[k]=sinCredencialesCliente(d[k]);}); return limpio;
 }
+// Única excepción: desbloqueo del equipo en la reparación. Los demás datos
+// siguen sanitizados, incluyendo las credenciales anidadas y de cuentas.
+function datosReparacionConDesbloqueo(d) {
+  const limpio=sinCredencialesCliente(d);
+  if(Object.prototype.hasOwnProperty.call(d,'clave')) {
+    if(typeof d.clave !== 'string' || d.clave.length > 256)throw new Error('El desbloqueo debe ser texto de hasta 256 caracteres');
+    limpio.clave=d.clave;
+  }
+  return limpio;
+}
 function camposElegidos(d, campos) { const x={}; campos.forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k))x[k]=d[k];}); return x; }
 function datosRepuestoPermitidos(d) {
   const x=camposElegidos(d,['nombre','modelo','precio_cliente','proveedor','estado','orden','cliente','notas','fecha']);
-  if(puede('editar_costos') && Object.prototype.hasOwnProperty.call(d,'costo'))x.costo=d.costo;
+  if(puede('editar_costos')){if(Object.prototype.hasOwnProperty.call(d,'costo'))x.costo=d.costo;if(Object.prototype.hasOwnProperty.call(d,'costoConfirmado'))x.costoConfirmado=d.costoConfirmado===true;}
   return x;
 }
 function validarCambioReparacion(previo, datos) {
+  if(previo.numeroOrden&&Object.prototype.hasOwnProperty.call(datos,'orden')&&datos.orden!==previo.orden)throw new Error('El número de orden no puede cambiarse');
   const permitidos=['nombre','equipo','telefono','modelo','falla','presupuesto','estado','resolucionFinanciera','tecnico','tecnicoUid','garantia_ref','estadoFisicoRecepcion','estadoFisicoEntrega','notas','diagnosticoTaller','gremio','resultadoServicio','controlComisionV1','cobroHistoricoNoConciliado','servicioSnapshot','es_garantia','garantiaOrigenId','comisionVerificada','comisionVerificadaPor','fechaVerificacionComision','comisionExcepcion','entregaExcepcion','incidencia','seg_est','orden','fecha','timeline','sena','pagos','creadoPor'];
-  const d=camposElegidos(sinCredencialesCliente(datos),permitidos), final=Object.assign({},previo,d);
+  permitidos.push('clave');
+  const d=camposElegidos(datosReparacionConDesbloqueo(datos),permitidos), final=Object.assign({},previo,d);
   if(Object.prototype.hasOwnProperty.call(d,'seg_est') && !['pendiente','contactado','enviado','interesado','compro','no_interesa'].includes(d.seg_est))throw new Error('Estado de seguimiento inválido');
   if(((Object.prototype.hasOwnProperty.call(d,'tecnico')&&d.tecnico!==previo.tecnico)||(previo.tecnicoUid&&Object.prototype.hasOwnProperty.call(d,'tecnicoUid')&&d.tecnicoUid!==previo.tecnicoUid)) && ['Entregado','No aprobado'].includes(previo.estado) && !puede('reasignar_reparacion_terminada'))throw new Error('Sin permiso para reasignar una reparación terminada');
   ['pagos','sena','creadoPor'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k) && JSON.stringify(d[k])!==JSON.stringify(previo[k]) && !(k==='sena' && Number(d[k]||0)===Number(previo[k]||0)))throw new Error('Los cobros y la autoría se conservan; usá Registrar pago o Revertir cobro');});
@@ -587,28 +641,70 @@ function validarCambioReparacion(previo, datos) {
   else delete d.timeline;
   return d;
 }
-async function agregarGarantiaVinculada(datos) {
-  const ref=doc(cR),original=doc(cR,datos.garantiaOrigenId),actor=usuarioActualRegistro();
-  if(datos.es_garantia!=='si')throw new Error('La orden vinculada debe ser una garantía');
-  await runTransaction(db,async tx=>{
-    const origen=await tx.get(original);if(!origen.exists())throw new Error('La reparación de origen ya no existe');
-    tx.set(ref,Object.assign({},conTelefonoClave(datos),{_ts:serverTimestamp()}));
-    tx.update(original,{ultimaGarantiaId:ref.id,_upd:serverTimestamp()});
-    tx.set(doc(cAud),{entidad:'reparacion',entidadId:ref.id,accion:'garantia_vinculada',actor:actor,origenId:original.id,cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
-  });return ref.id;
+function numeroOrdenReparacion(orden) {
+  const n=Number(String(orden||'').replace(/[^0-9]/g,''));
+  return Number.isSafeInteger(n)&&n>0?n:0;
+}
+async function pisoOrdenesServidor(tx,control) {
+  const snap=await tx.get(control);
+  if(snap.exists())return Number(snap.data().ultimo||0);
+  const existentes=await getDocsFromServer(cR);
+  return existentes.docs.reduce((max,s)=>Math.max(max,numeroOrdenReparacion(s.data().orden)),0);
+}
+async function agregarReparacionNumerada(datos) {
+  const ref=doc(cR),control=doc(db,'contadores','reparaciones'),actor=usuarioActualRegistro();
+  let guardado,pisoLeido=-1;
+  const escribir=()=>runTransaction(db,async tx=>{
+    const piso=await pisoOrdenesServidor(tx,control),numero=piso+1;pisoLeido=piso;
+    if(!Number.isSafeInteger(numero))throw new Error('Numeración fuera de rango');
+    let original=null;
+    if(datos.garantiaOrigenId){
+      original=doc(cR,datos.garantiaOrigenId);const origen=await tx.get(original);
+      if(!origen.exists())throw new Error('La reparación de origen ya no existe');
+      if(datos.es_garantia!=='si')throw new Error('La orden vinculada debe ser una garantía');
+    }
+    guardado=Object.assign({},conTelefonoClave(datos),{orden:'#'+String(numero).padStart(4,'0'),numeroOrden:numero,_ts:serverTimestamp()});
+    tx.set(ref,guardado);
+    tx.set(control,{ultimo:numero,reparacionId:ref.id,actualizadoEn:serverTimestamp()});
+    if(original)tx.update(original,{ultimaGarantiaId:ref.id,_upd:serverTimestamp()});
+    tx.set(doc(cAud),{entidad:'reparacion',entidadId:ref.id,accion:original?'garantia_vinculada':'creado',actor:actor,origenId:datos.garantiaOrigenId||'',cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+  });
+  for(let intento=0;intento<4;intento++){
+    try{await escribir();break;}catch(e){
+      // La validación getAfter puede rechazar una numeración que otro navegador
+      // acaba de reservar antes de que el SDK informe el conflicto de versión.
+      const confirmado=await getDocFromServer(ref);
+      if(confirmado.exists()&&confirmado.data().creadoPor&&confirmado.data().creadoPor.uid===actor.uid){guardado=confirmado.data();break;}
+      if(intento===3||!['permission-denied','aborted'].includes(e.code)||!puede('editar_reparacion'))throw e;
+      const actual=await getDocFromServer(control);
+      if(!actual.exists()||Number(actual.data().ultimo)<=pisoLeido)throw e;
+    }
+  }
+  return {id:ref.id,datos:guardado};
 }
 window.FB.add = (d, cb) => {
   if(!puede('editar_reparacion')) { cb('Sin permiso para crear reparaciones'); return; }
   try {
-    const limpio=sinCredencialesCliente(d);
+    const limpio=datosReparacionConDesbloqueo(d);
     const datos=validarCambioReparacion({},Object.assign({},limpio,{sena:'0',creadoPor:undefined}));
     delete datos.creadoPor; datos.creadoPor=usuarioActualRegistro();
-    (datos.garantiaOrigenId?agregarGarantiaVinculada(datos):agregarAuditable('reparaciones','reparacion',conTelefonoClave(datos))).then(id=>{cb(null,id);v21Sync('reparacion',id,datos,'reparacion_creada');}).catch(e=>cb(e.message));
+    agregarReparacionNumerada(datos).then(resultado=>{cb(null,resultado.id,{orden:resultado.datos.orden});v21Sync('reparacion',resultado.id,resultado.datos,'reparacion_creada',{clienteIdElegido:d.clienteIdElegido||''});}).catch(e=>cb(e.message));
   }catch(e){cb(e.message);}
 };
-window.FB.addId = (id, d, cb) => {
+window.FB.addId = async (id, d, cb) => {
   if(!puede('importar_reparaciones')) { cb('Sin permiso para importar reparaciones'); return; }
-  agregarAuditable('reparaciones','reparacion',conTelefonoClave(sinCredencialesCliente(d)),id).then(()=>{actualizarPortalEnSegundoPlano(id);cb(null);}).catch(e=>cb(e.message));
+  try {
+    const ref=doc(cR,id),control=doc(db,'contadores','reparaciones');
+    const datos=conTelefonoClave(Object.assign({},datosReparacionConDesbloqueo(d),{_imp:true}));
+    await runTransaction(db,async tx=>{
+      const piso=await pisoOrdenesServidor(tx,control),numero=numeroOrdenReparacion(datos.orden),previo=await tx.get(ref);
+      // La importación conserva números antiguos; no altera una orden nueva ya numerada.
+      if(previo.exists()&&previo.data().numeroOrden)throw new Error('No se puede reemplazar una orden operativa con una importación');
+      if(!previo.exists())tx.set(ref,Object.assign({},datos,{_ts:serverTimestamp()}));
+      tx.set(control,{ultimo:Math.max(piso,previo.exists()?numeroOrdenReparacion(previo.data().orden):numero),reparacionId:id,actualizadoEn:serverTimestamp()});
+      tx.set(doc(cAud),{entidad:'reparacion',entidadId:id,accion:previo.exists()?'importacion_omitida':'importado',actor:usuarioActualRegistro(),cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });actualizarPortalEnSegundoPlano(id);cb(null);
+  }catch(e){cb(e.message);}
 };
 window.FB.upd = async (id, d, cb) => {
   const keys=Object.keys(d),soloSeguimiento=keys.length>0 && keys.every(k=>k==='seg_est');
@@ -626,9 +722,62 @@ window.FB.upd = async (id, d, cb) => {
   }catch(e){cb(e.message);}
 };
 window.FB.del = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('reparaciones', 'reparacion', id).then(() => { actualizarPortalEnSegundoPlano(id); cb(null); }).catch(e => cb(e.message)); };
-window.FB.addR = (d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } agregarAuditable('repuestos', 'repuesto', datosRepuestoPermitidos(d)).then(() => cb(null)).catch(e => cb(e.message)); };
-window.FB.updR = (id, d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } actualizarAuditable('repuestos', 'repuesto', id, datosRepuestoPermitidos(d)).then(() => cb(null)).catch(e => cb(e.message)); };
-window.FB.delR = (id, cb) => { if (!puede('eliminar_operaciones')) { cb('Solo administrador puede eliminar operaciones'); return; } eliminarAuditable('repuestos', 'repuesto', id).then(() => cb(null)).catch(e => cb(e.message)); };
+async function guardarRepuestoTransaccional(id, cambios) {
+  const ref=id?doc(cRp,id):doc(cRp),actor=usuarioActualRegistro(),datos=datosRepuestoPermitidos(cambios),movRef=doc(db,'movimientosRepuestos',doc(cAud).id);
+  try { await runTransaction(db,async tx=>{
+    const snap=await tx.get(ref),anterior=snap.exists()?snap.data():{},nuevo=Object.assign({},anterior,datos);
+    if(!snap.exists()&&!String(nuevo.nombre||'').trim())throw new Error('El nombre del repuesto es obligatorio');
+    if(!['Esperando','Encargado','Llego','Usado'].includes(nuevo.estado))throw new Error('Estado de repuesto inválido');
+    if(Object.prototype.hasOwnProperty.call(datos,'costo')){
+      const costo=Number(datos.costo);if(!Number.isFinite(costo)||costo<0)throw new Error('Costo inválido');
+      nuevo.costoArs=costo;nuevo.costoConfirmado=datos.costoConfirmado!==false;
+      datos.costoArs=costo;datos.costoConfirmado=nuevo.costoConfirmado;
+    }else if(puede('editar_costos')&&anterior.costoArs===undefined&&Number(anterior.costo)>0){datos.costoArs=Number(anterior.costo);datos.costoConfirmado=true;nuevo.costoArs=datos.costoArs;nuevo.costoConfirmado=true;}
+    const estabaConsumido=!!anterior.consumoReparacionId&&anterior.estado==='Usado',usar=nuevo.estado==='Usado',revertir=estabaConsumido&&!usar;
+    if(estabaConsumido&&datos.orden!==undefined&&datos.orden!==anterior.orden)throw new Error('Primero revertí el consumo para cambiar la orden');
+    if(revertir&&!String(cambios.motivoReversion||'').trim())throw new Error('Indicá el motivo para revertir el consumo');
+    // Los usados antiguos siguen como histórico hasta una decisión explícita.
+    const vincular=usar&&(!estabaConsumido)&&(anterior.estado!=='Usado'||!snap.exists()||cambios.vincularConsumo===true);
+    const costoCambio=estabaConsumido&&usar&&(Object.prototype.hasOwnProperty.call(datos,'costoArs')||Object.prototype.hasOwnProperty.call(datos,'costoConfirmado'));
+    let reparacionRef=null,reparacion=null;
+    if(vincular){
+      if(!String(nuevo.orden||'').trim())throw new Error('Indicá la orden que utilizó el repuesto');
+      const candidatas=await getDocsFromServer(query(cR,where('orden','==',String(nuevo.orden).trim()),limit(2)));
+      if(candidatas.size!==1)throw new Error(candidatas.empty?'No existe esa orden':'La orden está duplicada en el histórico; requiere revisión');
+      reparacionRef=candidatas.docs[0].ref;reparacion=await tx.get(reparacionRef);
+      if(!reparacion.exists()||reparacion.data().orden!==String(nuevo.orden).trim())throw new Error('La orden cambió; actualizá la pantalla');
+      if(snap.exists()&&anterior.estado!=='Llego'&&anterior.estado!=='Usado')throw new Error('El repuesto debe estar disponible antes de utilizarlo');
+    }else if(revertir||costoCambio){reparacionRef=doc(cR,anterior.consumoReparacionId);reparacion=await tx.get(reparacionRef);if(!reparacion.exists())throw new Error('La orden del consumo ya no existe');}
+    if(reparacionRef){
+      const rep=reparacion.data(),registros=Object.assign({},rep.repuestosConsumidos||{}),prev=registros[ref.id];
+      if((revertir||costoCambio)&&(!prev||prev.estado!=='Consumido'))throw new Error('El consumo requiere revisión administrativa');
+      const confirmado=nuevo.costoConfirmado===true&&Number.isFinite(nuevo.costoArs)&&nuevo.costoArs>=0;
+      const registro=revertir?Object.assign({},prev,{estado:'Revertido',revertidoPor:actor,motivoReversion:String(cambios.motivoReversion).trim(),fechaReversion:hoy()}):{repuestoId:ref.id,nombre:nuevo.nombre||'',estado:'Consumido',cantidad:1,costoArs:confirmado?nuevo.costoArs:0,costoConfirmado:confirmado,moneda:'ARS',consumidoPor:prev&&prev.consumidoPor||actor,fechaConsumo:prev&&prev.fechaConsumo||hoy()};
+      registros[ref.id]=registro;
+      const activos=Object.values(registros).filter(x=>x.estado==='Consumido'),costo=activos.reduce((sum,x)=>sum+(x.costoConfirmado?Number(x.costoArs||0):0),0),pendientes=activos.filter(x=>!x.costoConfirmado).length;
+      const movimiento={repuestoId:ref.id,reparacionId:reparacionRef.id,tipo:revertir?'reversion_consumo':costoCambio?'ajuste_costo':'consumo',cantidad:revertir?-1:costoCambio?0:1,costoArs:registro.costoArs,costoConfirmado:registro.costoConfirmado,variacionCosto:costo-Number(rep.costoRepuestosReal||0),variacionPendientes:pendientes-Number(rep.costoRepuestosPendiente||0),motivo:String(cambios.motivoReversion||''),usuario:actor,fecha:hoy(),creadoEn:serverTimestamp()};
+      datos.consumoReparacionId=reparacionRef.id;datos.ultimoMovimientoRepuestoId=movRef.id;datos.consumoCostoArs=registro.costoArs;datos.consumoCostoConfirmado=registro.costoConfirmado;
+      tx.update(reparacionRef,{repuestosConsumidos:registros,costoRepuestosReal:costo,costoRepuestosPendiente:pendientes,ultimoMovimientoRepuestoId:movRef.id,_upd:serverTimestamp()});
+      tx.set(movRef,movimiento);
+    }
+    if(snap.exists())tx.update(ref,Object.assign({},datos,{_upd:serverTimestamp()}));else tx.set(ref,Object.assign({},datos,{_ts:serverTimestamp()}));
+    tx.set(doc(cAud),{entidad:'repuesto',entidadId:ref.id,accion:snap.exists()?'actualizado':'creado',actor:actor,cambios:cambiosAuditables(anterior,datos),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+  }); }catch(e){
+    // Dos pantallas pueden confirmar el mismo consumo. Sólo se recupera si
+    // el servidor ya muestra exactamente ese estado y vínculo efectivo.
+    if(id&&e.code==='permission-denied'&&puede('gestionar_repuestos')&&cambios.estado==='Usado'&&Object.keys(cambios).every(k=>k==='estado'||k==='vincularConsumo')){
+      const actual=await getDocFromServer(ref);
+      if(actual.exists()&&actual.data().estado==='Usado'&&actual.data().consumoReparacionId){
+        const origen=await getDocFromServer(doc(cR,actual.data().consumoReparacionId));
+        if(origen.exists()&&(origen.data().repuestosConsumidos||{})[id]?.estado==='Consumido')return ref.id;
+      }
+    }
+    throw e;
+  }return ref.id;
+}
+window.FB.addR = (d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } guardarRepuestoTransaccional(null,d).then(id=>cb(null,id)).catch(e=>cb(e.message)); };
+window.FB.updR = (id, d, cb) => { if(!puede('gestionar_repuestos')) { cb('Sin permiso para gestionar repuestos'); return; } guardarRepuestoTransaccional(id,d).then(()=>cb(null)).catch(e=>cb(e.message)); };
+window.FB.delR = async (id, cb) => { if(!puede('eliminar_operaciones')){cb('Solo administrador puede eliminar operaciones');return;}try{await runTransaction(db,async tx=>{const ref=doc(cRp,id),snap=await tx.get(ref);if(!snap.exists())throw new Error('Repuesto no encontrado');if(snap.data().consumoReparacionId)throw new Error('Un repuesto con consumo registrado se conserva para mantener la trazabilidad');tx.delete(ref);tx.set(doc(cAud),{entidad:'repuesto',entidadId:id,accion:'eliminado',actor:usuarioActualRegistro(),cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});});cb(null);}catch(e){cb(e.message);} };
 
 window.FB.setSeguimientosConfig = (d, cb) => {
   if(!esAdministrador()){cb('Solo administración puede configurar el beneficio');return;}
@@ -642,6 +791,44 @@ window.FB.setConfig = (d, cb) => { if(!puede('actualizar_catalogo')) { cb('Sin p
 window.FB.setCotizadorConfig = (d, cb) => {
   if (!puede('actualizar_cotizador')) { cb('Solo administrador puede modificar el cotizador'); return; }
   actualizarAuditable('config', 'config_cotizador', 'cotizador', d).then(() => publicarCotizadorPublico()).then(() => cb(null)).catch(e => cb(e.message));
+};
+
+// Guardado puntual: conserva el resto de modelos y une precio + descuentos
+// en una sola transacción. La carga masiva de listas conserva su flujo actual.
+window.FB.guardarModeloCotizador = async (entrada, cb) => {
+  if(!puede('actualizar_cotizador')) { cb('Solo administrador puede modificar el cotizador');return; }
+  try {
+    const core=window.MAXPOINT_COTIZADOR, modelo=String(entrada.modelo||'').trim(), clave=core.claveModeloBase(modelo), p=entrada.parametros;
+    if(!clave || !p || typeof p!=='object')throw new Error('Elegí un modelo y completá sus descuentos');
+    const numeros=[p.bateria&&p.bateria.umbral,p.bateria&&p.bateria.fallbackUsd,p.estetica&&p.estetica.leveUsd,p.estetica&&p.estetica.marcadaUsd,
+      p.pantalla&&p.pantalla.fallbackUsd,p.fallas&&p.fallas.faceIdFallbackUsd,p.fallas&&p.fallas.camaraTraseraNormalUsd,
+      p.fallas&&p.fallas.camaraTraseraProUsd,p.fallas&&p.fallas.camaraFrontalUsd,p.fallas&&p.fallas.carcasaUsd,
+      p.fallas&&p.fallas.vidrioCamaraUsd,p.fallas&&p.fallas.botonesUsd,p.fallas&&p.fallas.piezaDesconocidaUsd,p.totalMinimoUsd];
+    if(numeros.some(x=>typeof x!=='number'||!Number.isFinite(x)||x<0)||p.bateria.umbral>100)throw new Error('Descuentos incompletos o inválidos');
+    if(!['entero','sin_redondeo'].includes(p.redondeo))throw new Error('Redondeo inválido');
+    const parametros=core.config(Object.assign({},p,{origenDescuentos:'parametros',sinCoincidencia:'usar_fallback'}),true);
+    const tienePrecio=Object.prototype.hasOwnProperty.call(entrada,'precio_usd'), modeloClave=core.modeloClave(modelo,true);
+    if(tienePrecio&&(!modeloClave||typeof entrada.precio_usd!=='number'||!Number.isFinite(entrada.precio_usd)||entrada.precio_usd<=0))throw new Error('Modelo, capacidad y precio USD inválidos');
+    if(tienePrecio&&entrada.modeloOriginal&&core.modeloClave(entrada.modeloOriginal,true)!==modeloClave)throw new Error('Para otro modelo o capacidad, usá Nuevo modelo. El equipo existente se conserva');
+    const refCfg=doc(db,'config','cotizador'), refPrecio=tienePrecio?doc(cUsa,modeloClave):null;
+    let guardado;
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(refCfg), previo=snap.exists()?snap.data():{};
+      const precio=refPrecio?await tx.get(refPrecio):null;
+      if(tienePrecio&&entrada.modeloOriginal&&!precio.exists())throw new Error('El modelo elegido ya no existe; volvé a cargar la lista');
+      const porModelo=Object.assign({},previo.porModelo||{},{[clave]:parametros});
+      guardado=Object.assign({},previo,{porModelo:porModelo,exigirPorModelo:true});
+      tx.set(refCfg,Object.assign({},guardado,{actualizadoEn:serverTimestamp()}));
+      if(refPrecio)tx.set(refPrecio,Object.assign({},precio.exists()?precio.data():{},
+        {modelo:core.etiquetaModelo(modelo),modeloClave:modeloClave,precio_usd:entrada.precio_usd,actualizadoEn:serverTimestamp()}));
+      tx.set(doc(cAud),{entidad:'cotizador',entidadId:clave,accion:tienePrecio?'modelo_y_descuentos_actualizados':'descuentos_modelo_actualizados',
+        actor:usuarioActualRegistro(),cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    });
+    let publicacionPendiente=false;
+    try { await publicarCotizadorPublico(); }
+    catch(e) { publicacionPendiente=true; }
+    cb(null,guardado,{publicacionPendiente:publicacionPendiente});
+  }catch(e){cb(e.message);}
 };
 window.FB.setPortalClienteConfig = (d, cb) => {
   if (!puede('gestionar_portal_cliente')) { cb('Solo administrador puede configurar el Portal Cliente'); return; }
@@ -684,6 +871,7 @@ window.FB.setCat = async (items, cb) => {
 
 let listenersInternos=[];
 function detenerListenersInternos() {
+  if(v21Timer)clearTimeout(v21Timer);v21Timer=null;v21Generacion++;v21Trabajando=false;v21Avisado=false;
   if(revisionComisionesTimer)clearTimeout(revisionComisionesTimer);revisionComisionesTimer=null;revisionComisionesPendientes.clear();revisionComisionesGeneracion++;revisionComisionesEnCurso=false;revisionComisionesAvisada=false;
   listenersInternos.forEach(detener=>detener()); listenersInternos=[];
   ['REPS','RPUS','VENTAS','STOCK','AUDITORIA','PRODUCTOS_POS','MOVIMIENTOS_STOCK','MOVIMIENTOS_FINANCIEROS_POS','MOVIMIENTOS_FINANCIEROS_ADMIN','PAGOS_ADMIN','CIERRES_CAJA','SERVICIOS_MAESTROS','COM_LIQUIDACIONES','COM_AJUSTES'].forEach(k=>{window[k]=[];});
@@ -694,6 +882,7 @@ function detenerListenersInternos() {
 }
 function iniciarListenersInternos() {
   detenerListenersInternos();
+  v21ProcesarCola();
   function onSnapshot(...args) { const detener=observarFirestore(...args);listenersInternos.push(detener);return detener; }
 onSnapshot(cUsr,snap=>{window.EQUIPO_USUARIOS_ESTADO="listo";window.EQUIPO_USUARIOS=snap.docs.map(d=>Object.assign({},d.data(),{uid:d.id}));if(['equipoAdmin','bal'].includes(window.VIEW))render();},err=>{window.EQUIPO_USUARIOS=[];window.EQUIPO_USUARIOS_ESTADO="error";if(window.VIEW==='equipoAdmin')toast('No se pudieron cargar las identidades del equipo: '+err.message,'var(--rd)');});
 // --- Listener reparaciones ---
@@ -732,7 +921,7 @@ onSnapshot(query(cRp, orderBy('_ts','asc')), (snap) => {
 onSnapshot(query(cVen, orderBy('fecha','desc')), (snap) => {
   window.VENTAS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   const cambiosComisiones=snap.docChanges().map(c=>'venta:'+c.doc.id);if(cambiosComisiones.length)programarRevisionComisiones(cambiosComisiones);
-  if (['ven','ops','seg','equipoAdmin','admin','bal'].includes(window.VIEW)) render();
+  if (['ven','ops','seg','equipoAdmin','admin','bal','cli'].includes(window.VIEW)) render();
   if (typeof actualizarBadgeSeg === 'function') actualizarBadgeSeg();
 }, () => {});
 
@@ -897,7 +1086,7 @@ window.FB.sincronizarServiciosDesdeCatalogo = async (items,meta) => {
   if(window.VIEW==='servicios'&&typeof render==='function')render();
   return {nuevos:nuevos,actualizados:actualizados,requierenRevision:revision,excluidosPorRegla:excluidos.length,total:confirmacion.size};
 };
-window.FB.guardarServicioMaestro = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const id=data.id,guardar=Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()});delete guardar.id;if(id)await setDoc(doc(cServicios,id),guardar,{merge:true});else await addDoc(cServicios,Object.assign({creadoEn:serverTimestamp(),origen:'manual',repuestoFuenteId:null},guardar));cb(null);}catch(e){cb(e.message);}};
+window.FB.guardarServicioMaestro = async (data,cb) => {if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}try{const errores=servicioErroresPrecio(data,window.POLITICAS_REPARACION);if(errores.length||data.errorPrecio)throw new Error(errores.join(' · ')||data.errorPrecio);const id=data.id,guardar=Object.assign({},data,{actualizadoEn:serverTimestamp(),actualizadoPor:usuarioActualRegistro()});delete guardar.id;if(id)await setDoc(doc(cServicios,id),guardar,{merge:true});else await addDoc(cServicios,Object.assign({creadoEn:serverTimestamp(),origen:'manual',repuestoFuenteId:null},guardar));cb(null);}catch(e){cb(e.message);}};
 window.FB.guardarServiciosMaestrosLote = async (items,cb) => {
   if(!puede('gestionar_servicios_maestros')){cb('Sin permiso');return;}
   try{
@@ -1016,7 +1205,7 @@ window.FB.crearLiquidacionComision = async (d, cb) => {
 window.FB.actualizarLiquidacionComision = async (id, d, cb) => {
   if(!puede('gestionar_comisiones')){cb('Sin permiso para gestionar comisiones');return;}
   try {
-    if(d.estado!=='Pagada'||Object.keys(d).some(k=>!['estado','medioPago','pagadoPor','fechaPago','horaPago'].includes(k)))throw new Error('La liquidación aprobada conserva su detalle y total');
+    if(d.estado!=='Pagada'||Object.keys(d).some(k=>!['estado','medioPago','cuentaPago','registrarEgreso','pagadoPor','fechaPago','horaPago'].includes(k)))throw new Error('La liquidación aprobada conserva su detalle y total');
     const ref=doc(cLiq,id);
     await transaccionComisiones('liquidacion_comision',ref,async(tx,actor)=>{
       const snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='Aprobada')throw new Error('La liquidación ya no está aprobada o ya fue pagada');
@@ -1034,8 +1223,37 @@ window.FB.actualizarLiquidacionComision = async (id, d, cb) => {
         if(motivo)motivos.push((linea.referencia||linea.origenId)+': '+motivo);
       }
       if(motivos.length)throw new Error('Pago bloqueado. Revisar: '+motivos.join(' · '));
+      let caja=null,cajaId='',movRef=null;
+      const registrarEgreso=d.registrarEgreso===true,total=Number(snap.data().totalArs),medio=String(d.medioPago||'Sin especificar').trim(),cuenta=String(d.cuentaPago||'').trim();
+      if(registrarEgreso){
+        if(!Number.isFinite(total)||total<=0)throw new Error('El egreso requiere una comisión positiva');
+        if(!['Efectivo','Transferencia'].includes(medio)||!cuenta)throw new Error('Elegí medio y cuenta para registrar el egreso');
+        const actual=await tx.get(doc(db,'config','cajaActual'));if(!actual.exists()||actual.data().estado!=='abierta')throw new Error('Abrí Caja antes de registrar el egreso de la comisión');
+        cajaId=actual.data().cajaId;caja=await tx.get(doc(db,'cajas',cajaId));if(!caja.exists()||caja.data().estado!=='abierta')throw new Error('La caja ya no está abierta');
+        movRef=doc(db,'movimientosFinancieros','comision_'+id);
+        const previo=await tx.get(movRef);if(previo.exists())throw new Error('El egreso de esta comisión ya está registrado');
+      }
       const datos={estado:'Pagada',medioPago:String(d.medioPago||'Sin especificar').trim(),pagadoPor:actor,fechaPago:hoy(),horaPago:horaActual(),_upd:serverTimestamp()};
+      if(cuenta)datos.cuentaPago=cuenta;
+      datos.egresoRegistrado=registrarEgreso;
+      if(registrarEgreso){
+        datos.egresoMovimientoId=movRef.id;datos.cajaId=cajaId;
+        tx.update(doc(db,'config','cajaActual'),{revisionMovimientos:increment(1)});
+        tx.set(movRef,{schemaVersion:2,tipo:'egreso_comision',tipoEgreso:'gasto_operativo',referenciaTipo:'liquidacion_comision',referenciaId:id,cajaId:cajaId,monto:-total,moneda:'ARS',medio:medio,cuenta:cuenta,categoria:'Comisiones',subcategoria:'Equipo',descripcion:'Comisión de '+snap.data().persona+' · '+snap.data().periodo,usuario:actor,fecha:hoy(),fechaHora:new Date().toISOString(),creadoEn:serverTimestamp()});
+      }
       tx.update(ref,datos);return {accion:'actualizado',cambios:cambiosAuditables(snap.data(),datos)};
+    });cb(null);
+  }catch(e){cb(e.message);}
+};
+window.FB.anularLiquidacionComision = async (id, motivo, cb) => {
+  if(!puede('gestionar_comisiones')){cb('Sin permiso para anular liquidaciones');return;}
+  try {
+    const razon=String(motivo||'').trim();if(!razon)throw new Error('Indicá el motivo de la anulación');
+    const ref=doc(cLiq,id);
+    await transaccionComisiones('liquidacion_comision',ref,async(tx,actor)=>{
+      const snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='Aprobada')throw new Error('Solo se puede anular una liquidación aprobada y sin pagar');
+      const datos={estado:'Anulada',motivoAnulacion:razon,anuladoPor:actor,fechaAnulacion:hoy(),horaAnulacion:horaActual(),_upd:serverTimestamp()};
+      tx.update(ref,datos);return {accion:'anulada',cambios:cambiosAuditables(snap.data(),datos)};
     });cb(null);
   }catch(e){cb(e.message);}
 };

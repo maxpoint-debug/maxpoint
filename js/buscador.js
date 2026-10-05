@@ -34,17 +34,9 @@
     actualizarReparacion(id, { estado: estado }, function(err) { if (!err) { toast('Estado: ' + estado); buscar(ultimaBusqueda); } });
   }
   function clienteDesdeReps(r) {
-    var map = {};
-    REPS.forEach(function(x) {
-      var clave = texto(x.telefono) || texto(x.nombre);
-      if (!clave) return;
-      if (!map[clave]) map[clave] = { nombre:x.nombre || '', telefono:x.telefono || '', reps:[] };
-      map[clave].reps.push(x);
-    });
-    return Object.keys(map).map(function(k) { return map[k]; }).filter(function(c) {
-      return coincide(r, [c.nombre, c.telefono]);
-    }).sort(function(a,b) { return b.reps.filter(activo).length - a.reps.filter(activo).length; });
+    return clientesAgrupar(REPS,puede('ver_ventas_equipos')?VENTAS:[]).map(function(c){return {nombre:c.nombre,telefono:c.tel,reps:c.ords,ventas:c.ventas,equipos:c.equipos};}).filter(function(c){return coincide(r,[c.nombre,c.telefono]);}).sort(function(a,b){return b.reps.filter(activo).length-a.reps.filter(activo).length;});
   }
+
   function equiposDesdeMemoria(q) {
     var map = {};
     REPS.forEach(function(r) {
@@ -110,7 +102,7 @@
     var equipos = {};
     c.reps.forEach(function(r){ if(r.equipo) equipos[r.equipo] = true; });
     var ultima = c.reps.slice().sort(function(a,b){ return fechaOrdenable(b.fecha).localeCompare(fechaOrdenable(a.fecha)); })[0];
-    var row = filaBase(c.nombre || 'Cliente sin nombre', [c.telefono || '', c.reps.length + ' reparación(es)', activas.length ? activas.length + ' activa(s)' : '', Object.keys(equipos).length + ' equipo(s)', saldo ? 'Saldo pendiente ' + pesos(saldo) : '', ultima ? 'Última: ' + (ultima.orden || '') + ' ' + (ultima.fecha || '') : ''].filter(Boolean).join(' · '), irClientes);
+    var row = filaBase(c.nombre || 'Cliente sin nombre', [c.telefono || '', c.reps.length + ' reparación(es)', (c.ventas||[]).length+' compra(s)', activas.length ? activas.length + ' activa(s)' : '', Object.keys(equipos).length + ' equipo(s)', saldo ? 'Saldo pendiente ' + pesos(saldo) : '', ultima ? 'Última: ' + (ultima.orden || '') + ' ' + (ultima.fecha || '') : ''].filter(Boolean).join(' · '), irClientes);
     var a=document.createElement('div'); a.className='gs-actions';
     var ref=activas[0] || ultima;
     if(c.telefono && ref) a.appendChild(accion('btn-w btn-sm','WhatsApp',function(){ abrirWA2(ref.id); }));
