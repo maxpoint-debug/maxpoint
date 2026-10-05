@@ -1,0 +1,33 @@
+.adm-head,.adm-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.adm-filtros{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.adm-filtros input{max-width:145px}
+.adm-sec{margin-top:24px}
+.adm-sec>.ct,.adm-title{margin-bottom:9px}
+.adm-note{font-size:11px;color:var(--mu);background:var(--s2);border:1px solid var(--bd);padding:9px 11px;border-radius:7px;margin:12px 0}
+.adm-alert{border-left:3px solid var(--or);background:var(--s2);padding:9px 11px;margin-top:6px;border-radius:0 7px 7px 0;font-size:12px}
+.sc small{display:block;color:var(--mu);font-size:10px;margin-top:4px}
+.adm-sec table{min-width:720px}
+
+/* Jerarquía y tablas legibles, conservando la paleta del sistema. */
+#cnt:has(.adm-head) .sc-row { display: grid; grid-template-columns: repeat(auto-fit,minmax(225px,1fr)); gap: 14px; }
+#cnt:has(.adm-head) .sc { min-width: 0; padding: 20px; }
+#cnt:has(.adm-head) .scl { font-size: 12px; letter-spacing: .5px; line-height: 1.5; }
+#cnt:has(.adm-head) .scv { font-size: 25px; line-height: 1.35; overflow-wrap: anywhere; }
+#cnt:has(.adm-head) .sc small { font-size: 12px; line-height: 1.5; margin-top: 8px; }
+.adm-sec { background: var(--s); border: 1px solid var(--bd); border-radius: 12px; padding: 20px; margin-top: 20px; }
+.adm-sec .ct { font-size: 15px; letter-spacing: .3px; }
+.adm-sec th { font-size: 12px; padding: 12px 14px; white-space: nowrap; }
+.adm-sec td { font-size: 14px; line-height: 1.5; padding: 13px 14px; }
+.adm-sec tbody tr:nth-child(even) { background: var(--s2); }
+.adm-note { font-size: 13px; line-height: 1.6; padding: 13px 16px; }
+.adm-filtros { gap: 8px; }
+.adm-permisos { margin-top: 24px; padding: 18px 20px; background: var(--s); border: 1px solid var(--bd); border-radius: 12px; }
+.adm-permisos summary { cursor: pointer; font-size: 15px; font-weight: 600; }
+.adm-permisos summary span { margin-left: 12px; font-size: 12px; font-weight: 400; }
+@media(max-width:600px) {
+  #cnt:has(.adm-head) .sc-row { grid-template-columns: repeat(2,minmax(0,1fr)); overflow: visible; }
+  #cnt:has(.adm-head) .sc { padding: 13px; }
+  #cnt:has(.adm-head) .scv { font-size: 20px; }
+  .adm-sec { padding: 14px; }
+}
+.adm-sec td.adm-num { text-align: right; font-variant-numeric: tabular-nums; }
