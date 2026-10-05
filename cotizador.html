@@ -441,7 +441,7 @@ input[type=range]{width:100%;accent-color:var(--acc);height:4px;cursor:pointer}
 
 <div class="footer">MaxPoint — Av 17 y 34, Mercedes, Bs As · (2324) 522082</div>
 
-<script src="js/cotizador-core.js?v=5"></script>
+<script src="js/cotizador-core.js?v=6"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getFirestore, collection, onSnapshot, doc, query, where }
@@ -460,7 +460,7 @@ const db = getFirestore(app);
 // ── Estado global ─────────────────────────────────────
 let USADOS   = [];
 let CATALOGO = [];
-let COT_CFG  = window.MAXPOINT_COTIZADOR.config({});
+let COT_CFG  = window.MAXPOINT_COTIZADOR.config({exigirPorModelo:true});
 let equipoSel = null;
 let pantalla  = 'ok';
 let estetica  = 'ok';
@@ -493,7 +493,7 @@ onSnapshot(query(collection(db,'cotizadorPublico'),where('activo','==',true)),sn
 });
 
 onSnapshot(doc(db, 'config', 'cotizador'), snap => {
-  COT_CFG = window.MAXPOINT_COTIZADOR.config(snap.exists() ? snap.data() : {});
+  COT_CFG = window.MAXPOINT_COTIZADOR.config(Object.assign({},snap.exists() ? snap.data() : {},{exigirPorModelo:true}));
   if (equipoSel && window._cotResult) calcularResultado();
 });
 
