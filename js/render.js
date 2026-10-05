@@ -2,6 +2,8 @@
 // Todas las funciones que construyen UI con DOM methods.
 // Cero innerHTML con strings interpolados para evitar bugs de escaping.
 
+var RPUS_FILTRO = 'pendientes';
+
 // ---- Dispatcher central ----
 function render() {
   if      (VIEW === 'reps') renderReps();
@@ -219,15 +221,21 @@ function renderRpus() {
     cnt.appendChild(btnCopy);
   }
   cnt.appendChild(sg);
+  var filtros = document.createElement('div'); filtros.className = 'rpu-filtros';
+  [['pendientes','Pendientes',esp.length+enc.length+lle.length],['Esperando','Esperando',esp.length],['Encargado','Encargados',enc.length],['Llego','Disponibles',lle.length],['Usado','Usados',usa.length],['todos','Todos',RPUS.length]].forEach(function(f) {
+    var b = mkBtn(RPUS_FILTRO===f[0] ? 'btn-p btn-sm' : 'btn-g btn-sm', f[1]+' ('+f[2]+')', function() { RPUS_FILTRO=f[0]; renderRpus(); });
+    b.setAttribute('aria-pressed',String(RPUS_FILTRO===f[0])); filtros.appendChild(b);
+  });
+  cnt.appendChild(filtros);
 
   function rpCard(r) {
-    var card = document.createElement('div'); card.className = 'rc';
+    var card = document.createElement('div'); card.className = 'rc rpu-card';
 
     var top = document.createElement('div');
     top.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:8px';
 
     var info = document.createElement('div');
-    var nom  = document.createElement('div'); nom.style.cssText = 'font-weight:600;font-size:14px'; nom.textContent = r.nombre || '';
+    var nom  = document.createElement('div'); nom.style.cssText = 'font-weight:600;font-size:16px'; nom.textContent = r.nombre || '';
     info.appendChild(nom);
     if (r.modelo) {
       var mod = document.createElement('div'); mod.className = 'mu'; mod.style.fontSize = '12px'; mod.textContent = r.modelo;
@@ -242,7 +250,7 @@ function renderRpus() {
     sel.className = 'rpu-estado-sel';
     ['Esperando','Encargado','Llego','Usado'].forEach(function(est) {
       var opt = document.createElement('option');
-      opt.value = est; opt.textContent = est;
+      opt.value = est; opt.textContent = est === 'Llego' ? 'Llegó' : est;
       if (est === r.estado) opt.selected = true;
       sel.appendChild(opt);
     });
@@ -275,11 +283,11 @@ function renderRpus() {
     top.appendChild(info); top.appendChild(btns); card.appendChild(top);
 
     // Meta info
-    var meta = document.createElement('div'); meta.className = 'rcm';
-    if (r.orden)     meta.innerHTML += '<span>🔧 <span class="on">' + esc(r.orden) + '</span></span>';
-    if (r.cliente)   meta.innerHTML += '<span>👤 ' + esc(r.cliente) + '</span>';
+    var meta = document.createElement('div'); meta.className = 'rcm rpu-meta';
+    if (r.orden)     meta.innerHTML += '<span>Orden <span class="on">' + esc(r.orden) + '</span></span>';
+    if (r.cliente)   meta.innerHTML += '<span>Cliente: ' + esc(r.cliente) + '</span>';
     if (puede('ver_costos') && r.costo && r.costo !== '0') meta.innerHTML += '<span>💰 <span class="mono">' + pesos(r.costo) + '</span></span>';
-    if (r.proveedor) meta.innerHTML += '<span>🏪 ' + esc(r.proveedor) + '</span>';
+    if (r.proveedor) meta.innerHTML += '<span>Proveedor: ' + esc(r.proveedor) + '</span>';
     if (r.fecha)     meta.innerHTML += '<span class="mono mu" style="font-size:11px">' + esc(r.fecha) + '</span>';
     card.appendChild(meta);
 
@@ -292,8 +300,8 @@ function renderRpus() {
   }
 
   function addSection(titulo, color, items) {
-    if (!items.length) return;
-    var h = document.createElement('h2'); h.className = 'section-title'; h.style.color = color; h.textContent = titulo;
+    if (!items.length || (RPUS_FILTRO !== 'todos' && RPUS_FILTRO !== items[0].estado && !(RPUS_FILTRO === 'pendientes' && items[0].estado !== 'Usado'))) return;
+    var h = document.createElement('h2'); h.className = 'section-title'; h.style.color = color; h.textContent = titulo + ' · ' + items.length;
     cnt.appendChild(h);
     items.forEach(function(r) { cnt.appendChild(rpCard(r)); });
   }
@@ -303,9 +311,9 @@ function renderRpus() {
   addSection('✅ Disponibles', 'var(--gr)', lle);
   addSection('✓ Usados',       'var(--mu)', usa);
 
-  if (!RPUS.length) {
+  if (!RPUS.length || (RPUS_FILTRO==='pendientes' && !esp.length && !enc.length && !lle.length) || (['Esperando','Encargado','Llego','Usado'].indexOf(RPUS_FILTRO)!==-1 && !RPUS.some(function(r){return r.estado===RPUS_FILTRO;}))) {
     var em = document.createElement('div'); em.className = 'empty';
-    em.innerHTML = '<div class="ei">📦</div>Sin repuestos cargados.';
+    em.innerHTML = '<div class="ei">📦</div>' + (!RPUS.length ? 'Sin repuestos cargados.' : 'Sin repuestos en este filtro.');
     cnt.appendChild(em);
   }
 }
@@ -548,7 +556,7 @@ function renderCentroControl() {
   var stockCosto = stockActivo.reduce(function(s, i) { return s + Number(i.precio_costo || 0); }, 0);
   var stockVenta = stockActivo.reduce(function(s, i) { return s + Number(i.precio_venta || 0); }, 0);
 
-  var cab = document.createElement('div'); cab.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px';
+  var cab = document.createElement('div'); cab.className = 'adm-head'; cab.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px';
   cab.innerHTML = '<div><div style="font-size:20px;font-weight:800">Administración</div><div class="mu" style="font-size:12px;margin-top:3px">Prioridades operativas y resumen del negocio</div></div>'
     + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
     + ['hoy','mes','30d'].map(function(p) { var t = p === 'hoy' ? 'Hoy' : (p === 'mes' ? 'Este mes' : '30 días'); return '<button class="btn btn-sm ' + (CC_PERIODO === p ? 'btn-p' : 'btn-g') + '" onclick="ccSetPeriodo(\'' + p + '\')">' + t + '</button>'; }).join('')

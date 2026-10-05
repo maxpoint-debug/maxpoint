@@ -306,9 +306,15 @@ if (!r) return;
     mhSub.appendChild(mkBadge('b-garantia', 'Garantia de ' + r.garantia_ref));
   }
   mhLeft.appendChild(mhTitle); mhLeft.appendChild(mhSub);
+  var clienteCab = document.createElement('div'); clienteCab.className = 'det-cliente'; clienteCab.textContent = r.nombre || ''; mhLeft.appendChild(clienteCab);
+  var estadoCab = document.createElement('span'); estadoCab.innerHTML = badgeEst(r.estado); mhSub.appendChild(estadoCab);
   var mhClose = document.createElement('button'); mhClose.className = 'mc'; mhClose.textContent = '✕';
   mhClose.addEventListener('click', function() { _detId = null; closeM('mDet'); });
   mh.appendChild(mhLeft); mh.appendChild(mhClose); det.appendChild(mh);
+
+  var resumen = document.createElement('div'); resumen.className = 'det-resumen';
+  resumen.innerHTML = '<div><span>Presupuesto</span><strong>'+pesos(r.presupuesto||0)+'</strong></div><div><span>Cobrado</span><strong>'+pesos(cobrado)+'</strong></div><div><span>Saldo</span><strong class="'+(sal>0?'co':'cg')+'">'+pesos(sal)+'</strong></div>';
+  det.appendChild(resumen);
 
   // Grid 2 columnas
   var grid = document.createElement('div'); grid.className = 'det-grid';
@@ -396,7 +402,8 @@ if (!r) return;
   }
   // Historial de pagos registrados
   if (pagosReparacion(r).length) {
-    var phDiv = document.createElement('div');
+    var phDiv = document.createElement('details');
+    var pagosTitulo = document.createElement('summary'); pagosTitulo.textContent = 'Historial de pagos ('+pagosReparacion(r).length+')'; phDiv.appendChild(pagosTitulo);
     phDiv.style.cssText = 'margin-top:6px;font-size:11px;color:var(--mu);border-top:1px solid var(--bd);padding-top:5px';
     pagosReparacion(r).forEach(function(p) {
       var pRow = document.createElement('div');
@@ -425,8 +432,8 @@ if (!r) return;
   var actividad = (window.AUDITORIA || []).filter(function(a) { return a.entidad === 'reparacion' && a.entidadId === r.id; })
     .sort(function(a, b) { return (b._ordenAuditoria || 0) - (a._ordenAuditoria || 0); });
   if (actividad.length) {
-    var dsActividad = document.createElement('div'); dsActividad.className = 'ds';
-    dsActividad.innerHTML = '<div class="dst">Actividad</div>';
+    var dsActividad = document.createElement('details'); dsActividad.className = 'ds det-actividad';
+    dsActividad.innerHTML = '<summary>Actividad ('+actividad.length+')</summary>';
     actividad.forEach(function(a, indice) {
       var fila = document.createElement('div'); fila.style.cssText = 'font-size:11px;padding:5px 0;border-bottom:1px solid var(--bd)' + (indice === 0 ? ';font-weight:700;color:var(--tx)' : '');
       var actor = a.actor && a.actor.nombre ? a.actor.nombre : 'Usuario no registrado';
@@ -471,6 +478,7 @@ if (!r) return;
 
   // Botones de accion
   var fa = document.createElement('div');
+  fa.className = 'det-acciones';
   fa.style.cssText = 'display:flex;gap:7px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--bd)';
   if (r.telefono) {
     fa.appendChild(mkBtn('btn-w', '💬 WhatsApp', (function(id) { return function() { abrirWA2(id); }; })(r.id)));
