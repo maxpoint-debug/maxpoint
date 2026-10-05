@@ -31,3 +31,18 @@
   .adm-sec { padding: 14px; }
 }
 .adm-sec td.adm-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Texto secundario con contraste y aire en ambos paneles administrativos. */
+#cnt:has(.adm-head) { --mu: #65635d; }
+#cnt:has(.adm-head) .scl { font-size: 13px; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--tx); }
+#cnt:has(.adm-head) .scv { font-size: 24px; }
+#cnt:has(.adm-head) .sc .sc-detalle { font-size: 13px; line-height: 1.5; margin-top: 10px; color: var(--mu); }
+#cnt:has(.adm-head) .ct { font-size: 15px; line-height: 1.4; }
+#cnt:has(.adm-head) .dr { font-size: 14px; line-height: 1.6; gap: 14px; padding: 7px 0; }
+#cnt:has(.adm-head) .dl { font-size: 13px; color: var(--tx); }
+#cnt:has(.adm-head) .card { padding: 20px; }
+#cnt:has(.adm-head) .tw td { font-size: 14px; padding: 13px 14px; line-height: 1.5; }
+#cnt:has(.adm-head) .tw th { font-size: 12px; padding: 12px 14px; }
+.adm-alert { --alert-color: var(--or); border-left: 4px solid var(--alert-color); background: var(--s2); background: color-mix(in srgb,var(--alert-color) 12%,var(--s)); padding: 14px 16px; margin: 8px 0; border-radius: 8px; color: var(--tx); font-size: 14px; line-height: 1.55; }
+.adm-operativa { background: var(--s); border: 1px solid var(--bd); border-radius: 12px; padding: 20px; }
+@media(max-width:600px) { .adm-operativa { padding: 14px; } }
