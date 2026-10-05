@@ -23,7 +23,7 @@ function openNewRep() {
   var selT = el('fTec');
   if (selT && typeof comOpcionesTecnicos === 'function') {
     var curVal = selT.value;
-    selT.innerHTML = comOpcionesTecnicos(curVal);
+    selT.innerHTML = comOpcionesTecnicos(curVal,comUidSelect(selT));
   } else if (selT) { selT.value = ''; }
   if (selT) selT.disabled = false;
   el('suggBanner').style.display = 'none';
@@ -49,7 +49,7 @@ function openEditRep(id) {
   el('fEst').value = r.estado    || 'Ingresado';
   el('fResolucionFinanciera').value = resolucionFinancieraReparacion(r);
   el('fResultadoServicio').value = r.resultadoServicio || 'Pendiente de cierre';
-  el('fTec').value = r.tecnico   || '';
+  el('fTec').innerHTML = comOpcionesTecnicos(r.tecnico||'',r.tecnicoUid||'');
   // Estados terminales reales: Entregado y No aprobado. Garantia continúa
   // siendo operativa en el sistema actual, por eso no se bloquea aquí.
   el('fTec').disabled = (r.estado === 'Entregado' || r.estado === 'No aprobado') && !puede('reasignar_reparacion_terminada');
@@ -107,6 +107,7 @@ function saveRep() {
     estado:       est,
     resolucionFinanciera: resolucionFinanciera,
     tecnico:      el('fTec').value,
+    tecnicoUid:   comUidSelect(el('fTec')),
     garantia_ref: val('fGar'),
     estadoFisicoRecepcion: val('fEstadoFisico'),
     estadoFisicoEntrega: val('fEstadoFisicoFinal'),
@@ -229,7 +230,7 @@ function crearGarantiaVinculada(id) {
   el('mFormT').textContent = 'Garantía vinculada a ' + (r.orden || 'orden original');
   setVal('fNom', r.nombre || ''); setVal('fTel', r.telefono || ''); setVal('fEq', r.equipo || ''); setVal('fMod', r.modelo || '');
   setVal('fGar', r.orden || ''); setVal('fEstadoFisico', r.estadoFisicoEntrega || r.estadoFisicoRecepcion || '');
-  el('fTec').value = r.tecnico || ''; el('fEst').value = 'Garantia'; el('fResultadoServicio').value = 'Garantía / retrabajo';
+  el('fTec').innerHTML = comOpcionesTecnicos(r.tecnico||'',r.tecnicoUid||''); el('fEst').value = 'Garantia'; el('fResultadoServicio').value = 'Garantía / retrabajo';
   el('fResolucionFinanciera').value = 'sin_cargo_garantia'; setVal('fPres', '0');
   setVal('fFal', 'Garantía vinculada a ' + (r.orden || 'orden original') + ': ');
 }

@@ -37,71 +37,148 @@ function comLiquidacionesBloqueadas() {
   return claves;
 }
 
-function comMesSiguiente() { var d = new Date(); d.setMonth(d.getMonth() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function comMotivoAjuste(tipo,item) {
+  if(!item)return '';
+  if((item.comisionExcepcion||{}).estado==='No comisiona')return 'Operación marcada como no comisionable después del pago';
+  if(tipo==='reparacion') {
+    if(item.ultimaGarantiaId||item.es_garantia==='si'||item.estado==='Garantia'||resolucionFinancieraReparacion(item)==='sin_cargo_garantia')return 'Garantía posterior a liquidación';
+    if((item.pagos||[]).some(function(p){return p.estado==='revertido';})&&estadoPagoReparacion(item)!=='Pagado')return 'Reversión de cobro: la reparación quedó con saldo';
+    if(estadoPagoReparacion(item)!=='Pagado'&&Number(item.presupuesto||0)>0)return 'La reparación liquidada dejó de estar completamente cobrada';
+  }
+  if(tipo==='venta' && (item.cajaRevertida||['anulada','devuelta','cancelada'].includes(String(item.estadoVenta||item.estado||'').toLowerCase())))return 'Anulación o devolución posterior a liquidación';
+  return '';
+}
+function comRevisarLinea(liquidacion,linea,item,usuarios) {
+  if(!item)return 'Operación de origen no disponible';
+  if(linea.tipo==='ajuste') {
+    if(item.estado!=='Aprobado'||Number(item.montoArs)!==Number(linea.montoArs))return 'El ajuste cambió o ya no está aprobado';
+    if(liquidacion.personaUid&&comIdentidad(item.persona,item.personaUid,usuarios).uid!==liquidacion.personaUid)return 'Cambió el responsable del ajuste';
+    return '';
+  }
+  var critico=comMotivoAjuste(linea.tipo,item);if(critico)return critico;
+  if(linea.tipo==='reparacion' && item.estado!=='Entregado')return 'La reparación ya no está entregada';
+  if(linea.tipo==='reparacion' && estadoPagoReparacion(item)!=='Pagado')return 'La reparación tiene saldo o no tiene cobro válido';
+  if(linea.tipo==='reparacion' && item.incidencia && item.incidencia.estado!=='Resuelta')return 'Incidencia abierta';
+  if(linea.tipo==='venta' && !segVentaReal(item))return 'La venta ya no está completada';
+  var decision=item.comisionExcepcion||{};
+  if(decision.estado==='No comisiona')return 'La operación fue marcada como no comisionable';
+  if(decision.estado==='Incluida' && Number(decision.montoArs)!==Number(linea.montoArs))return 'Cambió el importe de la excepción';
+  var identidad=comIdentidad(linea.tipo==='reparacion'?item.tecnico:(item.vendedor||(item.usuario||{}).nombre),linea.tipo==='reparacion'?item.tecnicoUid:(item.vendedorUid||(!item.vendedor?(item.usuario||{}).uid:'')),usuarios);
+  if(liquidacion.personaUid&&identidad.uid!==liquidacion.personaUid)return 'Cambió el usuario responsable';
+  if(!liquidacion.personaUid&&String(liquidacion.persona||'').trim().toLowerCase()!==String(linea.tipo==='reparacion'?item.tecnico:item.vendedor||'').trim().toLowerCase())return 'Cambió el responsable de la operación histórica';
+  if(decision.estado==='Incluida')return '';
+  if(linea.tipo==='reparacion' && item.gremio==='si')return 'La reparación fue marcada como gremio';
+  if(linea.tipo==='reparacion' && item.controlComisionV1 && (item.resultadoServicio!=='Reparación realizada'||(Number(item.presupuesto||0)<100000&&!item.comisionVerificada)))return 'El resultado o la verificación de la reparación requieren revisión';
+  if(linea.tipo==='venta' && (item.costoConfirmado===false||Number(item.costo||0)<=0||Number(item.precio||0)<=Number(item.costo||0)))return 'Costo o ganancia de la venta requieren revisión';
+  if(linea.tipo==='venta' && ((linea.precioUsd!==undefined&&Number(linea.precioUsd)!==Number(item.precio))||(linea.costoUsd!==undefined&&Number(linea.costoUsd)!==Number(item.costo))))return 'Cambió el precio o costo de la venta';
+  return '';
+}
+function comRevisionesLocales(l) {
+  return (l.lineas||[]).map(function(x){
+    var lista=x.tipo==='reparacion'?(window.REPS||[]):x.tipo==='venta'?(window.VENTAS||[]):(window.COM_AJUSTES||[]);
+    var item=lista.find(function(r){return r.id===x.origenId;});
+    if(item&&x.tipo==='reparacion'&&(window.REPS||[]).some(function(r){return r.garantiaOrigenId===x.origenId&&r.es_garantia==='si';}))item=Object.assign({},item,{ultimaGarantiaId:'vinculada'});
+    var motivo=comRevisarLinea(l,x,item);return motivo?(x.referencia||x.origenId)+': '+motivo:'';
+  }).filter(Boolean);
+}
+function comAvisoRevision(l) {
+  if(!['Aprobada','Pagada'].includes(l.estado))return '';
+  var motivos=comRevisionesLocales(l);
+  return motivos.length?'<div style="color:var(--or);font-size:11px;margin-top:6px">'+(l.estado==='Aprobada'?'Pago bloqueado. Revisar: ':'Revisión posterior al pago: ')+esc(motivos.join(' · '))+'</div>':'';
+}
+
+function comMesSiguiente() { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
 function comGenerarAjuste(tipo, origenId, motivo) {
-  if (!puede('gestionar_comisiones')) return;
-  var clave = tipo + ':' + origenId;
-  (window.COM_LIQUIDACIONES || []).filter(function(l) { return l.estado === 'Pagada'; }).forEach(function(l) {
-    (l.lineas || []).filter(function(x) { return x.clave === clave; }).forEach(function(x) {
-      if ((window.COM_AJUSTES || []).some(function(a) { return a.liquidacionId === l.id && a.claveOrigen === clave; })) return;
-      FB.crearAjusteComision({ periodo:comMesSiguiente(), persona:l.persona, estado:'Pendiente', liquidacionId:l.id, claveOrigen:clave, referencia:x.referencia || origenId, motivo:motivo, montoArs:-Math.abs(Number(x.montoArs || 0)), creadoPor:usuarioActualRegistro(), fecha:hoy() }, function(err) { if (err) toast('No se pudo crear ajuste: ' + err, 'var(--rd)'); else toast('Ajuste de comisión pendiente creado'); });
-    });
-  });
+  if(!puede('gestionar_comisiones'))return;
+  FB.conciliarComisiones([tipo+':'+origenId],function(err,n){if(err)toast('Revisión de comisiones pendiente: '+err,'var(--rd)');else if(n)toast('Ajuste de comisión pendiente creado');});
+}
+function comDescartarAjuste(id) {
+  if(!puede('gestionar_comisiones'))return;
+  var motivo=prompt('Motivo para descartar este ajuste (quedará registrado):');if(motivo===null)return;
+  if(!motivo.trim()){toast('Indicá un motivo','var(--or)');return;}
+  FB.actualizarAjusteComision(id,{estado:'Descartado',motivoDescarte:motivo.trim()},function(err){toast(err?'Error: '+err:'Ajuste descartado',err?'var(--rd)':undefined);});
 }
 function comAprobarAjuste(id) { FB.actualizarAjusteComision(id, { estado:'Aprobado', aprobadoPor:usuarioActualRegistro(), fechaAprobacion:hoy() }, function(err) { if (err) toast('Error: ' + err, 'var(--rd)'); else toast('Ajuste aprobado'); }); }
 
+function comIdentidad(nombre, uid, usuarios) {
+  var lista=usuarios||window.EQUIPO_USUARIOS||[],claveNombre=String(nombre||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');
+  if(!uid && (usuarios || window.EQUIPO_USUARIOS_ESTADO==='listo')) {
+    var coincidencias=lista.filter(function(u){return String(u.nombre||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ')===claveNombre;});
+    if(coincidencias.length===1)uid=coincidencias[0].uid;
+  }
+  var perfil=lista.find(function(u){return u.uid===uid;}),base=perfil?perfil.nombre:(nombre||'Sin responsable'),etiqueta=base;
+  if(perfil && lista.filter(function(u){return String(u.nombre||'').trim().toLowerCase()===String(perfil.nombre||'').trim().toLowerCase();}).length>1)etiqueta+=' · '+(perfil.email||perfil.uid);
+  if(!uid)etiqueta+=' (sin UID)';
+  return {clave:uid?'uid:'+uid:'legacy:'+claveNombre,uid:uid||'',nombre:etiqueta,nombreBase:base,valida:!!uid&&((usuarios||window.EQUIPO_USUARIOS_ESTADO==='listo')?!!perfil:true)};
+}
+function comFechaCobro(r) {
+  if(estadoPagoReparacion(r)!=='Pagado')return '';
+  var registrada=segFechaDia(r.fechaCobroCompleto);if(registrada)return registrada;
+  var pagos=pagosReparacion(r),total=0,presupuesto=Number(r.presupuesto||0);
+  var fechados=pagos.map(function(p){return {monto:Number(p.monto),fecha:p.legacy?'':segFechaDia(p.fechaHora||p.fecha)};});
+  if(!fechados.length||fechados.some(function(p){return !p.fecha;}))return '';
+  fechados.sort(function(a,b){return a.fecha.localeCompare(b.fecha);});
+  for(var i=0;i<fechados.length;i++){total+=fechados[i].monto;if(total>=presupuesto)return fechados[i].fecha;}
+  return '';
+}
+function comFechaOperacion(tipo, item) {
+  if(tipo==='venta')return segFechaDia(item.completadaEn||item.fechaHora||item.fecha);
+  var entrega=segFechaEntrega(item),cobro=comFechaCobro(item);
+  return entrega&&cobro?(entrega>cobro?entrega:cobro):'';
+}
+// Criterio compartido por la vista y la validación al aprobar.
+function comEvaluarOperacion(tipo, item, cfg, usuarios) {
+  cfg=cfg||COM_CFG;
+  var identidad=comIdentidad(tipo==='reparacion'?item.tecnico:(item.vendedor||(item.usuario||{}).nombre),tipo==='reparacion'?item.tecnicoUid:(item.vendedorUid||(!item.vendedor?(item.usuario||{}).uid:'')),usuarios);
+  var fecha=comFechaOperacion(tipo,item),decision=item.comisionExcepcion||{},motivo='',monto=0;
+  var periodo=fecha?fecha.slice(0,7):(/^\d{4}-(0[1-9]|1[0-2])$/.test(decision.periodo||'')?decision.periodo:'');
+  if(!identidad.valida)motivo='Responsable sin usuario inequívoco';
+  else if(tipo==='reparacion' && item.estado!=='Entregado')motivo='No entregada';
+  else if(tipo==='reparacion' && estadoPagoReparacion(item)!=='Pagado')motivo='Saldo pendiente o sin cobro';
+  else if(tipo==='venta' && !segVentaReal(item))motivo='Venta pendiente, anulada o devuelta';
+  else if(!periodo)motivo='Fecha de entrega/cobro o venta no verificable';
+  else if(decision.estado==='No comisiona')motivo='Resuelta: no comisiona';
+  else if(decision.estado==='Incluida')monto=Number(decision.montoArs||0);
+  else if(tipo==='reparacion') {
+    if(item.es_garantia==='si'||resolucionFinancieraReparacion(item)==='sin_cargo_garantia')motivo='Garantía';
+    else if(item.incidencia&&item.incidencia.estado!=='Resuelta')motivo='Incidencia abierta';
+    else if(item.controlComisionV1&&item.resultadoServicio!=='Reparación realizada')motivo='Resultado sin comisión: '+(item.resultadoServicio||'pendiente');
+    else if(item.controlComisionV1&&Number(item.presupuesto||0)<100000&&!item.comisionVerificada)motivo='Pendiente de verificación administrativa';
+    else if(item.gremio==='si')motivo='Excluida por gremio';
+    else monto=Number(cfg.com_rep||0);
+  } else {
+    var costo=Number(item.costo||0),ganancia=Number(item.precio||0)-costo;
+    if(item.parte_pago==='Si')motivo='Parte de pago pendiente de valuación';
+    else if(!costo||costo<=0||item.costoConfirmado===false)motivo='Sin costo confirmado';
+    else if(ganancia<=0)motivo='Sin ganancia positiva';
+    else (cfg.com_ven_tramos||[]).slice().sort(function(a,b){return Number(a.minimoUsd||0)-Number(b.minimoUsd||0);}).forEach(function(t){if(ganancia>=Number(t.minimoUsd||0))monto=Number(t.montoArs||0);});
+  }
+  if(!motivo&&(!Number.isFinite(monto)||monto<0))motivo='Importe de comisión inválido';
+  return {identidad:identidad,fecha:fecha,periodo:periodo,motivo:motivo,montoArs:monto};
+}
 function comCalcularElegibles(mesKey) {
-  var bloqueadas = comLiquidacionesBloqueadas();
-  var personas = {};
-  function persona(nombre) {
-    if (!personas[nombre]) personas[nombre] = { nombre:nombre, lineas:[], excluidas:[] };
-    return personas[nombre];
-  }
-  function excluir(p, tipo, origenId, referencia, motivo, estado) {
-    p.excluidas.push({ tipo:tipo, origenId:origenId, referencia:referencia, motivo:motivo, estado:estado || 'Pendiente' });
-  }
-  (window.REPS || []).forEach(function(r) {
-    if (!r.tecnico || fechaAMesKey(r.fecha) !== mesKey) return;
-    var p = persona(r.tecnico), clave = 'reparacion:' + r.id;
-    var decision = r.comisionExcepcion || {};
-    if (decision.estado === 'No comisiona') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Resuelta: no comisiona', 'No comisiona'); return; }
-    if (decision.estado === 'Incluida') {
-      if (!bloqueadas[clave]) p.lineas.push({ clave:clave, tipo:'reparacion', origenId:r.id, referencia:r.orden || r.id, fecha:r.fecha, montoArs:Number(decision.montoArs || 0), detalle:'Excepción aprobada por administración' });
-      return;
-    }
-    if (r.estado !== 'Entregado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'No entregada'); return; }
-    if (r.es_garantia === 'si' || resolucionFinancieraReparacion(r) === 'sin_cargo_garantia') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Garantía'); return; }
-    if (estadoPagoReparacion(r) !== 'Pagado') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Saldo pendiente'); return; }
-    if (r.incidencia && r.incidencia.estado !== 'Resuelta') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Incidencia abierta'); return; }
-    if (r.controlComisionV1 && r.resultadoServicio !== 'Reparación realizada') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Resultado sin comisión: ' + (r.resultadoServicio || 'pendiente')); return; }
-    if (r.controlComisionV1 && Number(r.presupuesto || 0) < 100000 && !r.comisionVerificada) { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Pendiente de verificación administrativa'); return; }
-    if (r.gremio === 'si') { excluir(p, 'reparacion', r.id, r.orden || r.id, 'Excluida por gremio'); return; }
-    if (bloqueadas[clave]) return;
-    p.lineas.push({ clave:clave, tipo:'reparacion', origenId:r.id, referencia:r.orden || r.id, fecha:r.fecha, montoArs:Number(COM_CFG.com_rep || 0), detalle:'Reparación entregada y cobrada' });
+  var bloqueadas=comLiquidacionesBloqueadas(),personas=Object.create(null);
+  function persona(i){return personas[i.clave]||(personas[i.clave]={clave:i.clave,uid:i.uid,nombre:i.nombre,nombreBase:i.nombreBase,lineas:[],excluidas:[]});}
+  [['reparacion',window.REPS||[]],['venta',window.VENTAS||[]]].forEach(function(grupo){
+    grupo[1].forEach(function(item){
+      if(grupo[0]==='venta'&&item.tipoRegistro==='pos')return;
+      var clave=grupo[0]+':'+item.id;if(bloqueadas[clave])return;
+      var e=comEvaluarOperacion(grupo[0],item);
+      if((e.periodo||fechaAMesKey(item.fecha)||comMesActual())!==mesKey)return;
+      var p=persona(e.identidad),referencia=item.orden||item.modelo||item.id;
+      if(e.motivo){p.excluidas.push({tipo:grupo[0],origenId:item.id,referencia:referencia,motivo:e.motivo,estado:(item.comisionExcepcion||{}).estado==='No comisiona'?'No comisiona':'Pendiente'});return;}
+      var linea={clave:clave,tipo:grupo[0],origenId:item.id,referencia:referencia,fecha:e.fecha,montoArs:e.montoArs,detalle:(item.comisionExcepcion||{}).estado==='Incluida'?'Excepción aprobada por administración':(grupo[0]==='reparacion'?'Reparación entregada y cobrada':'Venta completada con costo confirmado')};
+      if(grupo[0]==='venta'){linea.precioUsd=Number(item.precio||0);linea.costoUsd=Number(item.costo||0);linea.gananciaUsd=linea.precioUsd-linea.costoUsd;}
+      p.lineas.push(linea);
+    });
   });
-  (window.VENTAS || []).forEach(function(v) {
-    if (!v.vendedor || fechaAMesKey(v.fecha) !== mesKey) return;
-    var p = persona(v.vendedor), clave = 'venta:' + v.id;
-    var precio = Number(v.precio || 0), costo = Number(v.costo || 0), ganancia = precio - costo;
-    var decision = v.comisionExcepcion || {};
-    if ((v.estadoVenta || 'Cobrada') !== 'Cobrada') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Venta ' + (v.estadoVenta || 'pendiente')); return; }
-    if (decision.estado === 'No comisiona') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Resuelta: no comisiona', 'No comisiona'); return; }
-    if (decision.estado === 'Incluida') {
-      if (!bloqueadas[clave]) p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:Number(decision.montoArs || 0), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Excepción aprobada por administración' });
-      return;
-    }
-    if (v.parte_pago === 'Si') { excluir(p, 'venta', v.id, v.modelo || v.id, 'Parte de pago pendiente de valuación'); return; }
-    if (!costo || costo <= 0 || v.costoConfirmado === false) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin costo confirmado'); return; }
-    if (ganancia <= 0) { excluir(p, 'venta', v.id, v.modelo || v.id, 'Sin ganancia positiva'); return; }
-    if (bloqueadas[clave]) return;
-    p.lineas.push({ clave:clave, tipo:'venta', origenId:v.id, referencia:v.modelo || v.id, fecha:v.fecha, montoArs:comMontoVenta(ganancia), precioUsd:precio, costoUsd:costo, gananciaUsd:ganancia, detalle:'Venta con costo confirmado' });
+  (window.COM_AJUSTES||[]).forEach(function(a){
+    if(a.periodo!==mesKey||a.estado!=='Aprobado'||bloqueadas['ajuste:'+a.id])return;
+    var i=comIdentidad(a.persona,a.personaUid),p=persona(i);
+    if(!i.valida){p.excluidas.push({tipo:'ajuste',origenId:a.id,referencia:a.referencia||a.id,motivo:'Responsable del ajuste sin usuario inequívoco',estado:'Pendiente'});return;}
+    p.lineas.push({clave:'ajuste:'+a.id,tipo:'ajuste',origenId:a.id,referencia:a.referencia||'Ajuste',fecha:a.fecha,montoArs:Number(a.montoArs||0),detalle:a.motivo||'Ajuste de comisión'});
   });
-  (window.COM_AJUSTES || []).filter(function(a) { return a.periodo === mesKey && a.estado === 'Aprobado'; }).forEach(function(a) {
-    var p = persona(a.persona); p.lineas.push({ clave:'ajuste:' + a.id, tipo:'ajuste', origenId:a.id, referencia:a.referencia || 'Ajuste', fecha:a.fecha, montoArs:Number(a.montoArs || 0), detalle:a.motivo || 'Ajuste de comisión' });
-  });
-  return Object.keys(personas).map(function(nombre) {
-    var p = personas[nombre]; p.totalArs = p.lineas.reduce(function(s, x) { return s + Number(x.montoArs || 0); }, 0); return p;
-  }).filter(function(p) { return p.lineas.length || p.excluidas.length; }).sort(function(a,b) { return a.nombre.localeCompare(b.nombre); });
+  return Object.values(personas).map(function(p){p.totalArs=p.lineas.reduce(function(s,x){return s+Number(x.montoArs||0);},0);return p;}).sort(function(a,b){return a.nombre.localeCompare(b.nombre);});
 }
 
 function comVerificarReparacion(id) {
@@ -132,8 +209,8 @@ function comResolverExcepcion(tipo, id, accion) {
     if (ingreso === null) return;
     var monto = Number(ingreso);
     if (!Number.isFinite(monto) || monto <= 0) { toast('Ingresá una comisión válida', 'var(--rd)'); return; }
-    if (!confirm('¿Incluir esta operación excepcionalmente por ' + pesos(monto) + '?')) return;
-    decision = { estado:'Incluida', montoArs:monto, resueltoPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() };
+    if (!confirm('¿Incluir esta operación excepcionalmente por ' + pesos(monto) + ' en ' + comNombreMes(comMesSeleccionado()) + '? La reparación debe estar entregada y cobrada; la venta, completada.')) return;
+    decision = { estado:'Incluida', montoArs:monto, periodo:comMesSeleccionado(), resueltoPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() };
   } else {
     if (!confirm('¿Marcar esta operación como no comisionable? Quedará registrada como decisión administrativa.')) return;
     decision = { estado:'No comisiona', montoArs:0, resueltoPor:usuarioActualRegistro(), fecha:hoy(), hora:horaActual() };
@@ -191,7 +268,7 @@ function comRenderControl() {
   var activas = (window.COM_LIQUIDACIONES || []).filter(function(l) { return l.periodo === seleccionado && l.estado !== 'Anulada'; });
   if (!personas.length && !activas.length) { sec.innerHTML += '<div class="empty" style="padding:18px">Sin operaciones comisionables o liquidaciones para este período.</div>'; return sec; }
   personas.forEach(function(p) {
-    var existente = comLiquidacionExistente(seleccionado, p.nombre);
+    var existente = comLiquidacionExistente(seleccionado, p.nombreBase, p.uid);
     var card = document.createElement('div'); card.className = 'card'; card.style.marginBottom = '8px';
     var lineasMostrar = existente ? (existente.lineas || []) : p.lineas;
     var totalMostrar = existente ? Number(existente.totalArs || 0) : p.totalArs;
@@ -210,21 +287,24 @@ function comRenderControl() {
       return function() { comCopiarDetalle(m, n, ls, total, est); };
     })(seleccionado, p.nombre, lineasMostrar, totalMostrar, existente ? existente.estado : 'Pendiente de aprobación')));
     if (existente) {
+      detalle.innerHTML+=comAvisoRevision(existente);
       var estado = document.createElement('span'); estado.className = 'mu'; estado.style.fontSize = '11px';
       estado.textContent = existente.estado + (existente.fechaPago ? ' - ' + existente.fechaPago : '');
       acciones.appendChild(estado);
-      if (existente.estado === 'Aprobada') acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(existente.id)));
-    } else if (p.lineas.length) acciones.appendChild(mkBtn('btn-g btn-sm', 'Aprobar liquidación', (function(m, n) { return function() { comAprobarLiquidacion(m, n); }; })(seleccionado, p.nombre)));
+      if (existente.estado === 'Aprobada' && !comRevisionesLocales(existente).length) acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(existente.id)));
+    } else if (p.lineas.length) acciones.appendChild(mkBtn('btn-g btn-sm', 'Aprobar liquidación', (function(m, n) { return function() { comAprobarLiquidacion(m, n); }; })(seleccionado, p.clave)));
     card.appendChild(acciones); sec.appendChild(card);
   });
-  activas.filter(function(l) { return !personas.some(function(p) { return p.nombre === l.persona; }); }).forEach(function(l) {
+  activas.filter(function(l) { return !personas.some(function(p) { return comIdentidad(p.nombreBase,p.uid).clave === comIdentidad(l.persona,l.personaUid).clave; }); }).forEach(function(l) {
+    var identidad=comIdentidad(l.persona,l.personaUid);
     var card = document.createElement('div'); card.className = 'card'; card.style.marginBottom = '8px';
-    card.innerHTML = '<b>' + esc(l.persona) + '</b><div class="mu" style="font-size:11px;margin-top:4px">' + esc(l.estado) + ' · ' + (l.lineas || []).length + ' operación(es)</div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr);margin-top:5px">' + pesos(l.totalArs) + '</div>';
+    card.innerHTML = '<b>' + esc(identidad.nombre) + '</b><div class="mu" style="font-size:11px;margin-top:4px">' + esc(l.estado) + ' · ' + (l.lineas || []).length + ' operación(es)</div><div class="mono" style="font-size:17px;font-weight:800;color:var(--gr);margin-top:5px">' + pesos(l.totalArs) + '</div>';
+    card.innerHTML+=comAvisoRevision(l);
     var acciones = document.createElement('div'); acciones.className = 'fa'; acciones.style.marginTop = '10px';
     acciones.appendChild(mkBtn('btn-g btn-sm', 'Copiar detalle', (function(m, n, ls, total, est) {
       return function() { comCopiarDetalle(m, n, ls, total, est); };
-    })(seleccionado, l.persona, l.lineas || [], Number(l.totalArs || 0), l.estado)));
-    if (l.estado === 'Aprobada') acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(l.id)));
+    })(seleccionado, identidad.nombre, l.lineas || [], Number(l.totalArs || 0), l.estado)));
+    if (l.estado === 'Aprobada' && !comRevisionesLocales(l).length) acciones.appendChild(mkBtn('btn-p btn-sm', 'Marcar pagada', (function(id) { return function() { comMarcarPagada(id); }; })(l.id)));
     card.appendChild(acciones);
     sec.appendChild(card);
   });
@@ -237,7 +317,8 @@ function comRenderControl() {
     tabla.innerHTML = '<table><thead><tr><th>Persona</th><th>Operación</th><th>Motivo</th><th></th></tr></thead><tbody>' + excepciones.map(function(x) {
       var d = x.dato;
       var acciones = '<button class="btn btn-g btn-sm" onclick="comAbrirExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\')">Revisar</button>';
-      if (d.estado === 'No comisiona') acciones += '<span class="mu" style="font-size:10px;margin-left:6px">No comisiona</span>';
+      if (d.tipo === 'ajuste') acciones='<span class="mu">Revisar responsable de la liquidación de origen</span>';
+      else if (d.estado === 'No comisiona') acciones += '<span class="mu" style="font-size:10px;margin-left:6px">No comisiona</span>';
       else acciones += '<button class="btn btn-p btn-sm" style="margin-left:5px" title="Incluir excepcionalmente" onclick="comResolverExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\',\'incluir\')">✓</button><button class="btn btn-g btn-sm" style="margin-left:5px" title="Marcar como no comisionable" onclick="comResolverExcepcion(\'' + d.tipo + '\',\'' + d.origenId + '\',\'excluir\')">✕</button>';
       return '<tr><td>' + esc(x.persona) + '</td><td>' + esc(d.referencia) + '<div class="mu" style="font-size:10px">' + esc(d.tipo) + '</div></td><td style="color:' + (d.estado === 'No comisiona' ? 'var(--mu)' : 'var(--or)') + '">' + esc(d.motivo) + '</td><td style="white-space:nowrap">' + acciones + '</td></tr>';
     }).join('') + '</tbody></table>';
@@ -245,25 +326,22 @@ function comRenderControl() {
   }
   sec.appendChild(secEx);
   var ajustes = (window.COM_AJUSTES || []).filter(function(a) { return a.periodo === seleccionado && a.estado === 'Pendiente'; });
-  if (ajustes.length) { var aj = document.createElement('div'); aj.style.marginTop = '16px'; aj.innerHTML = '<div class="ct" style="margin-bottom:8px">AJUSTES DE COMISIONES</div>'; ajustes.forEach(function(a) { var row=document.createElement('div'); row.className='card'; row.style.marginBottom='6px'; row.innerHTML='<b>'+esc(a.persona)+'</b><div class="mu" style="font-size:11px">'+esc(a.referencia)+' · '+esc(a.motivo)+'</div><div class="mono cr" style="margin-top:4px">'+pesos(a.montoArs)+'</div>'; row.appendChild(mkBtn('btn-p btn-sm','Aprobar ajuste',(function(id){return function(){comAprobarAjuste(id);};})(a.id))); aj.appendChild(row); }); sec.appendChild(aj); }
+  if (ajustes.length) { var aj = document.createElement('div'); aj.style.marginTop = '16px'; aj.innerHTML = '<div class="ct" style="margin-bottom:8px">AJUSTES DE COMISIONES</div>'; ajustes.forEach(function(a) { var row=document.createElement('div'); row.className='card'; row.style.marginBottom='6px'; row.innerHTML='<b>'+esc(a.persona)+'</b><div class="mu" style="font-size:11px">'+esc(a.referencia)+' · '+esc(a.motivo)+'</div><div class="mono cr" style="margin-top:4px">'+pesos(a.montoArs)+'</div>'; row.appendChild(mkBtn('btn-p btn-sm','Aprobar ajuste',(function(id){return function(){comAprobarAjuste(id);};})(a.id))); row.appendChild(mkBtn('btn-g btn-sm','Descartar',(function(id){return function(){comDescartarAjuste(id);};})(a.id))); aj.appendChild(row); }); sec.appendChild(aj); }
   return sec;
 }
 
-function comLiquidacionExistente(mes, nombre) {
-  return (window.COM_LIQUIDACIONES || []).find(function(x) { return x.periodo === mes && x.persona === nombre && x.estado !== 'Anulada'; });
+function comLiquidacionExistente(mes, nombre, uid) {
+  var identidad=comIdentidad(nombre,uid);
+  return (window.COM_LIQUIDACIONES||[]).find(function(x){return x.periodo===mes&&x.estado!=='Anulada'&&comIdentidad(x.persona,x.personaUid).clave===identidad.clave;});
 }
-
-function comAprobarLiquidacion(mes, nombre) {
-  if (!puede('gestionar_comisiones')) { toast('Solo administrador puede liquidar comisiones', 'var(--rd)'); return; }
-  if (comLiquidacionExistente(mes, nombre)) { toast('Ya existe una liquidación activa para esta persona y período', 'var(--or)'); return; }
-  var persona = comCalcularElegibles(mes).find(function(x) { return x.nombre === nombre; });
-  if (!persona || !persona.lineas.length) { toast('No hay comisiones elegibles para liquidar', 'var(--or)'); return; }
-  if (!confirm('Aprobar ' + pesos(persona.totalArs) + ' para ' + nombre + ' (' + comNombreMes(mes) + ')? Las operaciones quedarán bloqueadas para este período.')) return;
-  var actor = usuarioActualRegistro();
-  FB.crearLiquidacionComision({ periodo:mes, persona:nombre, estado:'Aprobada', lineas:persona.lineas, ajustes:[], totalArs:persona.totalArs, creadoPor:actor, aprobadoPor:actor, fechaAprobacion:hoy(), reglasVersion:1 }, function(err) {
-    if (err) { toast('Error: ' + err, 'var(--rd)'); return; }
-    toast('Liquidación aprobada');
-  });
+function comAprobarLiquidacion(mes, clave) {
+  if(!puede('gestionar_comisiones')){toast('Solo administrador puede liquidar comisiones','var(--rd)');return;}
+  var persona=comCalcularElegibles(mes).find(function(x){return x.clave===clave;});
+  if(!persona||!persona.uid||!persona.lineas.length){toast('No hay comisiones elegibles con responsable identificado','var(--or)');return;}
+  if(comLiquidacionExistente(mes,persona.nombreBase,persona.uid)){toast('Ya existe una liquidación activa para esta persona y período','var(--or)');return;}
+  if(!confirm('Aprobar '+pesos(persona.totalArs)+' para '+persona.nombre+' ('+comNombreMes(mes)+')?'))return;
+  var actor=usuarioActualRegistro();
+  FB.crearLiquidacionComision({periodo:mes,persona:persona.nombreBase,personaUid:persona.uid,estado:'Aprobada',lineas:persona.lineas,ajustes:[],totalArs:persona.totalArs,creadoPor:actor,aprobadoPor:actor,fechaAprobacion:hoy(),reglasVersion:2},function(err){toast(err?'Error: '+err:'Liquidación aprobada',err?'var(--rd)':undefined);});
 }
 
 function comMarcarPagada(id) {
@@ -339,13 +417,28 @@ function comGuardarTecnicos() {
 }
 
 // ── Lista de tecnicos activos para selects ────────────
-function comOpcionesTecnicos(seleccionado) {
-  var opts = '<option value="">— Sin asignar —</option>';
-  COM_CFG.tecnicos.filter(function(t){ return t.activo !== false; }).forEach(function(t) {
-    opts += '<option value="' + esc(t.nombre) + '"' + (t.nombre === seleccionado ? ' selected' : '') + '>' + esc(t.nombre) + '</option>';
+function comOpcionesTecnicos(seleccionado,uid) {
+  var opts='<option value="">— Sin asignar —</option>',usados={},seleccionadoIncluido=false;
+  function agregar(nombre,personaUid){
+    var clave=personaUid?'uid:'+personaUid:'nombre:'+nombre;if(usados[clave])return;usados[clave]=true;
+    var seleccionadoAhora=uid?personaUid===uid:nombre===seleccionado;
+    // Conservar el nombre guardado al editar; la identidad se conserva por UID.
+    var valor=seleccionadoAhora&&seleccionado?seleccionado:nombre;
+    if(seleccionadoAhora)seleccionadoIncluido=true;
+    var identidad=comIdentidad(nombre,personaUid);
+    opts+='<option value="'+esc(valor)+'" data-uid="'+esc(personaUid||'')+'"'+(seleccionadoAhora?' selected':'')+'>'+esc(personaUid?identidad.nombre:nombre)+'</option>';
+  }
+  (COM_CFG.tecnicos||[]).filter(function(t){return t.activo!==false;}).forEach(function(t){
+    var i=comIdentidad(t.nombre,t.uid),matches=(window.EQUIPO_USUARIOS||[]).filter(function(u){return comIdentidad(u.nombre,'').clave===i.clave||(!t.uid&&String(u.nombre||'').trim().toLowerCase()===String(t.nombre||'').trim().toLowerCase());});
+    if(i.uid){var cuenta=(window.EQUIPO_USUARIOS||[]).find(function(u){return u.uid===i.uid;});if(!cuenta||cuenta.activo!==false||uid===i.uid)agregar(i.nombreBase,i.uid);}
+    else if(matches.length)matches.forEach(function(u){agregar(u.nombre,u.uid);});
+    else agregar(t.nombre,'');
   });
+  (window.EQUIPO_USUARIOS||[]).filter(function(u){return u.activo!==false&&['administrador','admin','tecnico','técnico','recepcionista'].includes(String(u.rol||'').toLowerCase())&&!(COM_CFG.tecnicos||[]).some(function(t){return t.activo===false&&(t.uid===u.uid||(!t.uid&&comIdentidad(t.nombre,'').clave===comIdentidad(u.nombre,'').clave));});}).forEach(function(u){agregar(u.nombre,u.uid);});
+  if(seleccionado&&!seleccionadoIncluido)agregar(seleccionado,uid||'');
   return opts;
 }
+function comUidSelect(select) {var opcion=select&&select.selectedOptions&&select.selectedOptions[0];return opcion?opcion.getAttribute('data-uid')||'':'';}
 
 // ── Marcar reparacion como garantia ──────────────────
 function marcarGarantia(id) {
@@ -366,74 +459,18 @@ function marcarGarantia(id) {
 
 // ── Calcular comisiones por mes ───────────────────────
 function calcComisiones(mesKey) {
-  // mesKey = 'YYYY-MM' o null para mes actual
-  if (!mesKey) {
-    var hoy = new Date();
-    var m = String(hoy.getMonth()+1).padStart(2,'0');
-    mesKey = hoy.getFullYear() + '-' + m;
-  }
-
-  var resultado = {};
-  COM_CFG.tecnicos.forEach(function(t) {
-    resultado[t.nombre] = { reps: 0, gar: 0, ven: 0, com_rep: 0, com_ven: 0, total: 0 };
-  });
-
-  // Reparaciones del mes — solo Pagadas o Entregadas
-  (window.REPS || []).forEach(function(r) {
-    if (!r.tecnico || !r.fecha) return;
-    var k = fechaAMesKey(r.fecha);
-    if (k !== mesKey) return;
-    // Solo contar si fue cobrada o entregada
-    var conta = estadoPagoReparacion(r) === 'Pagado' || r.estado === 'Entregado';
-    if (!conta) return;
-    if (r.gremio === 'si') return; // gremio no cuenta comision
-    if (!resultado[r.tecnico]) resultado[r.tecnico] = { reps:0, gar:0, ven:0, com_rep:0, com_ven:0, total:0 };
-    if (r.es_garantia === 'si') {
-      resultado[r.tecnico].gar++;
-    } else {
-      resultado[r.tecnico].reps++;
-      resultado[r.tecnico].com_rep += COM_CFG.com_rep;
-    }
-  });
-
-  // Ventas del mes
-  (window.VENTAS || []).forEach(function(v) {
-    if (!v.vendedor || !v.fecha) return;
-    var k = fechaAMesKey(v.fecha);
-    if (k !== mesKey) return;
-    if (!resultado[v.vendedor]) resultado[v.vendedor] = { reps:0, gar:0, ven:0, com_rep:0, com_ven:0, total:0 };
-    resultado[v.vendedor].ven++;
-    resultado[v.vendedor].com_ven += COM_CFG.com_ven;
-  });
-
-  // Total
-  Object.keys(resultado).forEach(function(nom) {
-    var d = resultado[nom];
-    d.total = d.com_rep + d.com_ven;
-  });
-
+  mesKey=mesKey||comMesActual();var resultado=Object.create(null);
+  function sumar(nombre,lineas,totalGuardado){var p=resultado[nombre]||(resultado[nombre]={reps:0,gar:0,ven:0,ajustes:0,com_rep:0,com_ven:0,com_ajustes:0,total:0}),totalLineas=0;lineas.forEach(function(x){var monto=Number(x.montoArs||0);if(x.tipo==='reparacion'){p.reps++;p.com_rep+=monto;}if(x.tipo==='venta'){p.ven++;p.com_ven+=monto;}if(x.tipo==='ajuste'){p.ajustes++;p.com_ajustes+=monto;}totalLineas+=monto;});p.total+=totalGuardado!==undefined?Number(totalGuardado):totalLineas;}
+  comCalcularElegibles(mesKey).forEach(function(p){sumar(p.nombre,p.lineas);});
+  (window.COM_LIQUIDACIONES||[]).filter(function(l){return l.periodo===mesKey&&['Aprobada','Pagada'].includes(l.estado);}).forEach(function(l){var i=comIdentidad(l.persona,l.personaUid);sumar(i.nombre,l.lineas||[],l.totalArs);});
   return resultado;
 }
 
-function fechaAMesKey(fechaStr) {
-  if (!fechaStr) return '';
-  // DD/MM/YYYY → YYYY-MM
-  if (fechaStr.includes('/')) {
-    var p = fechaStr.split('/');
-    return p[2] + '-' + p[1];
-  }
-  // YYYY-MM-DD → YYYY-MM
-  return fechaStr.slice(0, 7);
-}
-
-// ── Meses disponibles ─────────────────────────────────
+function fechaAMesKey(fecha) {var dia=segFechaDia(fecha);return dia?dia.slice(0,7):'';}
 function calcMesesDisponibles() {
-  var meses = {};
-  (window.REPS || []).forEach(function(r) {
-    if (r.fecha) meses[fechaAMesKey(r.fecha)] = true;
-  });
-  (window.VENTAS || []).forEach(function(v) {
-    if (v.fecha) meses[fechaAMesKey(v.fecha)] = true;
-  });
+  var meses={};
+  (window.REPS||[]).forEach(function(r){meses[fechaAMesKey(comFechaOperacion('reparacion',r))||fechaAMesKey(r.fecha)]=true;});
+  (window.VENTAS||[]).forEach(function(v){meses[fechaAMesKey(comFechaOperacion('venta',v))||fechaAMesKey(v.fecha)]=true;});
+  (window.COM_LIQUIDACIONES||[]).concat(window.COM_AJUSTES||[]).forEach(function(x){if(x.periodo)meses[x.periodo]=true;});
   return Object.keys(meses).filter(Boolean).sort().reverse();
 }

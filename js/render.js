@@ -943,7 +943,7 @@ function renderBalComisiones() {
   wrap.innerHTML = '';
   Object.keys(com).forEach(function(nom) {
     var d = com[nom];
-    if (!d.reps && !d.gar && !d.ven) return;
+    if (!d.reps && !d.gar && !d.ven && !d.ajustes) return;
     var card = document.createElement('div');
     card.style.cssText = 'background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:8px';
     card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
@@ -954,10 +954,11 @@ function renderBalComisiones() {
       + (d.reps ? '<span>&#128295; ' + d.reps + ' reparaciones = ' + pesos(d.com_rep) + '</span>' : '')
       + (d.gar  ? '<span style="color:var(--rd)">&#9888; ' + d.gar + ' garantias (no cobran)</span>' : '')
       + (d.ven  ? '<span>&#128201; ' + d.ven + ' ventas = ' + pesos(d.com_ven) + '</span>' : '')
+      + (d.ajustes ? '<span>' + d.ajustes + ' ajustes = ' + pesos(d.com_ajustes) + '</span>' : '')
       + '</div>'
       + '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--bd);display:flex;gap:8px;font-size:11px;color:var(--mu)">'
       + '<span>Com. rep: ' + pesos(COM_CFG.com_rep) + ' c/u</span>'
-      + '<span>Com. ven: ' + pesos(COM_CFG.com_ven) + ' c/u</span>'
+      + '<span>Com. ven: según tramos de ganancia</span>'
       + '<button class="btn btn-g btn-sm" onclick="editarComisiones()" style="margin-left:auto;font-size:10px">Editar montos</button>'
       + '</div>';
     wrap.appendChild(card);

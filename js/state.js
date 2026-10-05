@@ -103,6 +103,8 @@ function usuarioActualRegistro() {
 var PERMISOS_ROLES = {};
 var PERMISOS_ESTADO = "pendiente";
 var ASISTENCIAS_TECNICOS = [];
+var EQUIPO_USUARIOS = [];
+var EQUIPO_USUARIOS_ESTADO = "pendiente";
 function esAdministrador() {
   var rol = String(SESION && SESION.perfil && SESION.perfil.rol || "").trim().toLowerCase();
   return sesionActiva() && (rol === "administrador" || rol === "admin");
@@ -173,6 +175,25 @@ var REGLAS_REPUESTO = [
   { palabras: ['carcasa','marco','chasis','tapa'],                             rep: 'Carcasa' },
   { palabras: ['placa','no enciende','no prende','no inicia','se apaga'],      rep: 'Reparacion de placa' },
 ];
+
+// Resolver identidad solo cuando el nombre tiene una coincidencia única.
+function equipoUidNombre(nombre) {
+  function clave(n){return String(n||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');}
+  var buscado=clave(nombre);if(!buscado)return '';
+  if(window.EQUIPO_USUARIOS_ESTADO!=="listo")return "";
+  var usuarios=(window.EQUIPO_USUARIOS||[]).slice();
+  var coincidencias=usuarios.filter(function(u){return clave(u.nombre)===buscado;});
+  return coincidencias.length===1?coincidencias[0].uid:'';
+}
+
+function equipoUidSeleccionado(nombre,uid) {
+  if(!uid)return equipoUidNombre(nombre);
+  if(window.EQUIPO_USUARIOS_ESTADO!=='listo')throw new Error('Esperá a que carguen los usuarios del equipo');
+  var usuario=(window.EQUIPO_USUARIOS||[]).find(function(u){return u.uid===uid;});
+  function clave(n){return String(n||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');}
+  if(!usuario||clave(usuario.nombre)!==clave(nombre))throw new Error('El usuario seleccionado no coincide con el responsable');
+  return uid;
+}
 
 // Una fecha comercial común para todos los dispositivos.
 function fechaDiaSesion(ahora) {

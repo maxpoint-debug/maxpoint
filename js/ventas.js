@@ -110,6 +110,7 @@ function saveVenta() {
     estadoVenta: el('vEstadoVenta').value,
     cotizacionBlue: _ventaId && anterior ? Number(anterior.cotizacionBlue||0) : Number(val('vCotizacion')||0),
     vendedor:    el('vVendedor') ? el('vVendedor').value : '',
+    vendedorUid: comUidSelect(el('vVendedor')),
     canal:       el('vCanal') ? el('vCanal').value : '',
     pago:        el('vPago').value,
     notas:       val('vNot'),
@@ -184,7 +185,7 @@ function openEditVenta(id, completarReserva) {
   var costoWrap = el('wVCosto'); if (costoWrap) costoWrap.style.display = puede('editar_costos') ? '' : 'none';
   // Actualizar opciones del select antes de setear el valor
   var selVed = el('vVendedor');
-  if (selVed && typeof comOpcionesTecnicos === 'function') selVed.innerHTML = comOpcionesTecnicos(v.vendedor || '');
+  if (selVed && typeof comOpcionesTecnicos === 'function') selVed.innerHTML = comOpcionesTecnicos(v.vendedor||'',v.vendedorUid||'');
   else if (selVed) selVed.value = v.vendedor || '';
   if (el('vCanal'))    el('vCanal').value    = v.canal    || '';
   el('vPago').value = v.pago || 'Efectivo';

@@ -3,12 +3,12 @@
 // conciliacion -> cajas. Las monedas nunca se convierten con una cotizacion actual.
 var ADM_PERIODO='mes',ADM_DESDE='',ADM_HASTA='',ADM_RANK='unidades';
 
-function admFecha(v){if(!v)return null;if(v instanceof Date)return v;var s=String(v),p=s.split('/');if(p.length===3)return new Date(+p[2],+p[1]-1,+p[0]);var d=new Date(s);return isNaN(d)?null:d;}
+function admFecha(v){if(!v)return null;if(typeof v.toDate==='function')return v.toDate();if(v instanceof Date)return v;var s=String(v),p=s.split('/');if(p.length===3)return new Date(+p[2],+p[1]-1,+p[0]);var d=new Date(s);return isNaN(d)?null:d;}
 function admIso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function admLimites(tipo,base){var h=new Date(base||new Date());h.setHours(23,59,59,999);var d=new Date(h);d.setHours(0,0,0,0);if(tipo==='semana'){var n=(d.getDay()+6)%7;d.setDate(d.getDate()-n);}else if(tipo==='mes')d=new Date(h.getFullYear(),h.getMonth(),1);else if(tipo==='anio')d=new Date(h.getFullYear(),0,1);else if(tipo==='rango'){d=admFecha(ADM_DESDE)||d;h=admFecha(ADM_HASTA)||h;h.setHours(23,59,59,999);}return {desde:d,hasta:h};}
 function admAnterior(l){var ms=l.hasta-l.desde+1,d=new Date(l.desde.getTime()-ms),h=new Date(l.desde.getTime()-1);return {desde:d,hasta:h};}
 function admDentro(v,l){var d=admFecha(v);return !!d&&d>=l.desde&&d<=l.hasta;}
-function admFechaEntidad(x){return x.fechaHora||x.fecha||x.aperturaFechaHora||'';}
+function admFechaEntidad(x){if(x.tipoRegistro==='equipo'&&x.estadoVenta==='Cobrada')return x.completadaEn||x.fecha||x.fechaHora||'';return x.fechaHora||x.fecha||x.aperturaFechaHora||'';}
 function admMoneda(x){return x.moneda==='USD'?'USD':'ARS';}
 function admSumaMoneda(xs,valor){var r={ARS:0,USD:0};xs.forEach(function(x){r[admMoneda(x)]+=Number(valor(x)||0);});return r;}
 function admFmt(r){var a=[];if(Math.abs(r.ARS)>.009||!r.USD)a.push(posDinero(r.ARS,'ARS'));if(Math.abs(r.USD)>.009)a.push(posDinero(r.USD,'USD'));return a.join(' · ');}
@@ -67,35 +67,55 @@ function renderAdminDashboard(){
 window.renderAdminDashboard=renderAdminDashboard;window.admSetPeriodo=admSetPeriodo;window.admRango=admRango;window.admRank=admRank;
 
 var EQUIPO_MES = '', EQUIPO_ASISTENCIA_ESTADO = 'pendiente';
-function equipoClave(n) { return String(n || '').trim().toLowerCase(); }
+function equipoClave(n) { return String(n || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' '); }
 function equipoContadores() {
-  var personas = {}, meses = {};
-  function persona(n) {
-    var k = equipoClave(n || 'Sin responsable');
-    return personas[k] || (personas[k] = { nombre:n || 'Sin responsable', dias:0, asignadas:0, terminadas:0, ventas:0 });
+  var personas={},meses={},usuarios=window.EQUIPO_USUARIOS||[],diasVistos=new Set(),sinFecha=0;
+  function identidad(nombre,uid) {
+    uid=uid||equipoUidNombre(nombre);
+    var usuario=usuarios.find(function(u){return u.uid===uid;});
+    var etiqueta=usuario?usuario.nombre:(nombre||'Sin responsable');
+    if(usuario && usuarios.filter(function(u){return equipoClave(u.nombre)===equipoClave(usuario.nombre);}).length>1)etiqueta+=' · '+(usuario.email||usuario.uid);
+    if(!uid && nombre)etiqueta+=' (sin UID)';
+    return {clave:uid?'uid:'+uid:'legacy:'+equipoClave(nombre||'Sin responsable'),nombre:etiqueta,uid:uid||''};
   }
-  function sumar(n, f, campo) {
-    var d = /^\d{4}-\d{2}-\d{2}$/.test(String(f)) ? new Date(String(f)+'T12:00:00') : admFecha(f); if (!d || isNaN(d.getTime())) return;
-    var mes = admIso(d).slice(0,7), p = persona(n), k = mes + '|' + equipoClave(p.nombre);
-    if (!meses[k]) meses[k] = {mes:mes,nombre:p.nombre,dias:0,asignadas:0,terminadas:0,ventas:0};
-    p[campo]++; meses[k][campo]++;
+  function persona(nombre,uid) {
+    var i=identidad(nombre,uid);
+    return personas[i.clave]||(personas[i.clave]={clave:i.clave,uid:i.uid,nombre:i.nombre,dias:0,asignadas:0,terminadas:0,ventas:0});
   }
-  ((window.COM_CFG || {}).tecnicos || []).forEach(function(t) { persona(t.nombre); });
-  (window.ASISTENCIAS_TECNICOS || []).forEach(function(a) { sumar(a.nombre,a.fecha,'dias'); });
-  (window.REPS || []).forEach(function(r) {
-    sumar(r.tecnico,r.fecha,'asignadas');
-    if (r.estado !== 'Listo' && r.estado !== 'Entregado') return;
-    var t = (r.timeline || []).find(function(t) { return t.estado === 'Listo'; });
-    if (!t) t = (r.timeline || []).find(function(t) { return t.estado === 'Entregado'; });
-    // Sin fecha de finalización no se atribuye un mes inventado.
-    if (t && t.fecha) sumar(r.tecnico,t.fecha,'terminadas');
-    else persona(r.tecnico).terminadas++;
+  function mesFecha(f) {
+    if(typeof segFechaDia==='function'){var iso=segFechaDia(f);return iso?iso.slice(0,7):'';}
+    var iso='',d=admFecha(f);
+    return iso?iso.slice(0,7):(d&&!isNaN(d.getTime())?admIso(d).slice(0,7):'');
+  }
+  function sumar(nombre,uid,fecha,campo) {
+    var p=persona(nombre,uid),mes=mesFecha(fecha);p[campo]++;
+    if(!mes){sinFecha++;return;}
+    var k=mes+'|'+p.clave;
+    if(!meses[k])meses[k]={mes:mes,clave:p.clave,uid:p.uid,nombre:p.nombre,dias:0,asignadas:0,terminadas:0,ventas:0};
+    meses[k][campo]++;
+  }
+  usuarios.forEach(function(u){persona(u.nombre,u.uid);});
+  ((window.COM_CFG||{}).tecnicos||[]).forEach(function(t){persona(t.nombre,t.uid);});
+  (window.ASISTENCIAS_TECNICOS||[]).forEach(function(a){
+    var fecha=typeof segFechaDia==='function'?segFechaDia(a.fecha):a.fecha;
+    if(!fecha)return;
+    var i=identidad(a.nombre,a.uid),k=i.clave+'|'+fecha;
+    if(diasVistos.has(k))return;diasVistos.add(k);sumar(a.nombre,a.uid,fecha,'dias');
   });
-  (window.VENTAS || []).forEach(function(v) {
-    if (!admVentaActiva(v) || v.estadoVenta === 'Reservada') return;
-    sumar(v.tipoRegistro === 'pos' ? (v.usuario || {}).nombre : v.vendedor,admFechaEntidad(v),'ventas');
+  (window.REPS||[]).forEach(function(r){
+    sumar(r.tecnico,r.tecnicoUid,r.fecha,'asignadas');
+    if(!['Listo','Entregado'].includes(r.estado))return;
+    var t=(r.timeline||[]).find(function(t){return ['Listo','Entregado'].includes(t.estado)&&(!r._imp||(t.usuario&&t.usuario.uid))&&mesFecha(t.fecha);});
+    var responsableUid=t&&Object.prototype.hasOwnProperty.call(t,'tecnicoUid')?t.tecnicoUid:r.tecnicoUid;
+    sumar(t&&t.tecnico||r.tecnico,responsableUid,t&&t.fecha||r.fechaEntrega||'','terminadas');
   });
-  return {personas:Object.values(personas).sort(function(a,b) { return a.nombre.localeCompare(b.nombre); }),meses:Object.values(meses).sort(function(a,b) { return b.mes.localeCompare(a.mes) || a.nombre.localeCompare(b.nombre); })};
+  (window.VENTAS||[]).forEach(function(v){
+    if(!admVentaActiva(v))return;
+    var actor=v.usuario||{},nombre=v.tipoRegistro==='pos'?actor.nombre:(v.vendedor||actor.nombre);
+    var uid=v.tipoRegistro==='pos'?actor.uid:(v.vendedorUid||(!v.vendedor?actor.uid:''));
+    sumar(nombre,uid,admFechaEntidad(v),'ventas');
+  });
+  return {sinFecha:sinFecha,personas:Object.values(personas).sort(function(a,b){return a.nombre.localeCompare(b.nombre);}),meses:Object.values(meses).sort(function(a,b){return b.mes.localeCompare(a.mes)||a.nombre.localeCompare(b.nombre);})};
 }
 function equipoFilas(xs) {
   return xs.map(function(x) { return [esc(x.nombre),EQUIPO_ASISTENCIA_ESTADO === 'ok' ? String(x.dias) : 'No disponible',String(x.asignadas),String(x.terminadas),String(x.ventas)]; });
@@ -115,7 +135,7 @@ function renderEquipoAdmin() {
   var opciones = Array.from(new Set(datos.meses.map(function(x) { return x.mes; })));
   cnt.innerHTML += '<section class="adm-sec"><label>Mes <select onchange="EQUIPO_MES=this.value;renderEquipoAdmin()"><option value="">Todos los meses</option>'+opciones.map(function(m) { return '<option'+(m===EQUIPO_MES?' selected':'')+'>'+m+'</option>'; }).join('')+'</select></label></section>';
   cnt.innerHTML += admTabla('Desglose mensual',['Mes','Persona','Días con ingreso','Reparaciones asignadas','Reparaciones terminadas','Ventas'],datos.meses.filter(function(x) { return !EQUIPO_MES || x.mes === EQUIPO_MES; }).map(function(x) { return [x.mes].concat(equipoFilas([x])[0]); }));
-  cnt.innerHTML += '<div class="adm-note">Días con inicio de sesión: un registro por usuario y fecha de Argentina, aunque ingrese varias veces o desde varios dispositivos. Terminadas: actualmente Listo o Entregado; se cuentan una vez en la primera fecha registrada de finalización. Las órdenes antiguas sin esa fecha aparecen solo en el histórico. Ventas: operaciones de equipos y POS, excluyendo reservas, anulaciones y devoluciones. Los registros sin responsable se muestran por separado.</div>';
+  cnt.innerHTML += '<div class="adm-note">Días con inicio de sesión: un registro por usuario y fecha de Argentina, aunque ingrese varias veces o desde varios dispositivos. Terminadas: actualmente Listo o Entregado; se cuentan una vez en la primera fecha registrada de finalización. Las órdenes antiguas sin esa fecha aparecen solo en el histórico. Ventas: operaciones de equipos y POS, excluyendo reservas, anulaciones y devoluciones. Identidad por UID cuando está disponible. Históricos sin UID solo se vinculan por nombre si hay una coincidencia única; los ambiguos se muestran por separado. '+datos.sinFecha+' conteos sin fecha válida figuran solo en el histórico.</div>';
   cnt.innerHTML += '<div id="equipoAsistenciaEstado" class="mu"></div>';
   if (EQUIPO_ASISTENCIA_ESTADO === 'pendiente') {
     EQUIPO_ASISTENCIA_ESTADO = 'cargando';

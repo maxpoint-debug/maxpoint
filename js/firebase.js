@@ -560,10 +560,10 @@ function datosRepuestoPermitidos(d) {
   return x;
 }
 function validarCambioReparacion(previo, datos) {
-  const permitidos=['nombre','equipo','telefono','modelo','falla','presupuesto','estado','resolucionFinanciera','tecnico','garantia_ref','estadoFisicoRecepcion','estadoFisicoEntrega','notas','diagnosticoTaller','gremio','resultadoServicio','controlComisionV1','cobroHistoricoNoConciliado','servicioSnapshot','es_garantia','garantiaOrigenId','comisionVerificada','comisionVerificadaPor','fechaVerificacionComision','comisionExcepcion','entregaExcepcion','incidencia','seg_est','orden','fecha','timeline','sena','pagos','creadoPor'];
+  const permitidos=['nombre','equipo','telefono','modelo','falla','presupuesto','estado','resolucionFinanciera','tecnico','tecnicoUid','garantia_ref','estadoFisicoRecepcion','estadoFisicoEntrega','notas','diagnosticoTaller','gremio','resultadoServicio','controlComisionV1','cobroHistoricoNoConciliado','servicioSnapshot','es_garantia','garantiaOrigenId','comisionVerificada','comisionVerificadaPor','fechaVerificacionComision','comisionExcepcion','entregaExcepcion','incidencia','seg_est','orden','fecha','timeline','sena','pagos','creadoPor'];
   const d=camposElegidos(sinCredencialesCliente(datos),permitidos), final=Object.assign({},previo,d);
   if(Object.prototype.hasOwnProperty.call(d,'seg_est') && !['pendiente','contactado','enviado','interesado','compro','no_interesa'].includes(d.seg_est))throw new Error('Estado de seguimiento inválido');
-  if(Object.prototype.hasOwnProperty.call(d,'tecnico') && d.tecnico!==previo.tecnico && ['Entregado','No aprobado'].includes(previo.estado) && !puede('reasignar_reparacion_terminada'))throw new Error('Sin permiso para reasignar una reparación terminada');
+  if(((Object.prototype.hasOwnProperty.call(d,'tecnico')&&d.tecnico!==previo.tecnico)||(previo.tecnicoUid&&Object.prototype.hasOwnProperty.call(d,'tecnicoUid')&&d.tecnicoUid!==previo.tecnicoUid)) && ['Entregado','No aprobado'].includes(previo.estado) && !puede('reasignar_reparacion_terminada'))throw new Error('Sin permiso para reasignar una reparación terminada');
   ['pagos','sena','creadoPor'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k) && JSON.stringify(d[k])!==JSON.stringify(previo[k]) && !(k==='sena' && Number(d[k]||0)===Number(previo[k]||0)))throw new Error('Los cobros y la autoría se conservan; usá Registrar pago o Revertir cobro');});
   if(d.controlComisionV1===false && previo.controlComisionV1===true)throw new Error('No se puede desactivar el control operativo');
   if(Object.prototype.hasOwnProperty.call(d,'cobroHistoricoNoConciliado') && Number(d.cobroHistoricoNoConciliado)!==Number(previo.cobroHistoricoNoConciliado||previo.sena||0))throw new Error('No se puede inventar un cobro histórico');
@@ -580,10 +580,22 @@ function validarCambioReparacion(previo, datos) {
     if(!reparacionPuedeEntregarseFinancieramente(final))throw new Error('Registrá el cobro o autorizá la entrega con saldo');
   }
   if(d.estado==='Entregado' && previo.estado!=='Entregado') {d.fechaEntrega=fechaDiaSesion(Date.now());d.seg_est='pendiente';}
+  if(!previo.tecnicoUid||(Object.prototype.hasOwnProperty.call(d,'tecnico')&&d.tecnico!==previo.tecnico)||(Object.prototype.hasOwnProperty.call(d,'tecnicoUid')&&d.tecnicoUid!==previo.tecnicoUid))d.tecnicoUid=equipoUidSeleccionado(final.tecnico,d.tecnicoUid||'');
+  if(Object.prototype.hasOwnProperty.call(d,'presupuesto')&&Number(d.presupuesto)!==Number(previo.presupuesto))d.fechaCobroCompleto=estadoPagoReparacion(final)==='Pagado'?(estadoPagoReparacion(previo)==='Pagado'?(previo.fechaCobroCompleto||''):fechaDiaSesion(Date.now())):'';
   Object.assign(d,resumenFinancieroReparacion(final));
-  if(d.estado && d.estado!==previo.estado)d.timeline=(previo.timeline||[]).concat([{estado:d.estado,fecha:hoy(),hora:horaActual(),usuario:usuarioActualRegistro()}]);
+  if(d.estado && d.estado!==previo.estado)d.timeline=(previo.timeline||[]).concat([{estado:d.estado,fecha:hoy(),hora:horaActual(),usuario:usuarioActualRegistro(),tecnicoUid:Object.prototype.hasOwnProperty.call(d,'tecnicoUid')?d.tecnicoUid:(previo.tecnicoUid||''),tecnico:final.tecnico||''}]);
   else delete d.timeline;
   return d;
+}
+async function agregarGarantiaVinculada(datos) {
+  const ref=doc(cR),original=doc(cR,datos.garantiaOrigenId),actor=usuarioActualRegistro();
+  if(datos.es_garantia!=='si')throw new Error('La orden vinculada debe ser una garantía');
+  await runTransaction(db,async tx=>{
+    const origen=await tx.get(original);if(!origen.exists())throw new Error('La reparación de origen ya no existe');
+    tx.set(ref,Object.assign({},conTelefonoClave(datos),{_ts:serverTimestamp()}));
+    tx.update(original,{ultimaGarantiaId:ref.id,_upd:serverTimestamp()});
+    tx.set(doc(cAud),{entidad:'reparacion',entidadId:ref.id,accion:'garantia_vinculada',actor:actor,origenId:original.id,cambios:[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+  });return ref.id;
 }
 window.FB.add = (d, cb) => {
   if(!puede('editar_reparacion')) { cb('Sin permiso para crear reparaciones'); return; }
@@ -591,7 +603,7 @@ window.FB.add = (d, cb) => {
     const limpio=sinCredencialesCliente(d);
     const datos=validarCambioReparacion({},Object.assign({},limpio,{sena:'0',creadoPor:undefined}));
     delete datos.creadoPor; datos.creadoPor=usuarioActualRegistro();
-    agregarAuditable('reparaciones','reparacion',conTelefonoClave(datos)).then(id=>{cb(null,id);v21Sync('reparacion',id,datos,'reparacion_creada');}).catch(e=>cb(e.message));
+    (datos.garantiaOrigenId?agregarGarantiaVinculada(datos):agregarAuditable('reparaciones','reparacion',conTelefonoClave(datos))).then(id=>{cb(null,id);v21Sync('reparacion',id,datos,'reparacion_creada');}).catch(e=>cb(e.message));
   }catch(e){cb(e.message);}
 };
 window.FB.addId = (id, d, cb) => {
@@ -672,8 +684,10 @@ window.FB.setCat = async (items, cb) => {
 
 let listenersInternos=[];
 function detenerListenersInternos() {
+  if(revisionComisionesTimer)clearTimeout(revisionComisionesTimer);revisionComisionesTimer=null;revisionComisionesPendientes.clear();revisionComisionesGeneracion++;revisionComisionesEnCurso=false;revisionComisionesAvisada=false;
   listenersInternos.forEach(detener=>detener()); listenersInternos=[];
   ['REPS','RPUS','VENTAS','STOCK','AUDITORIA','PRODUCTOS_POS','MOVIMIENTOS_STOCK','MOVIMIENTOS_FINANCIEROS_POS','MOVIMIENTOS_FINANCIEROS_ADMIN','PAGOS_ADMIN','CIERRES_CAJA','SERVICIOS_MAESTROS','COM_LIQUIDACIONES','COM_AJUSTES'].forEach(k=>{window[k]=[];});
+  window.EQUIPO_USUARIOS=[];window.EQUIPO_USUARIOS_ESTADO="pendiente";
   window.DATOS_HISTORICOS=[];
   window.SEGUIMIENTOS_CFG={activo:false,beneficio:''};
   window.CAJA_ACTUAL=null;window.MOVIMIENTOS_CAJA_ACTUAL=[];window.MOVIMIENTOS_CAJA_ID=null;
@@ -681,11 +695,13 @@ function detenerListenersInternos() {
 function iniciarListenersInternos() {
   detenerListenersInternos();
   function onSnapshot(...args) { const detener=observarFirestore(...args);listenersInternos.push(detener);return detener; }
+onSnapshot(cUsr,snap=>{window.EQUIPO_USUARIOS_ESTADO="listo";window.EQUIPO_USUARIOS=snap.docs.map(d=>Object.assign({},d.data(),{uid:d.id}));if(['equipoAdmin','bal'].includes(window.VIEW))render();},err=>{window.EQUIPO_USUARIOS=[];window.EQUIPO_USUARIOS_ESTADO="error";if(window.VIEW==='equipoAdmin')toast('No se pudieron cargar las identidades del equipo: '+err.message,'var(--rd)');});
 // --- Listener reparaciones ---
 onSnapshot(
   query(cR, orderBy('_ts', 'asc')),
   (snap) => {
     window.REPS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const cambiosComisiones=snap.docChanges().flatMap(c=>['reparacion:'+c.doc.id].concat(c.doc.data().garantiaOrigenId?['reparacion:'+c.doc.data().garantiaOrigenId]:[]));if(cambiosComisiones.length)programarRevisionComisiones(cambiosComisiones);
     render();
     updSidebar();
     syncOk();
@@ -715,6 +731,7 @@ onSnapshot(query(cRp, orderBy('_ts','asc')), (snap) => {
 // --- Listener ventas ---
 onSnapshot(query(cVen, orderBy('fecha','desc')), (snap) => {
   window.VENTAS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const cambiosComisiones=snap.docChanges().map(c=>'venta:'+c.doc.id);if(cambiosComisiones.length)programarRevisionComisiones(cambiosComisiones);
   if (['ven','ops','seg','equipoAdmin','admin','bal'].includes(window.VIEW)) render();
   if (typeof actualizarBadgeSeg === 'function') actualizarBadgeSeg();
 }, () => {});
@@ -836,6 +853,7 @@ onSnapshot(cFx, (snap) => {
 }, () => {});
 onSnapshot(cLiq, (snap) => {
   window.COM_LIQUIDACIONES = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  const pagadas=snap.docChanges().filter(c=>c.doc.data().estado==='Pagada').map(c=>'liquidacion:'+c.doc.id);if(pagadas.length)programarRevisionComisiones(pagadas);
   if (window.VIEW === 'bal' && typeof renderBal === 'function') renderBal();
 }, () => {});
 onSnapshot(cAj, (snap) => {
@@ -943,22 +961,180 @@ window.FB.setMoneda = async (d, cb) => {
   } catch (e) { cb(e.message); }
 };
 
-window.FB.crearLiquidacionComision = (d, cb) => {
-  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar comisiones'); return; }
-  agregarAuditable('liquidacionesComisiones', 'liquidacion_comision', d).then(id => cb(null, id)).catch(e => cb(e.message));
+// Todas las escrituras de comisiones participan del mismo control de revisión.
+// Las consultas se hacen al servidor después de leer el control: si otro escritor
+// confirma mientras tanto, Firestore reintenta la transacción con consultas nuevas.
+async function transaccionComisiones(entidad, ref, operacion) {
+  const actor=usuarioActualRegistro(),control=doc(db,'config','controlComisiones');
+  if(!actor)throw new Error('Sesión activa requerida');
+  return runTransaction(db,async tx=>{
+    const revision=await tx.get(control);
+    const resultado=await operacion(tx,actor);
+    tx.set(control,{revision:Number(revision.exists()?revision.data().revision:0)+1,usuario:actor,actualizadoEn:serverTimestamp()});
+    tx.set(doc(cAud),{entidad:entidad,entidadId:ref.id,accion:resultado.accion,actor:actor,cambios:resultado.cambios||[],fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
+    return ref.id;
+  });
+}
+function comPeriodoValido(periodo) {return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(periodo||''));}
+function comPersonaClave(nombre) {return String(nombre||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');}
+window.FB.crearLiquidacionComision = async (d, cb) => {
+  if(!puede('gestionar_comisiones')){cb('Sin permiso para gestionar comisiones');return;}
+  try {
+    if(typeof d.personaUid!=='string'||!d.personaUid)throw new Error('Identificá el usuario responsable antes de aprobar');
+    if(!comPeriodoValido(d.periodo)||typeof d.persona!=='string'||!comPersonaClave(d.persona)||d.estado!=='Aprobada'||!Array.isArray(d.lineas)||!d.lineas.length)throw new Error('Liquidación inválida');
+    const claves=new Set();let total=0;
+    d.lineas.forEach(x=>{if(!['reparacion','venta','ajuste'].includes(x.tipo)||!x.origenId||x.clave!==x.tipo+':'+x.origenId||claves.has(x.clave)||!Number.isFinite(Number(x.montoArs))||(x.tipo!=='ajuste'&&Number(x.montoArs)<0))throw new Error('Detalle de comisión inválido o repetido');claves.add(x.clave);total+=Number(x.montoArs);});
+    if(!Number.isFinite(Number(d.totalArs))||Math.abs(total-Number(d.totalArs))>.01)throw new Error('El total no coincide con el detalle');
+    const ref=doc(cLiq);
+    const id=await transaccionComisiones('liquidacion_comision',ref,async(tx,actor)=>{
+      const responsables=(await getDocsFromServer(cUsr)).docs.map(s=>Object.assign({},s.data(),{uid:s.id}));
+      const perfil=await tx.get(doc(cUsr,d.personaUid)),cfgSnap=await tx.get(doc(db,'config','comisiones'));
+      if(!perfil.exists())throw new Error('El usuario responsable ya no existe');
+      const cfg=Object.assign({},COM_CFG,cfgSnap.exists()?cfgSnap.data():{}),lineas=[];
+      const existentes=await getDocsFromServer(cLiq);
+      existentes.docs.forEach(s=>{const l=s.data();if(l.estado==='Anulada')return;
+        if(l.periodo===d.periodo&&comIdentidad(l.persona,l.personaUid,responsables).uid===d.personaUid)throw new Error('Ya existe una liquidación activa para esta persona y período');
+        if(['Aprobada','Pagada'].includes(l.estado)&&(l.lineas||[]).some(x=>claves.has(x.clave)))throw new Error('Una operación ya está incluida en otra liquidación');
+      });
+      for(const x of d.lineas) {
+        if(x.tipo==='ajuste') {
+          const ajuste=await tx.get(doc(cAj,x.origenId));
+          if(!ajuste.exists()||ajuste.data().estado!=='Aprobado'||ajuste.data().periodo!==d.periodo||comIdentidad(ajuste.data().persona,ajuste.data().personaUid,responsables).uid!==d.personaUid||Number(ajuste.data().montoArs)!==Number(x.montoArs))throw new Error('El ajuste cambió; actualizá la liquidación');
+          lineas.push(x);continue;
+        }
+        const origen=await tx.get(doc(x.tipo==='reparacion'?cR:cVen,x.origenId));
+        if(!origen.exists())throw new Error('La operación de origen ya no existe');
+        const evaluacion=comEvaluarOperacion(x.tipo,origen.data(),cfg,responsables);
+        if(evaluacion.motivo||evaluacion.periodo!==d.periodo||evaluacion.identidad.uid!==d.personaUid||Math.abs(evaluacion.montoArs-Number(x.montoArs))>.01)throw new Error('La operación cambió: '+(evaluacion.motivo||'período, responsable o importe diferente')+'. Actualizá la liquidación');
+        lineas.push(Object.assign({},x,{fecha:evaluacion.fecha}));
+      }
+      tx.set(ref,Object.assign({},d,{persona:perfil.data().nombre||d.persona,personaUid:d.personaUid,lineas:lineas,totalArs:total,creadoPor:actor,aprobadoPor:actor,_ts:serverTimestamp()}));
+      return {accion:'creado'};
+    });cb(null,id);
+  }catch(e){cb(e.message);}
 };
-window.FB.actualizarLiquidacionComision = (id, d, cb) => {
-  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar comisiones'); return; }
-  actualizarAuditable('liquidacionesComisiones', 'liquidacion_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.actualizarLiquidacionComision = async (id, d, cb) => {
+  if(!puede('gestionar_comisiones')){cb('Sin permiso para gestionar comisiones');return;}
+  try {
+    if(d.estado!=='Pagada'||Object.keys(d).some(k=>!['estado','medioPago','pagadoPor','fechaPago','horaPago'].includes(k)))throw new Error('La liquidación aprobada conserva su detalle y total');
+    const ref=doc(cLiq,id);
+    await transaccionComisiones('liquidacion_comision',ref,async(tx,actor)=>{
+      const snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='Aprobada')throw new Error('La liquidación ya no está aprobada o ya fue pagada');
+      const responsables=(await getDocsFromServer(cUsr)).docs.map(s=>Object.assign({},s.data(),{uid:s.id}));
+      const motivos=[];
+      for(const linea of snap.data().lineas||[]) {
+        if(!['reparacion','venta','ajuste'].includes(linea.tipo)||!linea.origenId)throw new Error('El detalle histórico requiere revisión');
+        const origen=await tx.get(doc(linea.tipo==='reparacion'?cR:linea.tipo==='venta'?cVen:cAj,linea.origenId));
+        let item=origen.exists()?origen.data():null;
+        if(item&&linea.tipo==='reparacion'&&!item.ultimaGarantiaId) {
+          const garantias=await getDocsFromServer(query(cR,where('garantiaOrigenId','==',linea.origenId)));
+          if(garantias.docs.some(s=>s.data().es_garantia==='si'))item=Object.assign({},item,{ultimaGarantiaId:'vinculada'});
+        }
+        const motivo=comRevisarLinea(snap.data(),linea,item,responsables);
+        if(motivo)motivos.push((linea.referencia||linea.origenId)+': '+motivo);
+      }
+      if(motivos.length)throw new Error('Pago bloqueado. Revisar: '+motivos.join(' · '));
+      const datos={estado:'Pagada',medioPago:String(d.medioPago||'Sin especificar').trim(),pagadoPor:actor,fechaPago:hoy(),horaPago:horaActual(),_upd:serverTimestamp()};
+      tx.update(ref,datos);return {accion:'actualizado',cambios:cambiosAuditables(snap.data(),datos)};
+    });cb(null);
+  }catch(e){cb(e.message);}
 };
-window.FB.crearAjusteComision = (d, cb) => {
-  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar ajustes'); return; }
-  agregarAuditable('ajustesComisiones', 'ajuste_comision', d).then(id => cb(null, id)).catch(e => cb(e.message));
+window.FB.crearAjusteComision = async (d, cb) => {
+  if(!puede('gestionar_comisiones')){cb('Sin permiso para gestionar ajustes');return;}
+  try {
+    if(!comPeriodoValido(d.periodo)||!d.liquidacionId||!d.claveOrigen||!String(d.motivo||'').trim())throw new Error('Ajuste inválido');
+    const ref=doc(cAj);
+    const id=await transaccionComisiones('ajuste_comision',ref,async(tx,actor)=>{
+      const liquidacion=await tx.get(doc(cLiq,d.liquidacionId));
+      if(!liquidacion.exists()||liquidacion.data().estado!=='Pagada')throw new Error('El ajuste requiere una liquidación pagada');
+      const linea=(liquidacion.data().lineas||[]).find(x=>x.clave===d.claveOrigen);
+      if(!linea||!['reparacion','venta'].includes(linea.tipo)||!Number.isFinite(Number(linea.montoArs)))throw new Error('Operación de origen inválida');
+      if(d.automatico) {
+        const origen=await tx.get(doc(linea.tipo==='reparacion'?cR:cVen,linea.origenId));let item=origen.exists()?origen.data():null;
+        if(item&&linea.tipo==='reparacion'&&!item.ultimaGarantiaId){const garantias=await getDocsFromServer(query(cR,where('garantiaOrigenId','==',linea.origenId)));if(garantias.docs.some(s=>s.data().es_garantia==='si'))item=Object.assign({},item,{ultimaGarantiaId:'vinculada'});}
+        if(!comMotivoAjuste(linea.tipo,item))throw new Error('La operación ya no requiere ajuste automático');
+      }
+      const existentes=await getDocsFromServer(cAj);
+      if(existentes.docs.some(s=>s.data().liquidacionId===d.liquidacionId&&s.data().claveOrigen===d.claveOrigen))throw new Error('Ya existe un ajuste para esta operación y liquidación');
+      tx.set(ref,Object.assign({},d,{persona:liquidacion.data().persona,personaUid:liquidacion.data().personaUid||'',estado:'Pendiente',montoArs:-Math.abs(Number(linea.montoArs)),creadoPor:actor,_ts:serverTimestamp()}));
+      return {accion:'creado'};
+    });cb(null,id);
+  }catch(e){cb(e.message);}
 };
-window.FB.actualizarAjusteComision = (id, d, cb) => {
-  if (!puede('gestionar_comisiones')) { cb('Sin permiso para gestionar ajustes'); return; }
-  actualizarAuditable('ajustesComisiones', 'ajuste_comision', id, d).then(() => cb(null)).catch(e => cb(e.message));
+window.FB.actualizarAjusteComision = async (id, d, cb) => {
+  if(!puede('gestionar_comisiones')){cb('Sin permiso para gestionar ajustes');return;}
+  try {
+    if(!['Aprobado','Descartado'].includes(d.estado)||Object.keys(d).some(k=>!['estado','aprobadoPor','fechaAprobacion','motivoDescarte'].includes(k)))throw new Error('Solo se puede aprobar el ajuste conservando su importe');
+    const ref=doc(cAj,id);
+    await transaccionComisiones('ajuste_comision',ref,async(tx,actor)=>{
+      const snap=await tx.get(ref);if(!snap.exists()||snap.data().estado!=='Pendiente')throw new Error('El ajuste ya no está pendiente');
+      if(d.estado==='Descartado'&&!String(d.motivoDescarte||'').trim())throw new Error('Indicá el motivo del descarte');
+      if(d.estado==='Aprobado'&&snap.data().automatico) {
+        const l=await tx.get(doc(cLiq,snap.data().liquidacionId));const linea=l.exists()?(l.data().lineas||[]).find(x=>x.clave===snap.data().claveOrigen):null;
+        if(!linea)throw new Error('La liquidación de origen requiere revisión');
+        const fuente=await tx.get(doc(linea.tipo==='reparacion'?cR:cVen,linea.origenId));let item=fuente.exists()?fuente.data():null;
+        if(item&&linea.tipo==='reparacion'&&!item.ultimaGarantiaId){const gs=await getDocsFromServer(query(cR,where('garantiaOrigenId','==',linea.origenId)));if(gs.docs.some(s=>s.data().es_garantia==='si'))item=Object.assign({},item,{ultimaGarantiaId:'vinculada'});}
+        if(!comMotivoAjuste(linea.tipo,item))throw new Error('La operación ya no requiere el ajuste. Revisalo o descartalo con motivo');
+      }
+      const datos={estado:d.estado,_upd:serverTimestamp()};
+      if(d.estado==='Aprobado')Object.assign(datos,{aprobadoPor:actor,fechaAprobacion:hoy()});
+      else Object.assign(datos,{descartadoPor:actor,fechaDescarte:hoy(),motivoDescarte:String(d.motivoDescarte).trim()});
+      tx.update(ref,datos);
+      return {accion:'actualizado',cambios:cambiosAuditables(snap.data(),datos)};
+    });cb(null);
+  }catch(e){cb(e.message);}
 };
+
+// Reconciliación al recibir cambios y al iniciar la sesión administrativa.
+// Relee fuentes en servidor; los ajustes permanecen pendientes de aprobación.
+window.FB.conciliarComisiones = async (claves,cb) => {
+  if(!puede('gestionar_comisiones')){cb('Sin permiso para revisar comisiones');return;}
+  let creados=0;const uid=usuarioActualRegistro().uid;
+  try {
+    const pagadas=await getDocsFromServer(query(cLiq,where('estado','==','Pagada')));
+    const ajustes=await getDocsFromServer(cAj),existentes=new Set(ajustes.docs.map(s=>s.data().liquidacionId+'|'+s.data().claveOrigen));
+    for(const snap of pagadas.docs)for(const linea of snap.data().lineas||[]) {
+      if(!['reparacion','venta'].includes(linea.tipo)||!linea.origenId||!(Number(linea.montoArs)>0))continue;
+      if(claves&&claves.length&&!claves.includes('*')&&!claves.includes(linea.clave)&&!claves.includes('liquidacion:'+snap.id))continue;
+      if(existentes.has(snap.id+'|'+linea.clave))continue;
+      const origen=await getDocFromServer(doc(linea.tipo==='reparacion'?cR:cVen,linea.origenId));
+      let item=origen.exists()?origen.data():null;
+      if(item&&linea.tipo==='reparacion'&&!item.ultimaGarantiaId) {
+        const garantias=await getDocsFromServer(query(cR,where('garantiaOrigenId','==',linea.origenId)));
+        if(garantias.docs.some(s=>s.data().es_garantia==='si'))item=Object.assign({},item,{ultimaGarantiaId:'vinculada'});
+      }
+      const motivo=comMotivoAjuste(linea.tipo,item);if(!motivo)continue;
+      if(!puede('gestionar_comisiones')||!usuarioActualRegistro()||usuarioActualRegistro().uid!==uid)throw new Error('La sesión cambió durante la revisión');
+      const generado=await new Promise((resolve,reject)=>window.FB.crearAjusteComision({periodo:comMesSiguiente(),liquidacionId:snap.id,claveOrigen:linea.clave,referencia:linea.referencia||linea.origenId,motivo:motivo,automatico:true,fecha:hoy()},(err)=>{
+        if(!err){resolve(true);return;}
+        // Puede haber confirmado otro navegador o perdido la respuesta de red.
+        // Solo considerar recuperado el error si el ajuste realmente existe.
+        getDocsFromServer(query(cAj,where('liquidacionId','==',snap.id))).then(resultado=>{
+          if(resultado.docs.some(s=>s.data().claveOrigen===linea.clave))resolve(false);
+          else reject(new Error(err));
+        }).catch(()=>reject(new Error(err)));
+      }));
+      existentes.add(snap.id+'|'+linea.clave);if(generado)creados++;
+    }
+    cb(null,creados);
+  }catch(e){cb(e.message,creados);}
+};
+let revisionComisionesPendientes=new Set(),revisionComisionesTimer=null,revisionComisionesEnCurso=false,revisionComisionesGeneracion=0,revisionComisionesAvisada=false;
+function programarRevisionComisiones(claves) {
+  if(!puede('gestionar_comisiones'))return;
+  (claves&&claves.length?claves:['*']).forEach(k=>revisionComisionesPendientes.add(k));
+  if(revisionComisionesTimer||revisionComisionesEnCurso)return;
+  revisionComisionesTimer=setTimeout(()=>{
+    revisionComisionesTimer=null;if(!puede('gestionar_comisiones'))return;
+    const generacion=revisionComisionesGeneracion,pendientes=Array.from(revisionComisionesPendientes);revisionComisionesPendientes.clear();revisionComisionesEnCurso=true;
+    window.FB.conciliarComisiones(pendientes,(err)=>{
+      if(generacion!==revisionComisionesGeneracion)return;
+      revisionComisionesEnCurso=false;
+      if(err){pendientes.forEach(k=>revisionComisionesPendientes.add(k));if(!revisionComisionesAvisada){revisionComisionesAvisada=true;toast('Revisión de comisiones pendiente; se reintentará automáticamente','var(--or)');}console.warn('Revisión de comisiones pendiente:',err);revisionComisionesTimer=setTimeout(()=>{revisionComisionesTimer=null;programarRevisionComisiones(Array.from(revisionComisionesPendientes));},30000);}
+      else {revisionComisionesAvisada=false;if(revisionComisionesPendientes.size)programarRevisionComisiones(Array.from(revisionComisionesPendientes));}
+    });
+  },500);
+}
 
 // Validaciones compartidas del circuito de equipos.
 function pagosVentaEquipo(datos) {
@@ -1012,6 +1188,7 @@ window.FB.crearVentaEquipo = async (data, cb) => {
       costo:puede('editar_costos') ? (data.costo || '0') : '0',
       costoConfirmado:puede('editar_costos') && Number(data.costo||0)>0,
       tipoRegistro:'equipo', schemaVersion:2, moneda:'USD', cajaRegistrada:requiereCaja,
+      vendedorUid:data.vendedor?equipoUidSeleccionado(data.vendedor,data.vendedorUid||''):actor.uid,
       imei:String(data.imei||'').trim(), stockEquipoId:stockRef?stockRef.id:'', partePagoStockId:partePagoRef?partePagoRef.id:'', regalos:regalos,
       pagos:pagos.map((p,i) => Object.assign({},p,{pagoId:pagoRefs[i].id,estado:'aplicado'})),
       totalPagadoUSD:pagado, saldoUSD:Math.max(0,requerido-pagado), usuario:actor,
@@ -1133,12 +1310,13 @@ window.FB.updV = async (id, d, cb) => {
     const ref=doc(cVen,id),snap=await tx.get(ref); if(!snap.exists())throw new Error('Venta no encontrada');
     const previo=snap.data();
     ['seg90_est','seg365_est'].forEach(k=>{if(Object.prototype.hasOwnProperty.call(d,k)&&!['pendiente','contactado','enviado','interesado','compro','no_interesa'].includes(d[k]))throw new Error('Estado de seguimiento inválido');});
-    const operativos=['nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','canal','notas','fecha','garantia','seguimiento','seg90_est','seg365_est'];
+    const operativos=['nombre','telefono','dni','direccion','email','modelo','capacidad','color','imei','vendedor','vendedorUid','canal','notas','fecha','garantia','seguimiento','seg90_est','seg365_est'];
     if(previo.stockEquipoId && ['imei','modelo'].some(k=>Object.prototype.hasOwnProperty.call(d,k)&&String(d[k]||'').trim()!==String(previo[k]||'').trim()))throw new Error('El equipo está vinculado al stock y no puede cambiarse desde la venta');
     cambios=camposElegidos(d,soloSeguimiento?['seg90_est','seg365_est','seguimiento']:operativos);
     if(!soloSeguimiento && puede('editar_costos'))Object.assign(cambios,camposElegidos(d,['costo','costoConfirmado']));
     if(!soloSeguimiento && puede('gestionar_comisiones'))Object.assign(cambios,camposElegidos(d,['comisionExcepcion']));
     if(!soloSeguimiento && !previo.cajaRegistrada && Number(previo.schemaVersion||0)<2 && puede('editar_finanzas_ventas'))Object.assign(cambios,camposElegidos(d,['precio','estadoVenta','parte_pago','pp_modelo','pp_imei','pp_valor','pago']));
+    if((Object.prototype.hasOwnProperty.call(cambios,'vendedor')&&cambios.vendedor!==previo.vendedor)||(Object.prototype.hasOwnProperty.call(cambios,'vendedorUid')&&cambios.vendedorUid!==previo.vendedorUid))cambios.vendedorUid=equipoUidSeleccionado(cambios.vendedor||previo.vendedor,cambios.vendedorUid||'');
     tx.update(ref,Object.assign({},cambios,{_upd:serverTimestamp()}));
     tx.set(doc(cAud),{entidad:'venta',entidadId:id,accion:'actualizado',actor:usuarioActualRegistro(),cambios:cambiosAuditables(previo,cambios),fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
     });
@@ -1270,6 +1448,7 @@ window.FB.registrarCobroReparacion = async (id, nuevosPagos, cb) => {
       const pagosFinales = existentes.concat(embebidos), totalCobrado = cobradoAnterior + ingreso;
       saldoFinal = Math.max(0, presupuesto-totalCobrado);
       const financieros = { pagos:pagosFinales, totalCobrado:totalCobrado, saldo:saldoFinal,
+        fechaCobroCompleto:presupuesto>0&&totalCobrado>=presupuesto?(cobradoAnterior>=presupuesto?(r.fechaCobroCompleto||''):fechaDiaSesion(Date.now())):'',
         pago:presupuesto > 0 ? (totalCobrado >= presupuesto ? 'Pagado' : 'Pendiente') : (r.pago || 'Pendiente') };
       tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.update(reparacionRef, Object.assign({}, financieros, { actualizadoEn:serverTimestamp() }));
@@ -1304,7 +1483,7 @@ window.FB.revertirCobroReparacion = async (id, pagoId, motivo, cb) => {
       const activos=pagos.filter(x=>x.estado!=='revertido'),total=activos.reduce((s,x)=>s+Number(x.monto||0),0),presupuesto=Number(r.presupuesto||0);
       tx.update(dCajaActual,{revisionMovimientos:increment(1)});
       tx.update(pagoRef,{estado:'revertido',revertidoEn:serverTimestamp(),revertidoPor:actor,motivoReversion:motivo,reversionMovimientoId:reversionRef.id});
-      tx.update(reparacionRef,{pagos:pagos,totalCobrado:total,saldo:Math.max(0,presupuesto-total),pago:total>=presupuesto&&presupuesto>0?'Pagado':(total>0?'Parcial':'Pendiente'),actualizadoEn:serverTimestamp()});
+      tx.update(reparacionRef,{pagos:pagos,totalCobrado:total,fechaCobroCompleto:total>=presupuesto?(r.fechaCobroCompleto||''):'',saldo:Math.max(0,presupuesto-total),pago:total>=presupuesto&&presupuesto>0?'Pagado':(total>0?'Parcial':'Pendiente'),actualizadoEn:serverTimestamp()});
       tx.set(reversionRef,{schemaVersion:2,cajaId:cajaSnap.data().cajaId,tipo:'reversion_cobro_reparacion',referenciaTipo:'reparacion',referenciaId:id,reparacionId:id,pagoOriginalId:pagoId,orden:r.orden||'',clienteNombre:r.nombre||'',medio:p.medio||'',cuenta:p.cuenta||'',monto:-Number(p.monto||0),moneda:p.moneda||'ARS',motivo:motivo,usuario:actor,fecha:hoy(),fechaHora:ahora,creadoEn:serverTimestamp()});
       tx.set(doc(cAud),{entidad:'reparacion',entidadId:id,accion:'cobro_revertido',actor:actor,cambios:[{campo:'totalCobrado',antes:Number(r.totalCobrado||0),despues:total}],pagoId:pagoId,motivo:motivo,fecha:hoy(),hora:horaActual(),creadoEn:serverTimestamp()});
     }); actualizarPortalEnSegundoPlano(id); cb(null);
