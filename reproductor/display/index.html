@@ -3,7 +3,7 @@
 </style></head><body><main id="app"></main><script>
 'use strict';
 const qs=new URLSearchParams(location.search);
-const CONFIG={feedUrl:qs.get('feed')||'',refreshMs:120000,slideMs:9000,videos:[]};
+const CONFIG={feedUrl:qs.get('feed')||'https://southamerica-east1-maxpoint-taller.cloudfunctions.net/maxpointDisplayCatalog',refreshMs:120000,slideMs:9000,videos:[]};
 const demo=qs.get('demo')==='1'?[{tipo:'equipo',nombre:'iPhone 13',modelo:'iPhone 13',capacidad:'128 GB',color:'Verde',precio:450000,moneda:'ARS',disponible:true},{tipo:'equipo',nombre:'iPhone 16 Pro Max',modelo:'iPhone 16 Pro Max',capacidad:'256 GB',color:'Titanio natural',precio:1450000,moneda:'ARS',disponible:true}]:[];
 let items=demo,queue=[],pos=0,timeout,images={};const app=document.getElementById('app');
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
