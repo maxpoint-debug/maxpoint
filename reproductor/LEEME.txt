@@ -1,0 +1,22 @@
+MAXPOINT DISPLAY - VERSION VISUAL DE PRUEBA
+
+Incluye 31 fotografias de grupos de colores aportadas por el usuario,
+convertidas a WebP, y un reproductor que relaciona el MODELO del stock
+con la imagen de su familia. No usa fotografias individuales por color.
+
+PROBAR EN MAC:
+1. Descomprimir el ZIP.
+2. Abrir Terminal en la carpeta que contiene "display".
+3. Ejecutar: python3 -m http.server 8085
+4. Abrir: http://127.0.0.1:8085/display/?demo=1
+
+PARA USAR EL FEED LOCAL DE FIREBASE (emuladores encendidos):
+http://127.0.0.1:8085/display/?feed=http%3A%2F%2F127.0.0.1%3A5001%2Fmaxpoint-taller%2Fsouthamerica-east1%2FmaxpointDisplayCatalog
+
+NO PUBLICAR EL FEED DEL EMULADOR EN INTERNET.
+Este ZIP es una prueba independiente; no modifica GitHub ni Firebase.
+Para GitHub Pages, subir el contenido de "display" a la carpeta display
+sin borrar archivos del sistema principal.
+
+NOTA: las imagenes son las incluidas en el ZIP aportado por el usuario.
+Comprobar derechos de uso antes de su publicacion comercial.
