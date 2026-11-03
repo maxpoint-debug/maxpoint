@@ -40,7 +40,7 @@ document.getElementById('espacio').addEventListener('change', () => {
 document.getElementById('horario').addEventListener('change', updatePrice);
 
 // ── WhatsApp ──
-document.getElementById('submitBtn').addEventListener('click', () => {
+document.getElementById('submitBtn').addEventListener('click', async () => {
   const nombre    = document.getElementById('nombre').value.trim();
   const agasajado = document.getElementById('agasajado').value.trim();
   const fecha     = document.getElementById('fecha').value;
@@ -58,6 +58,11 @@ document.getElementById('submitBtn').addEventListener('click', () => {
 
   if (!nombre || !fecha || !espacio || !telefono) {
     alert('Por favor completá al menos: nombre, fecha, espacio deseado y WhatsApp de contacto.');
+    return;
+  }
+
+  if (fecha < document.getElementById('fecha').min) {
+    alert('Elegí una fecha válida con la anticipación mínima requerida.');
     return;
   }
 
@@ -84,30 +89,35 @@ document.getElementById('submitBtn').addEventListener('click', () => {
   if (extras)    msg += `\n💬 *Consulta adicional:*\n${extras}`;
   msg += `\n\n_Enviado desde maxpoint-debug.github.io/maxpoint/piccolo_`;
 
-  if (window.piccoloFirebase) {
-    window.piccoloFirebase.saveInquiry({
-        nombre,
-        agasajado,
-        fecha,
-        horario,
-        productValue: select.value,
-        espacio,
-        ubicacion,
-        localidad,
-        cp,
-        telefono,
-        extras,
-        termsAccepted,
-        termsVersion: window.piccoloSettings?.termsVersion || 'catalogo-diciembre-v1',
-        displayedPrice: Number(select.value.split('|')[1]),
-        displayedDepositPercentage: Number(window.piccoloSettings?.depositPercentage ?? 20)
-      }).catch(error => {
-      console.warn('No se pudo guardar la consulta en Firebase:', error);
+  const submitBtn = document.getElementById('submitBtn');
+  if (submitBtn.disabled) return;
+  submitBtn.disabled = true;
+  const originalLabel = submitBtn.innerHTML;
+  submitBtn.textContent = 'Registrando consulta...';
+  try {
+    if (!window.piccoloFirebase) {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Firebase no disponible')), 8000);
+        window.addEventListener('piccolo:firebase-ready', () => { clearTimeout(timer); resolve(); }, { once: true });
       });
+    }
+    const inquiryId = await window.piccoloFirebase.saveInquiry({
+      nombre, agasajado, fecha, horario, productValue: select.value,
+      espacio, ubicacion, localidad, cp, telefono, extras, termsAccepted,
+      termsVersion: window.piccoloSettings?.termsVersion || 'catalogo-diciembre-v1',
+      displayedPrice: Number(select.value.split('|')[1]),
+      displayedDepositPercentage: Number(window.piccoloSettings?.depositPercentage ?? 20)
+    });
+    msg += `\n🧾 *Consulta:* ${inquiryId}`;
+    const whatsappNumber = String(window.piccoloSettings?.whatsappNumber || DEFAULT_WA_NUMBER).replace(/\D/g, '');
+    window.location.href = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(msg)}`;
+  } catch (error) {
+    console.error('Error al registrar consulta:', error);
+    alert('No pudimos registrar tu consulta. Probá nuevamente o escribinos directamente por WhatsApp.');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalLabel;
   }
-
-  const whatsappNumber = window.piccoloSettings?.whatsappNumber || DEFAULT_WA_NUMBER;
-  window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(msg)}`, '_blank');
 });
 
 function applyMinimumDate() {
@@ -115,7 +125,7 @@ function applyMinimumDate() {
   const minimum = new Date();
   minimum.setHours(12, 0, 0, 0);
   minimum.setDate(minimum.getDate() + minimumDays);
-  document.getElementById('fecha').min = minimum.toISOString().split('T')[0];
+  document.getElementById('fecha').min = [minimum.getFullYear(), String(minimum.getMonth() + 1).padStart(2, '0'), String(minimum.getDate()).padStart(2, '0')].join('-');
 }
 
 window.addEventListener('piccolo:catalog-ready', applyMinimumDate);
