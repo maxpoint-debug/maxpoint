@@ -1,0 +1,10 @@
+import {readFileSync,writeFileSync,mkdirSync,copyFileSync,cpSync,existsSync} from 'node:fs';
+const files = {'/':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/style.css':['style.css','text/css']};
+const assets = Object.fromEntries(Object.entries(files).map(([path,[file,type]]) => [path,[readFileSync('public/'+file,'utf8'),type+'; charset=utf-8']]));
+const mascot = readFileSync('public/zazo-mascot.webp').toString('base64');
+const core = readFileSync('core.js','utf8');
+mkdirSync('dist/server',{recursive:true});
+mkdirSync('dist/.openai',{recursive:true});
+writeFileSync('dist/server/index.js',core+'\nconst assets = '+JSON.stringify(assets)+';\nassets["/zazo-mascot.webp"] = [Uint8Array.from(atob('+JSON.stringify(mascot)+'), char => char.charCodeAt(0)), "image/webp"];\nexport default {fetch(request, env) {return route(request,env.DB,assets);}};\n');
+if (existsSync('.openai/hosting.json')) copyFileSync('.openai/hosting.json','dist/.openai/hosting.json');
+cpSync('drizzle','dist/drizzle',{recursive:true});

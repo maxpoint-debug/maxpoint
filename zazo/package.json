@@ -1,0 +1,1 @@
+{"name":"saso-feria","private":true,"type":"module","scripts":{"dev":"node local.js","build":"node build.js","test":"node --test"}}
