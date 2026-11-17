@@ -1,0 +1,22 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "piccolo"
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "functions": {
+      "port": 5002
+    },
+    "firestore": {
+      "port": 8089
+    },
+    "auth": {
+      "port": 9098
+    }
+  }
+}
