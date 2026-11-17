@@ -1,0 +1,8 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Piccolo · Reservas</title><link rel="stylesheet" href="admin.css"><style>
+body{max-width:1000px;margin:auto}.reservation-card{padding:18px;margin:12px 0;border:1px solid #ddd;border-radius:12px;background:#fff}.reservation-card label{display:block;margin:12px 0}.reservation-card input,.reservation-card select{padding:9px;max-width:100%;border:1px solid #aaa;border-radius:7px}.reservation-card button{margin:6px}.muted{color:#666}.hidden{display:none}
+</style></head><body><main class="admin-shell">
+<header class="admin-header"><div><p class="eyebrow">Piccolo</p><h1>Reservas y señas</h1><a href="index.html">Volver al catálogo</a></div><button class="button secondary hidden" id="logout">Salir</button></header>
+<p id="status" role="status"></p>
+<section id="login" class="card"><h2>Ingresar</h2><form id="loginForm"><label>Email<input id="email" type="email" required></label><label>Contraseña<input id="password" type="password" required></label><button class="button primary">Ingresar</button></form></section>
+<section id="panel" class="hidden"><p class="muted">Las consultas no reservan equipos. Solo el registro de la seña confirma y bloquea la fecha completa.</p><button class="button secondary" id="refresh">Actualizar</button><h2>Consultas</h2><div id="inquiries"></div><h2>Reservas</h2><div id="reservations"></div></section>
+</main><script type="module" src="reservas.js"></script></body></html>
